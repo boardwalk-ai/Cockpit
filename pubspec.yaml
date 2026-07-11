@@ -1,0 +1,14 @@
+# Workspace root for the Octopilot Cockpit monorepo.
+# Members resolve to a single shared lockfile (Dart pub workspaces).
+name: cockpit_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+workspace:
+  - apps/cockpit
+  - packages/cockpit_core
+  - packages/cockpit_ui
+  - packages/cockpit_module
+  - packages/study_studio

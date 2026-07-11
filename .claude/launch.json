@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cockpit-web",
+      "runtimeExecutable": "C:\\Users\\USER\\sdk\\flutter\\bin\\flutter.bat",
+      "runtimeArgs": ["run", "-d", "chrome", "--web-port=8765"],
+      "cwd": "apps/cockpit",
+      "port": 8765
+    }
+  ]
+}

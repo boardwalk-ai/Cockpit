@@ -1,0 +1,72 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+Thumbs.db
+
+# Dart / Flutter build & tooling (matches at any depth)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# Symbolication / obfuscation
+app.*.symbols
+app.*.map.json
+
+# Android
+.gradle/
+**/android/.gradle/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+*.jks
+*.keystore
+google-services.json
+
+# iOS / macOS
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/ephemeral/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/Pods/
+**/.symlinks/
+GoogleService-Info.plist
+
+# Web
+**/web/flutter_service_worker.js
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+
+# Secrets / local env
+.env
+.env.*
+*.pem
+secrets.dart
+
+# Claude Code local settings (keep launch.json, ignore machine-local prefs)
+.claude/settings.local.json

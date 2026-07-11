@@ -1,0 +1,23 @@
+# Optional convenience scripts. The workspace itself resolves via Dart pub
+# workspaces (root pubspec `workspace:` + members `resolution: workspace`),
+# so `flutter pub get` at the root is enough — melos is not required to build.
+#
+# To use:  dart pub global activate melos  &&  melos bootstrap
+name: cockpit_workspace
+
+packages:
+  - apps/*
+  - packages/*
+
+scripts:
+  analyze:
+    description: Analyze all packages.
+    run: flutter analyze
+  test:
+    description: Run all tests.
+    run: flutter test
+  runweb:
+    description: Run the shell app on Chrome.
+    run: flutter run -d chrome
+    packageFilters:
+      scope: cockpit
