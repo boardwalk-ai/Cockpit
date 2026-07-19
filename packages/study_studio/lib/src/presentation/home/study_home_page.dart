@@ -7,7 +7,7 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
-import '../widgets/studio_bottom_nav.dart';
+import '../widgets/studio_scaffold.dart';
 
 /// Screen 1 — Study Studio Home. The gateway into the module: pick an existing
 /// studio or build a new one. Faithful to the company mockup (Outfit type,
@@ -20,22 +20,188 @@ class StudyHomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final studios = ref.watch(studioListProvider);
 
-    return Scaffold(
-      body: SafeArea(
+    return StudioShell(
+      selectedIndex: 1,
+      child: SafeArea(
         bottom: false,
-        child: Center(
-          // Keep the phone-sized layout readable on wide web/desktop.
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: studios.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (list) => _HomeBody(studios: list),
-            ),
-          ),
+        child: studios.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (list) => isDesktop(context)
+              ? _HomeDesktop(studios: list)
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    child: _HomeBody(studios: list),
+                  ),
+                ),
         ),
       ),
-      bottomNavigationBar: const StudioBottomNav(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Desktop / web layout — nav rail (from StudioShell) + two-column content.
+// ---------------------------------------------------------------------------
+
+class _HomeDesktop extends StatelessWidget {
+  const _HomeDesktop({required this.studios});
+
+  final List<Studio> studios;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final byRecent = [...studios]..sort((a, b) {
+        final da = a.lastStudied ?? a.updatedAt;
+        final db = b.lastStudied ?? b.updatedAt;
+        return db.compareTo(da);
+      });
+
+    // Viewport-fit: the header + hero stay pinned; the two-column region fills
+    // the remaining height and only the "Your Studios" grid scrolls internally,
+    // so the page itself never scrolls on desktop.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 28, 40, 28),
+      child: ContentColumn(
+        maxWidth: 1180,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Study Studio',
+                        style: theme.textTheme.headlineMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: CockpitSpacing.xs),
+                      Text(
+                        'Turn your notes, lectures, and textbooks into an '
+                        'AI-powered learning environment.',
+                        style: theme.textTheme.bodyLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: CockpitSpacing.lg),
+                _CircleIconButton(
+                  icon: Icons.notifications_none_rounded,
+                  onTap: () {},
+                  showDot: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: CockpitSpacing.lg),
+            _NewStudioHero(onTap: () => context.go('/study/upload')),
+            const SizedBox(height: CockpitSpacing.xl),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (byRecent.isNotEmpty) ...[
+                          _DeskSection(
+                            title: 'Continue Learning',
+                            action: 'View all',
+                            onAction: () {},
+                          ),
+                          const SizedBox(height: CockpitSpacing.md),
+                          SizedBox(
+                            height: 172,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              padding: EdgeInsets.zero,
+                              itemCount: byRecent.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: CockpitSpacing.md),
+                              itemBuilder: (_, i) => _ContinueCard(
+                                studio: byRecent[i],
+                                accent: _accentFor(i),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: CockpitSpacing.lg),
+                        ],
+                        _DeskSection(title: 'Your Studios'),
+                        const SizedBox(height: CockpitSpacing.md),
+                        Expanded(
+                          child: GridView.builder(
+                            padding: const EdgeInsets.only(
+                                bottom: CockpitSpacing.sm),
+                            itemCount: studios.length,
+                            gridDelegate:
+                                const SliverGridDelegateWithMaxCrossAxisExtent(
+                              maxCrossAxisExtent: 380,
+                              mainAxisSpacing: CockpitSpacing.md,
+                              crossAxisSpacing: CockpitSpacing.md,
+                              mainAxisExtent: 116,
+                            ),
+                            itemBuilder: (_, i) => _StudioRow(
+                              studio: studios[i],
+                              accent: _accentFor(i),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: CockpitSpacing.xl),
+                  SizedBox(
+                    width: 340,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const _DeskSection(title: 'Recommended for you'),
+                        const SizedBox(height: CockpitSpacing.md),
+                        _RecommendationCard(studios: studios, padded: false),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeskSection extends StatelessWidget {
+  const _DeskSection({required this.title, this.action, this.onAction});
+  final String title;
+  final String? action;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            style: theme.textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (action != null)
+          TextButton(onPressed: onAction, child: Text(action!)),
+      ],
     );
   }
 }
@@ -503,9 +669,10 @@ class _StudioRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _RecommendationCard extends StatelessWidget {
-  const _RecommendationCard({required this.studios});
+  const _RecommendationCard({required this.studios, this.padded = true});
 
   final List<Studio> studios;
+  final bool padded;
 
   /// The weakest topic across all studios is the natural "review next".
   ({Studio studio, Topic topic})? _pickWeakest() {
@@ -529,7 +696,9 @@ class _RecommendationCard extends StatelessWidget {
     final topic = pick.topic;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg),
+      padding: padded
+          ? const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg)
+          : EdgeInsets.zero,
       child: Container(
         padding: const EdgeInsets.all(CockpitSpacing.lg),
         decoration: BoxDecoration(

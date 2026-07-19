@@ -2,6 +2,7 @@ import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../widgets/studio_scaffold.dart';
 import 'build_preview.dart';
 
 /// Screen 3 — AI Building Your Study Studio.
@@ -81,17 +82,77 @@ class _BuildingPageState extends State<BuildingPage>
 
   @override
   Widget build(BuildContext context) {
+    final desktop = isDesktop(context);
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (context, _) {
-                final p = _c.value;
-                final active = _activeStep(p);
-                return ListView(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (context, _) {
+            final p = _c.value;
+            final active = _activeStep(p);
+            final liveLabel = Text(
+              'Live Preview',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            );
+
+            if (desktop) {
+              // Viewport-fit: header pinned at top, the progress bar and
+              // reassurance note pinned at the bottom, and the core/timeline +
+              // live preview fill the middle (scrolling only if the window is
+              // unusually short) so the page itself never scrolls.
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(40, 24, 40, 20),
+                child: ContentColumn(
+                  maxWidth: 1080,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _Header(onBack: () => context.go('/study/upload')),
+                      const SizedBox(height: CockpitSpacing.lg),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: _CoreStage(pulse: _pulse)),
+                                  const SizedBox(width: 40),
+                                  Expanded(
+                                    child: _TimelineCard(
+                                      progress: p,
+                                      activeStep: active,
+                                      pulse: _pulse,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: CockpitSpacing.lg),
+                              liveLabel,
+                              const SizedBox(height: CockpitSpacing.md),
+                              _LivePreviewRow(progress: p),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: CockpitSpacing.lg),
+                      _ProgressSection(progress: p),
+                      const SizedBox(height: CockpitSpacing.md),
+                      const _ReassuranceNote(),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: ListView(
                   padding: const EdgeInsets.fromLTRB(
                     CockpitSpacing.lg,
                     CockpitSpacing.sm,
@@ -105,13 +166,7 @@ class _BuildingPageState extends State<BuildingPage>
                     const SizedBox(height: CockpitSpacing.xl),
                     _TimelineCard(progress: p, activeStep: active, pulse: _pulse),
                     const SizedBox(height: CockpitSpacing.xl),
-                    Text(
-                      'Live Preview',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700),
-                    ),
+                    liveLabel,
                     const SizedBox(height: CockpitSpacing.md),
                     _LivePreviewRow(progress: p),
                     const SizedBox(height: CockpitSpacing.xl),
@@ -119,10 +174,10 @@ class _BuildingPageState extends State<BuildingPage>
                     const SizedBox(height: CockpitSpacing.lg),
                     const _ReassuranceNote(),
                   ],
-                );
-              },
-            ),
-          ),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -656,7 +711,7 @@ class _LivePreviewRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 132,
+      height: 146,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.zero,

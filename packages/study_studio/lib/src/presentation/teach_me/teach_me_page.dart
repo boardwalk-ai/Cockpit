@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
+import '../widgets/studio_scaffold.dart';
 
 /// Screen 6 — Teach Me.
 ///
@@ -69,23 +70,125 @@ class _TeachMePageState extends ConsumerState<TeachMePage> {
     final async = ref.watch(studioProvider(widget.studioId));
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: async.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (studio) {
-                final i = studio.topics.indexWhere((t) => t.id == widget.topicId);
-                if (i < 0) {
-                  return const Center(child: Text('Topic not found'));
-                }
-                return _buildLesson(context, studio, i);
-              },
-            ),
-          ),
+        child: async.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (studio) {
+            final i = studio.topics.indexWhere((t) => t.id == widget.topicId);
+            if (i < 0) {
+              return const Center(child: Text('Topic not found'));
+            }
+            return isDesktop(context)
+                ? _buildDesktop(context, studio, i)
+                : Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 480),
+                      child: _buildLesson(context, studio, i),
+                    ),
+                  );
+          },
         ),
       ),
+    );
+  }
+
+  /// Desktop / web: three panes — lesson list · lesson · AI assistant.
+  Widget _buildDesktop(BuildContext context, Studio studio, int index) {
+    final topics = studio.topics;
+    final topic = topics[index];
+    final total = topics.length;
+    final base = '/study/${studio.id}';
+    final prev = index > 0 ? topics[index - 1] : null;
+    final next = index < total - 1 ? topics[index + 1] : null;
+    final related = [
+      for (final id in topic.relatedTopicIds)
+        ...topics.where((t) => t.id == id),
+    ];
+
+    return Column(
+      children: [
+        _Header(
+          studioTitle: studio.title,
+          lessonNumber: index + 1,
+          total: total,
+          onBack: () => context.go(base),
+        ),
+        Expanded(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _TopicListPane(
+                topics: topics,
+                currentIndex: index,
+                onTap: (t) => context.go('$base/teach/${t.id}'),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 40,
+                          vertical: 28,
+                        ),
+                        children: [
+                          ContentColumn(
+                            maxWidth: 760,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _Hero(
+                                  topic: topic,
+                                  onStart: () =>
+                                      setState(() => _lessonOpen = true),
+                                  onAsk: () => _askFocus.requestFocus(),
+                                ),
+                                const SizedBox(height: CockpitSpacing.xl),
+                                _LessonCard(
+                                  topic: topic,
+                                  open: _lessonOpen,
+                                  onToggle: () => setState(
+                                      () => _lessonOpen = !_lessonOpen),
+                                ),
+                                const SizedBox(height: CockpitSpacing.xl),
+                                _ReadyToTest(
+                                  onStart: () => context
+                                      .go('$base/quiz?topicId=${topic.id}'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _LessonNav(
+                      current: topic.title,
+                      index: index,
+                      total: total,
+                      onPrev: prev == null
+                          ? null
+                          : () => context.go('$base/teach/${prev.id}'),
+                      onNext: next == null
+                          ? null
+                          : () => context.go('$base/teach/${next.id}'),
+                    ),
+                  ],
+                ),
+              ),
+              _AssistantPane(
+                controller: _controller,
+                focusNode: _askFocus,
+                suggestions: _suggestions,
+                messages: _messages,
+                thinking: _thinking,
+                onSend: (t) => _send(topic, t),
+                related: related,
+                onRelatedTap: (t) => context.go('$base/teach/${t.id}'),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1222,6 +1325,246 @@ String _difficultyLabel(int difficulty) {
   if (difficulty <= 2) return 'Beginner';
   if (difficulty == 3) return 'Intermediate';
   return 'Advanced';
+}
+
+// ---------------------------------------------------------------------------
+// Desktop panes
+// ---------------------------------------------------------------------------
+
+class _TopicListPane extends StatelessWidget {
+  const _TopicListPane({
+    required this.topics,
+    required this.currentIndex,
+    required this.onTap,
+  });
+  final List<Topic> topics;
+  final int currentIndex;
+  final ValueChanged<Topic> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      width: 268,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(right: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(CockpitSpacing.lg),
+            child: Row(
+              children: [
+                Text(
+                  'Lessons',
+                  style: theme.textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const Spacer(),
+                Text(
+                  '${currentIndex + 1}/${topics.length}',
+                  style: theme.textTheme.labelMedium
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.sm),
+              itemCount: topics.length,
+              itemBuilder: (context, i) {
+                final t = topics[i];
+                final selected = i == currentIndex;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 2),
+                  child: Material(
+                    color: selected
+                        ? scheme.primary.withValues(alpha: 0.10)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(CockpitRadii.md),
+                    child: InkWell(
+                      onTap: () => onTap(t),
+                      borderRadius: BorderRadius.circular(CockpitRadii.md),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: CockpitSpacing.sm,
+                          vertical: CockpitSpacing.sm,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 24,
+                              height: 24,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? scheme.primary
+                                    : scheme.surfaceContainerHighest,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                '${i + 1}',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: selected
+                                      ? scheme.onPrimary
+                                      : scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: CockpitSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                t.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: selected ? scheme.primary : scheme.onSurface,
+                                  fontWeight:
+                                      selected ? FontWeight.w700 : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${(t.mastery * 100).round()}%',
+                              style: theme.textTheme.labelSmall
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AssistantPane extends StatelessWidget {
+  const _AssistantPane({
+    required this.controller,
+    required this.focusNode,
+    required this.suggestions,
+    required this.messages,
+    required this.thinking,
+    required this.onSend,
+    required this.related,
+    required this.onRelatedTap,
+  });
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final List<String> suggestions;
+  final List<_Msg> messages;
+  final bool thinking;
+  final ValueChanged<String> onSend;
+  final List<Topic> related;
+  final ValueChanged<Topic> onRelatedTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Container(
+      width: 360,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(left: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(CockpitSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _AskAi(
+              controller: controller,
+              focusNode: focusNode,
+              suggestions: suggestions,
+              messages: messages,
+              thinking: thinking,
+              onSend: onSend,
+            ),
+            if (related.isNotEmpty) ...[
+              const SizedBox(height: CockpitSpacing.xl),
+              Text(
+                'Related Concepts',
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: CockpitSpacing.sm),
+              for (final t in related)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
+                  child: _RelatedTile(topic: t, onTap: () => onRelatedTap(t)),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RelatedTile extends StatelessWidget {
+  const _RelatedTile({required this.topic, required this.onTap});
+  final Topic topic;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(CockpitRadii.md),
+      child: Container(
+        padding: const EdgeInsets.all(CockpitSpacing.md),
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(CockpitRadii.md),
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.account_tree_outlined,
+                  size: 18, color: scheme.primary),
+            ),
+            const SizedBox(width: CockpitSpacing.md),
+            Expanded(
+              child: Text(
+                topic.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              '${topic.estimatedStudyTimeMinutes} min',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: scheme.onSurfaceVariant),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Rotates a color's hue to build a same-family gradient companion.

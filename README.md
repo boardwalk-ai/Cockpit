@@ -64,7 +64,7 @@ Screens **1–7 are already built** — study them and copy their look and feel:
 - **Font:** `Outfit` (already bundled and set globally — do not change it).
 - **Design tokens:** always use `packages/cockpit_ui` — `CockpitColors`,
   `CockpitSpacing`, `CockpitRadii`, and the shared widgets (`CockpitCard`,
-  `ProgressRing`, `StatTile`, `TagChip`, `StudioBottomNav`, …). **Never
+  `ProgressRing`, `StatTile`, `TagChip`, `StudioShell`, …). **Never
   hard‑code a hex colour or a magic number** — read from the theme
   (`Theme.of(context).colorScheme`) and the token classes.
 - **Style:** clean, academic, modern, friendly. White background, rounded glass

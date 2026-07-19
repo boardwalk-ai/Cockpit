@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/entities/source.dart';
+import '../widgets/studio_scaffold.dart';
 
 /// Screen 2 — Create a New Study Studio.
 ///
@@ -57,66 +58,124 @@ class _UploadPageState extends State<UploadPage> {
   @override
   Widget build(BuildContext context) {
     final canBuild = _files.isNotEmpty;
+    final desktop = isDesktop(context);
+
+    final uploadHead = <Widget>[
+      _SectionLabel('Studio Name'),
+      const SizedBox(height: CockpitSpacing.sm),
+      _StudioNameField(controller: _nameController),
+      const SizedBox(height: CockpitSpacing.xl),
+      _DropZone(onTap: _addFile),
+    ];
+
+    final filesHeader = Row(
+      children: [
+        Expanded(
+          child: _SectionLabel('Uploaded Files (${_files.length})'),
+        ),
+        TextButton(
+          onPressed: () => setState(_files.clear),
+          child: const Text('Clear All'),
+        ),
+      ],
+    );
+
+    final fileCards = <Widget>[
+      for (var i = 0; i < _files.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
+          child: _FileCard(
+            file: _files[i],
+            onRemove: () => setState(() => _files.removeAt(i)),
+          ),
+        ),
+    ];
+
+    // Mobile keeps everything in one scroll; desktop scrolls only the file list.
+    final nameAndUpload = <Widget>[
+      ...uploadHead,
+      if (_files.isNotEmpty) ...[
+        const SizedBox(height: CockpitSpacing.xl),
+        filesHeader,
+        const SizedBox(height: CockpitSpacing.xs),
+        ...fileCards,
+      ],
+    ];
+
+    final aiWillBuild = <Widget>[
+      _SectionLabel('AI Will Build For You'),
+      const SizedBox(height: CockpitSpacing.md),
+      const _AiWillBuildGrid(),
+    ];
+
+    final Widget body;
+    if (desktop) {
+      // Two columns fill the viewport between the pinned top bar and build bar;
+      // each side scrolls on its own only when the window is too short, so the
+      // page itself never scrolls.
+      body = Padding(
+        padding: const EdgeInsets.fromLTRB(40, 12, 40, 14),
+        child: ContentColumn(
+          maxWidth: 1080,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 3,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: nameAndUpload,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 40),
+              Expanded(
+                flex: 2,
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: aiWillBuild,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      body = Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(
+              CockpitSpacing.lg,
+              CockpitSpacing.sm,
+              CockpitSpacing.lg,
+              CockpitSpacing.xxl,
+            ),
+            children: [
+              ...nameAndUpload,
+              const SizedBox(height: CockpitSpacing.xl),
+              ...aiWillBuild,
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Column(
-              children: [
-                _TopBar(onBack: () => context.go('/study')),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      CockpitSpacing.lg,
-                      CockpitSpacing.sm,
-                      CockpitSpacing.lg,
-                      CockpitSpacing.xxl,
-                    ),
-                    children: [
-                      _SectionLabel('Studio Name'),
-                      const SizedBox(height: CockpitSpacing.sm),
-                      _StudioNameField(controller: _nameController),
-                      const SizedBox(height: CockpitSpacing.xl),
-                      _DropZone(onTap: _addFile),
-                      if (_files.isNotEmpty) ...[
-                        const SizedBox(height: CockpitSpacing.xl),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _SectionLabel('Uploaded Files (${_files.length})'),
-                            ),
-                            TextButton(
-                              onPressed: () => setState(_files.clear),
-                              child: const Text('Clear All'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: CockpitSpacing.xs),
-                        for (var i = 0; i < _files.length; i++)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
-                            child: _FileCard(
-                              file: _files[i],
-                              onRemove: () => setState(() => _files.removeAt(i)),
-                            ),
-                          ),
-                      ],
-                      const SizedBox(height: CockpitSpacing.xl),
-                      _SectionLabel('AI Will Build For You'),
-                      const SizedBox(height: CockpitSpacing.md),
-                      const _AiWillBuildGrid(),
-                    ],
-                  ),
-                ),
-                _BuildBar(
-                  enabled: canBuild,
-                  onBuild: () => context.go('/study/build/job1'),
-                ),
-              ],
+        child: Column(
+          children: [
+            _TopBar(onBack: () => context.go('/study')),
+            Expanded(child: body),
+            _BuildBar(
+              enabled: canBuild,
+              wide: desktop,
+              onBuild: () => context.go('/study/build/job1'),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -562,10 +621,10 @@ class _AiWillBuildGrid extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _features.length,
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 150,
+        maxCrossAxisExtent: 120,
         mainAxisSpacing: CockpitSpacing.sm,
         crossAxisSpacing: CockpitSpacing.sm,
-        mainAxisExtent: 138,
+        mainAxisExtent: 114,
       ),
       itemBuilder: (context, i) => _FeatureCard(_features[i]),
     );
@@ -629,15 +688,107 @@ class _FeatureCard extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _BuildBar extends StatelessWidget {
-  const _BuildBar({required this.enabled, required this.onBuild});
+  const _BuildBar({
+    required this.enabled,
+    required this.onBuild,
+    this.wide = false,
+  });
   final bool enabled;
   final VoidCallback onBuild;
+  final bool wide;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final violet = _shiftHue(scheme.primary, -28);
+
+    final button = Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onBuild : null,
+          borderRadius: BorderRadius.circular(CockpitRadii.pill),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(CockpitRadii.pill),
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [scheme.secondary, violet],
+              ),
+              boxShadow: enabled
+                  ? [
+                      BoxShadow(
+                        color: scheme.primary.withValues(alpha: 0.35),
+                        blurRadius: 20,
+                        offset: const Offset(0, 10),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: const SizedBox(
+              height: 54,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                  SizedBox(width: CockpitSpacing.sm),
+                  Text(
+                    'Build Study Studio',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final caption = Row(
+      mainAxisAlignment: wide ? MainAxisAlignment.start : MainAxisAlignment.center,
+      children: [
+        Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
+        const SizedBox(width: CockpitSpacing.xs),
+        Text(
+          enabled
+              ? 'Estimated build time: 30–90 seconds'
+              : 'Add at least one file to build',
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
+    );
+
+    final Widget inner;
+    if (wide) {
+      // Desktop: caption on the left, a fixed-width CTA on the right.
+      inner = ContentColumn(
+        maxWidth: 1080,
+        child: Row(
+          children: [
+            Expanded(child: caption),
+            const SizedBox(width: CockpitSpacing.lg),
+            SizedBox(width: 300, child: button),
+          ],
+        ),
+      );
+    } else {
+      inner = Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          button,
+          const SizedBox(height: CockpitSpacing.sm),
+          caption,
+        ],
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.fromLTRB(
@@ -650,73 +801,7 @@ class _BuildBar extends StatelessWidget {
         color: scheme.surface,
         border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Opacity(
-            opacity: enabled ? 1 : 0.5,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: enabled ? onBuild : null,
-                borderRadius: BorderRadius.circular(CockpitRadii.pill),
-                child: Ink(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(CockpitRadii.pill),
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [scheme.secondary, violet],
-                    ),
-                    boxShadow: enabled
-                        ? [
-                            BoxShadow(
-                              color: scheme.primary.withValues(alpha: 0.35),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ]
-                        : null,
-                  ),
-                  child: const SizedBox(
-                    height: 54,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.auto_awesome, color: Colors.white, size: 20),
-                        SizedBox(width: CockpitSpacing.sm),
-                        Text(
-                          'Build Study Studio',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: CockpitSpacing.sm),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
-              const SizedBox(width: CockpitSpacing.xs),
-              Text(
-                enabled
-                    ? 'Estimated build time: 30–90 seconds'
-                    : 'Add at least one file to build',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-        ],
-      ),
+      child: inner,
     );
   }
 }

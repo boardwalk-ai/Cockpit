@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/quiz_question.dart';
 import '../../domain/entities/studio.dart';
+import '../widgets/studio_scaffold.dart';
 
 /// Screen 7 — Quiz Me.
 ///
@@ -78,25 +79,20 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
     final async = ref.watch(studioProvider(widget.studioId));
     return Scaffold(
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: async.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (studio) {
-                final questions = _questions(studio);
-                if (questions.isEmpty) {
-                  return const EmptyState(
-                    icon: Icons.quiz_outlined,
-                    title: 'No quiz questions',
-                    message: 'This selection has no questions yet.',
-                  );
-                }
-                return _build(context, studio, questions);
-              },
-            ),
-          ),
+        child: async.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (studio) {
+            final questions = _questions(studio);
+            if (questions.isEmpty) {
+              return const EmptyState(
+                icon: Icons.quiz_outlined,
+                title: 'No quiz questions',
+                message: 'This selection has no questions yet.',
+              );
+            }
+            return _build(context, studio, questions);
+          },
         ),
       ),
     );
@@ -113,25 +109,31 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
       context.go('/study/${widget.studioId}');
     }
 
+    final desktop = isDesktop(context);
+
     if (_done) {
+      final completion = _Completion(
+        score: _score,
+        total: total,
+        confusedTopics: _confusedTopics(studio, qs),
+        onLightning: () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lightning Recall — Phase 2')),
+        ),
+        onWeakAreas: () => context.go('/study/${widget.studioId}/progress'),
+        onBack: close,
+      );
       return Column(
         children: [
-          _Header(
-            studioTitle: studio.title,
-            topicTitle: topicTitle,
-            onBack: close,
-          ),
+          _Header(studioTitle: studio.title, topicTitle: topicTitle, onBack: close),
           Expanded(
-            child: _Completion(
-              score: _score,
-              total: total,
-              confusedTopics: _confusedTopics(studio, qs),
-              onLightning: () => ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Lightning Recall — Phase 2')),
-              ),
-              onWeakAreas: () => context.go('/study/${widget.studioId}/progress'),
-              onBack: close,
-            ),
+            child: desktop
+                ? Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 640),
+                      child: completion,
+                    ),
+                  )
+                : completion,
           ),
         ],
       );
@@ -141,80 +143,88 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
     final q = qs[_index];
     final progress = (_index + 1) / total;
 
-    return Column(
-      children: [
-        _Header(
-          studioTitle: studio.title,
-          topicTitle: topicTitle,
-          onBack: close,
+    final questionChildren = <Widget>[
+      if (_index == 0) ...[
+        const _QuizReadyBanner(),
+        const SizedBox(height: CockpitSpacing.lg),
+      ],
+      _QuestionCard(
+        q: q,
+        index: _index,
+        selected: _selected[_index],
+        submitted: submitted,
+        onSelect: (v) => setState(() => _selected[_index] = v),
+        onText: (v) => _selected[_index] = v,
+        textController: _text,
+      ),
+      if (!submitted) ...[
+        const SizedBox(height: CockpitSpacing.lg),
+        _ConfidenceRow(
+          value: _confidence[_index],
+          onSelect: (c) => setState(() => _confidence[_index] = c),
         ),
+        const SizedBox(height: CockpitSpacing.lg),
+        _GradientButton(
+          icon: Icons.arrow_forward,
+          label: 'Check Answer',
+          trailingIcon: true,
+          onTap: _hasAnswer(q) ? () => _submit(q) : null,
+        ),
+      ],
+      const SizedBox(height: CockpitSpacing.md),
+      _AiStudyAssistant(
+        open: _assistantOpen.contains(_index),
+        onToggle: () => setState(() {
+          if (!_assistantOpen.remove(_index)) _assistantOpen.add(_index);
+        }),
+        onOpenTeach: () =>
+            context.go('/study/${widget.studioId}/teach/${q.topicId}'),
+      ),
+      if (submitted) ...[
+        const SizedBox(height: CockpitSpacing.md),
+        _Feedback(
+          q: q,
+          correct: _correct[_index] ?? false,
+          topicTitle: _topicTitleFor(studio, q.topicId),
+          onReview: () =>
+              context.go('/study/${widget.studioId}/teach/${q.topicId}'),
+        ),
+        const SizedBox(height: CockpitSpacing.md),
+        _AiInsight(
+          correct: _correct[_index] ?? false,
+          selected: _selected[_index],
+          answer: q.answer,
+          topicTitle: _topicTitleFor(studio, q.topicId),
+          onWeakAreas: () => context.go('/study/${widget.studioId}/progress'),
+        ),
+      ],
+    ];
+
+    final center = Column(
+      children: [
         _ProgressRow(index: _index, total: total, progress: progress),
         Expanded(
           child: ListView(
             key: ValueKey(_index),
-            padding: const EdgeInsets.fromLTRB(
-              CockpitSpacing.lg,
-              CockpitSpacing.md,
-              CockpitSpacing.lg,
-              CockpitSpacing.xl,
-            ),
-            children: [
-              if (_index == 0) ...[
-                const _QuizReadyBanner(),
-                const SizedBox(height: CockpitSpacing.lg),
-              ],
-              _QuestionCard(
-                q: q,
-                index: _index,
-                selected: _selected[_index],
-                submitted: submitted,
-                onSelect: (v) => setState(() => _selected[_index] = v),
-                onText: (v) => _selected[_index] = v,
-                textController: _text,
-              ),
-              if (!submitted) ...[
-                const SizedBox(height: CockpitSpacing.lg),
-                _ConfidenceRow(
-                  value: _confidence[_index],
-                  onSelect: (c) => setState(() => _confidence[_index] = c),
-                ),
-                const SizedBox(height: CockpitSpacing.lg),
-                _GradientButton(
-                  icon: Icons.arrow_forward,
-                  label: 'Check Answer',
-                  trailingIcon: true,
-                  onTap: _hasAnswer(q) ? () => _submit(q) : null,
-                ),
-              ],
-              const SizedBox(height: CockpitSpacing.md),
-              _AiStudyAssistant(
-                open: _assistantOpen.contains(_index),
-                onToggle: () => setState(() {
-                  if (!_assistantOpen.remove(_index)) _assistantOpen.add(_index);
-                }),
-                onOpenTeach: () =>
-                    context.go('/study/${widget.studioId}/teach/${q.topicId}'),
-              ),
-              if (submitted) ...[
-                const SizedBox(height: CockpitSpacing.md),
-                _Feedback(
-                  q: q,
-                  correct: _correct[_index] ?? false,
-                  topicTitle: _topicTitleFor(studio, q.topicId),
-                  onReview: () =>
-                      context.go('/study/${widget.studioId}/teach/${q.topicId}'),
-                ),
-                const SizedBox(height: CockpitSpacing.md),
-                _AiInsight(
-                  correct: _correct[_index] ?? false,
-                  selected: _selected[_index],
-                  answer: q.answer,
-                  topicTitle: _topicTitleFor(studio, q.topicId),
-                  onWeakAreas: () =>
-                      context.go('/study/${widget.studioId}/progress'),
-                ),
-              ],
-            ],
+            padding: desktop
+                ? const EdgeInsets.symmetric(horizontal: 40, vertical: 24)
+                : const EdgeInsets.fromLTRB(
+                    CockpitSpacing.lg,
+                    CockpitSpacing.md,
+                    CockpitSpacing.lg,
+                    CockpitSpacing.xl,
+                  ),
+            children: desktop
+                ? [
+                    ContentColumn(
+                      maxWidth: 720,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: questionChildren,
+                      ),
+                    ),
+                  ]
+                : questionChildren,
           ),
         ),
         _QuizNav(
@@ -231,6 +241,39 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
           },
         ),
       ],
+    );
+
+    final header =
+        _Header(studioTitle: studio.title, topicTitle: topicTitle, onBack: close);
+
+    if (desktop) {
+      return Column(
+        children: [
+          header,
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: center),
+                _QuizRail(
+                  index: _index,
+                  total: total,
+                  correct: _correct,
+                  submitted: _submitted,
+                  onJump: (i) => _goto(i, total),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Column(children: [header, Expanded(child: center)]),
+      ),
     );
   }
 
@@ -359,12 +402,16 @@ class _ProgressRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                'Question ${index + 1} of $total',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+              Expanded(
+                child: Text(
+                  'Question ${index + 1} of $total',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: CockpitSpacing.sm),
               Text(
                 '${(progress * 100).round()}% Complete',
                 style: theme.textTheme.labelMedium?.copyWith(
@@ -1379,22 +1426,28 @@ class _QuizNav extends StatelessWidget {
         color: scheme.surface,
         border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
-      child: Row(
-        children: [
-          _OutlineNavButton(
-            icon: Icons.arrow_back,
-            label: 'Previous Question',
-            onTap: onPrev,
-          ),
-          const Spacer(),
-          _GradientButton(
-            icon: Icons.arrow_forward,
-            label: isLast ? 'See Results' : 'Next Question',
-            onTap: canNext ? onNext : null,
-            expand: false,
-            trailingIcon: true,
-          ),
-        ],
+      child: ContentColumn(
+        maxWidth: 640,
+        child: Row(
+          children: [
+            Expanded(
+              child: _OutlineNavButton(
+                icon: Icons.arrow_back,
+                label: 'Previous Question',
+                onTap: onPrev,
+              ),
+            ),
+            const SizedBox(width: CockpitSpacing.md),
+            Expanded(
+              child: _GradientButton(
+                icon: Icons.arrow_forward,
+                label: isLast ? 'See Results' : 'Next Question',
+                onTap: canNext ? onNext : null,
+                trailingIcon: true,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1432,11 +1485,186 @@ class _OutlineNavButton extends StatelessWidget {
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 16, color: color),
             const SizedBox(width: CockpitSpacing.xs),
-            Text(label, style: theme.textTheme.labelMedium?.copyWith(color: color)),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(color: color),
+              ),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Desktop question navigator rail
+// ---------------------------------------------------------------------------
+
+class _QuizRail extends StatelessWidget {
+  const _QuizRail({
+    required this.index,
+    required this.total,
+    required this.correct,
+    required this.submitted,
+    required this.onJump,
+  });
+  final int index;
+  final int total;
+  final Map<int, bool> correct;
+  final Set<int> submitted;
+  final ValueChanged<int> onJump;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final answered = submitted.length;
+    final correctCount = correct.values.where((c) => c).length;
+
+    return Container(
+      width: 320,
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(left: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(CockpitSpacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your Progress',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: CockpitSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: _RailStat(
+                    label: 'Answered',
+                    value: '$answered/$total',
+                    color: scheme.primary,
+                  ),
+                ),
+                const SizedBox(width: CockpitSpacing.sm),
+                Expanded(
+                  child: _RailStat(
+                    label: 'Correct',
+                    value: '$correctCount',
+                    color: scheme.tertiary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: CockpitSpacing.lg),
+            Text(
+              'Questions',
+              style: theme.textTheme.labelLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: CockpitSpacing.sm),
+            Wrap(
+              spacing: CockpitSpacing.sm,
+              runSpacing: CockpitSpacing.sm,
+              children: [
+                for (var i = 0; i < total; i++)
+                  _QNum(
+                    number: i + 1,
+                    current: i == index,
+                    submitted: submitted.contains(i),
+                    correct: correct[i] ?? false,
+                    onTap: () => onJump(i),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RailStat extends StatelessWidget {
+  const _RailStat({required this.label, required this.value, required this.color});
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(CockpitSpacing.md),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(CockpitRadii.md),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value,
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w800, color: color)),
+          Text(label,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+}
+
+class _QNum extends StatelessWidget {
+  const _QNum({
+    required this.number,
+    required this.current,
+    required this.submitted,
+    required this.correct,
+    required this.onTap,
+  });
+  final int number;
+  final bool current;
+  final bool submitted;
+  final bool correct;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Color bg = scheme.surfaceContainerHighest;
+    Color fg = scheme.onSurfaceVariant;
+    if (submitted) {
+      bg = (correct ? scheme.tertiary : scheme.error).withValues(alpha: 0.15);
+      fg = correct ? scheme.tertiary : scheme.error;
+    }
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(CockpitRadii.sm),
+      child: Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(CockpitRadii.sm),
+          border: current ? Border.all(color: scheme.primary, width: 2) : null,
+        ),
+        child: Text(
+          '$number',
+          style: TextStyle(
+            color: current ? scheme.primary : fg,
+            fontWeight: FontWeight.w700,
+          ),
         ),
       ),
     );
@@ -1476,13 +1704,11 @@ class _GradientButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
-    this.expand = true,
     this.trailingIcon = false,
   });
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
-  final bool expand;
   final bool trailingIcon;
 
   @override
@@ -1502,14 +1728,12 @@ class _GradientButton extends StatelessWidget {
               borderRadius: BorderRadius.circular(CockpitRadii.pill),
               gradient: LinearGradient(colors: [scheme.secondary, violet]),
             ),
-            child: Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: expand ? 0 : CockpitSpacing.lg,
-              ),
-              child: SizedBox(
-                height: 50,
+            child: SizedBox(
+              height: 50,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg),
                 child: Row(
-                  mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+                  mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     if (!trailingIcon) Icon(icon, color: Colors.white, size: 20),

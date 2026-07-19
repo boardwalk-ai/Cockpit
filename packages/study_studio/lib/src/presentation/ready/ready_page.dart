@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../building/build_preview.dart';
+import '../widgets/studio_scaffold.dart';
 
 /// Screen 4 — Your Study Studio Is Ready.
 ///
@@ -18,11 +19,12 @@ class ReadyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final desktop = isDesktop(context);
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
+            constraints: BoxConstraints(maxWidth: desktop ? 1040 : 480),
             child: Column(
               children: [
                 Align(
@@ -40,24 +42,66 @@ class ReadyPage extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Desktop splits the reveal into two columns — the finished
+                // ecosystem on the left, the numbers and AI summary on the
+                // right — so the whole payoff fits the viewport. Each side
+                // scrolls on its own only if the window is short.
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(
-                      CockpitSpacing.lg,
-                      0,
-                      CockpitSpacing.lg,
-                      CockpitSpacing.lg,
-                    ),
-                    children: const [
-                      _SuccessHeader(),
-                      SizedBox(height: CockpitSpacing.lg),
-                      _EcosystemHero(),
-                      SizedBox(height: CockpitSpacing.xl),
-                      _StatGrid(),
-                      SizedBox(height: CockpitSpacing.xl),
-                      _AiSummaryCard(),
-                    ],
-                  ),
+                  child: desktop
+                      ? Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            CockpitSpacing.lg,
+                            0,
+                            CockpitSpacing.lg,
+                            CockpitSpacing.sm,
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    children: const [
+                                      _SuccessHeader(),
+                                      SizedBox(height: CockpitSpacing.xl),
+                                      _EcosystemHero(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: CockpitSpacing.xxl),
+                              Expanded(
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: const [
+                                      _StatGrid(),
+                                      SizedBox(height: CockpitSpacing.sm),
+                                      _AiSummaryCard(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.fromLTRB(
+                            CockpitSpacing.lg,
+                            0,
+                            CockpitSpacing.lg,
+                            CockpitSpacing.lg,
+                          ),
+                          children: const [
+                            _SuccessHeader(),
+                            SizedBox(height: CockpitSpacing.lg),
+                            _EcosystemHero(),
+                            SizedBox(height: CockpitSpacing.xl),
+                            _StatGrid(),
+                            SizedBox(height: CockpitSpacing.xl),
+                            _AiSummaryCard(),
+                          ],
+                        ),
                 ),
                 _EnterBar(studioId: studioId),
               ],
@@ -346,7 +390,7 @@ class _StatGrid extends StatelessWidget {
         maxCrossAxisExtent: 150,
         mainAxisSpacing: CockpitSpacing.sm,
         crossAxisSpacing: CockpitSpacing.sm,
-        mainAxisExtent: 120,
+        mainAxisExtent: 110,
       ),
       itemBuilder: (context, i) {
         final s = _stats[i];

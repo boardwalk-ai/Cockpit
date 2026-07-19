@@ -7,7 +7,7 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
-import '../widgets/studio_bottom_nav.dart';
+import '../widgets/studio_scaffold.dart';
 
 /// Screen 5 — Inside Your Study Studio.
 ///
@@ -25,21 +25,129 @@ class DashboardPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(studioProvider(studioId));
 
-    return Scaffold(
-      body: SafeArea(
+    return StudioShell(
+      selectedIndex: 1,
+      child: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: async.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (studio) => _DashboardBody(studio: studio),
-            ),
-          ),
+        child: async.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (studio) => isDesktop(context)
+              ? _DashboardDesktop(studio: studio)
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 480),
+                    child: _DashboardBody(studio: studio),
+                  ),
+                ),
         ),
       ),
-      bottomNavigationBar: const StudioBottomNav(),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Desktop / web layout
+// ---------------------------------------------------------------------------
+
+class _DashboardDesktop extends StatelessWidget {
+  const _DashboardDesktop({required this.studio});
+  final Studio studio;
+
+  @override
+  Widget build(BuildContext context) {
+    final topics = studio.topics;
+    final weakest = topics.isEmpty
+        ? null
+        : topics.reduce((a, b) => a.mastery <= b.mastery ? a : b);
+    final strongest = topics.isEmpty
+        ? null
+        : topics.reduce((a, b) => a.mastery >= b.mastery ? a : b);
+    final connected = topics.isEmpty
+        ? null
+        : topics.reduce((a, b) =>
+            a.relatedTopicIds.length >= b.relatedTopicIds.length ? a : b);
+    final base = '/study/${studio.id}';
+
+    // Viewport-fit: the header and AI companion stay pinned at the top; the
+    // learning modes (laid out in a fixed 3-column grid) and the resume/snapshot
+    // cards fill the rest and only scroll internally on unusually short windows.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(40, 12, 40, 16),
+      child: ContentColumn(
+        maxWidth: 1180,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _Header(studio: studio),
+            const SizedBox(height: CockpitSpacing.sm),
+            _CompanionCard(studio: studio, recommended: weakest, compact: true),
+            const SizedBox(height: CockpitSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Choose How You Want to Learn',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => context.go('$base/topics'),
+                  iconAlignment: IconAlignment.end,
+                  icon: const Icon(Icons.chevron_right, size: 18),
+                  label: const Text('Explore All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: CockpitSpacing.md),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(bottom: CockpitSpacing.xs),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _LearningModeGrid(
+                      studio: studio,
+                      recommended: weakest,
+                      crossAxisCount: 3,
+                    ),
+                    const SizedBox(height: CockpitSpacing.sm),
+                    if (weakest != null &&
+                        strongest != null &&
+                        connected != null)
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              child: _ContinueCard(
+                                topic: weakest,
+                                lastStudied: studio.lastStudied,
+                                onTap: () =>
+                                    context.go('$base/teach/${weakest.id}'),
+                              ),
+                            ),
+                            const SizedBox(width: CockpitSpacing.lg),
+                            Expanded(
+                              child: _KnowledgeSnapshot(
+                                connected: connected,
+                                weakest: weakest,
+                                strongest: strongest,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -212,9 +320,17 @@ class _StudioMenu extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _CompanionCard extends StatelessWidget {
-  const _CompanionCard({required this.studio, required this.recommended});
+  const _CompanionCard({
+    required this.studio,
+    required this.recommended,
+    this.compact = false,
+  });
   final Studio studio;
   final Topic? recommended;
+
+  /// Desktop packs the companion into a single dense band so the whole studio
+  /// fits the viewport without scrolling.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -225,6 +341,109 @@ class _CompanionCard extends StatelessWidget {
     final retention =
         rec == null ? 70 : (40 + (1 - rec.mastery) * 50).clamp(0, 95).round();
     final session = rec?.estimatedStudyTimeMinutes ?? 15;
+
+    if (compact) {
+      return Container(
+        padding: const EdgeInsets.all(CockpitSpacing.md),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(CockpitRadii.xl),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              scheme.primary.withValues(alpha: 0.10),
+              scheme.secondary.withValues(alpha: 0.06),
+            ],
+          ),
+          border: Border.all(color: scheme.primary.withValues(alpha: 0.12)),
+        ),
+        child: Row(
+          children: [
+            const _RobotAvatar(),
+            const SizedBox(width: CockpitSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.auto_awesome, size: 15, color: scheme.primary),
+                      const SizedBox(width: CockpitSpacing.xs),
+                      Text(
+                        'Welcome back 👋',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: scheme.primary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Your Study Studio is ready.',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w800),
+                  ),
+                  if (rec != null) ...[
+                    const SizedBox(height: 2),
+                    Text.rich(
+                      TextSpan(
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                        children: [
+                          const TextSpan(text: "You're "),
+                          TextSpan(
+                            text: '$retention%',
+                            style: TextStyle(
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const TextSpan(text: ' likely to improve by reviewing '),
+                          TextSpan(
+                            text: rec.title,
+                            style: TextStyle(
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          TextSpan(text: '  •  ~$session min'),
+                        ],
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: CockpitSpacing.lg),
+            SizedBox(
+              width: 196,
+              child: _GradientButton(
+                icon: Icons.play_circle_outline,
+                label: 'Continue Learning',
+                onTap: () => context.go(
+                  rec != null ? '$base/teach/${rec.id}' : '$base/topics',
+                ),
+              ),
+            ),
+            const SizedBox(width: CockpitSpacing.sm),
+            _OutlineButton(
+              icon: Icons.chat_bubble_outline,
+              label: 'Ask AI',
+              onTap: () => context.go(
+                rec != null ? '$base/teach/${rec.id}' : '$base/topics',
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     return Container(
       padding: const EdgeInsets.all(CockpitSpacing.lg),
@@ -382,9 +601,17 @@ class _RobotAvatar extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _LearningModeGrid extends StatelessWidget {
-  const _LearningModeGrid({required this.studio, required this.recommended});
+  const _LearningModeGrid({
+    required this.studio,
+    required this.recommended,
+    this.crossAxisCount,
+  });
   final Studio studio;
   final Topic? recommended;
+
+  /// When set (desktop), lays the modes out in exactly this many columns so the
+  /// whole grid keeps to a fixed number of rows and stays inside the viewport.
+  final int? crossAxisCount;
 
   @override
   Widget build(BuildContext context) {
@@ -451,12 +678,19 @@ class _LearningModeGrid extends StatelessWidget {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: modes.length,
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 230,
-        mainAxisSpacing: CockpitSpacing.md,
-        crossAxisSpacing: CockpitSpacing.md,
-        mainAxisExtent: 188,
-      ),
+      gridDelegate: crossAxisCount != null
+          ? SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount!,
+              mainAxisSpacing: CockpitSpacing.sm,
+              crossAxisSpacing: CockpitSpacing.md,
+              mainAxisExtent: 142,
+            )
+          : const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 230,
+              mainAxisSpacing: CockpitSpacing.md,
+              crossAxisSpacing: CockpitSpacing.md,
+              mainAxisExtent: 188,
+            ),
       itemBuilder: (context, i) => _ModeCard(mode: modes[i]),
     );
   }
