@@ -62,7 +62,7 @@ class _StudyAnalyticsPageState extends State<StudyAnalyticsPage> {
                   _OverallMasteryCard(data: data),
                   const SizedBox(height: CockpitSpacing.sm),
                   SizedBox(
-                    height: 150,
+                    height: 330,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -74,7 +74,7 @@ class _StudyAnalyticsPageState extends State<StudyAnalyticsPage> {
                   ),
                   const SizedBox(height: CockpitSpacing.sm),
                   SizedBox(
-                    height: 150,
+                    height: 330,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -88,7 +88,7 @@ class _StudyAnalyticsPageState extends State<StudyAnalyticsPage> {
                   _AchievementsCard(data: data),
                   const SizedBox(height: CockpitSpacing.sm),
                   SizedBox(
-                    height: 112,
+                    height: 190,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -100,7 +100,7 @@ class _StudyAnalyticsPageState extends State<StudyAnalyticsPage> {
                   ),
                   const SizedBox(height: CockpitSpacing.sm),
                   SizedBox(
-                    height: 34,
+                    height: 58,
                     child: Row(
                       children: [
                         Expanded(
@@ -162,7 +162,7 @@ class _AnalyticsHeader extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return SizedBox(
-      height: 43,
+      height: 73,
       child: Row(
         children: [
           _RoundIconButton(icon: Icons.chevron_left, onTap: onBack),
@@ -185,13 +185,13 @@ class _AnalyticsHeader extends StatelessWidget {
                 const SizedBox(height: CockpitSpacing.xs),
                 Row(
                   children: [
-                    Icon(Icons.auto_awesome, size: 10, color: scheme.primary),
+                    Icon(Icons.auto_awesome, size: 13, color: scheme.primary),
                     const SizedBox(width: CockpitSpacing.xs),
                     Text(
                       'Study Analytics',
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: scheme.primary,
-                        fontSize: 9,
+                        fontSize: 11,
                         fontWeight: FontWeight.w700,
                         height: 1,
                       ),
@@ -230,7 +230,7 @@ class _PeriodSelector extends StatelessWidget {
     return Center(
       child: Container(
         width: 150,
-        height: 25,
+        height: 43,
         padding: const EdgeInsets.all(CockpitSpacing.xxs),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerLow,
@@ -267,7 +267,7 @@ class _PeriodSelector extends StatelessWidget {
                         color: value == period
                             ? scheme.primary
                             : scheme.onSurfaceVariant,
-                        fontSize: 7,
+                        fontSize: 11,
                         fontWeight: value == period
                             ? FontWeight.w700
                             : FontWeight.w500,
@@ -293,7 +293,7 @@ class _OverallMasteryCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return _AnalyticsSurface(
-      height: 121,
+      height: 206,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -323,7 +323,7 @@ class _OverallMasteryCard extends StatelessWidget {
                   children: [
                     Icon(
                       Icons.trending_up,
-                      size: 10,
+                      size: 13,
                       color: CockpitColors.brand.success,
                     ),
                     const SizedBox(width: CockpitSpacing.xs),
@@ -334,7 +334,7 @@ class _OverallMasteryCard extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: CockpitColors.brand.success,
-                          fontSize: 6.2,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -345,12 +345,12 @@ class _OverallMasteryCard extends StatelessWidget {
                   'vs last month (${data.previousMastery}%)',
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: scheme.onSurfaceVariant,
-                    fontSize: 6.5,
+                    fontSize: 11,
                   ),
                 ),
                 const Spacer(),
                 Container(
-                  height: 28,
+                  height: 48,
                   padding: const EdgeInsets.symmetric(
                     horizontal: CockpitSpacing.xs,
                   ),
@@ -375,7 +375,7 @@ class _OverallMasteryCard extends StatelessWidget {
                         child: Text(
                           "You're progressing faster\nthan your previous pace!",
                           style: theme.textTheme.labelSmall?.copyWith(
-                            fontSize: 5.7,
+                            fontSize: 11,
                             height: 1.2,
                           ),
                         ),
@@ -530,7 +530,7 @@ class _PerformanceTrendsCard extends StatelessWidget {
                   children: [
                     const _TinyText('Mastery'),
                     const SizedBox(width: CockpitSpacing.sm),
-                    Icon(Icons.expand_more, size: 10, color: scheme.primary),
+                    Icon(Icons.expand_more, size: 13, color: scheme.primary),
                   ],
                 ),
               ),
@@ -596,7 +596,7 @@ class _RetentionCard extends StatelessWidget {
             ),
           ),
           Container(
-            height: 31,
+            height: 53,
             padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.sm),
             color: scheme.surfaceContainerLowest,
             child: Row(
@@ -623,7 +623,7 @@ class _RetentionCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.event_note_outlined, size: 8, color: scheme.primary),
+              Icon(Icons.event_note_outlined, size: 13, color: scheme.primary),
               const SizedBox(width: CockpitSpacing.xs),
               Expanded(
                 child: Text(
@@ -633,7 +633,7 @@ class _RetentionCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: scheme.primary,
-                    fontSize: 5.2,
+                    fontSize: 11,
                   ),
                 ),
               ),
@@ -680,7 +680,7 @@ class _TimeSpentCard extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 67,
-                  height: 67,
+                  height: 114,
                   child: CustomPaint(
                     painter: _DonutPainter(colors: colors),
                     child: Center(
@@ -690,7 +690,7 @@ class _TimeSpentCard extends StatelessWidget {
                           Text(
                             '28h 45m',
                             style: TextStyle(
-                              fontSize: 10,
+                              fontSize: 11,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -717,7 +717,7 @@ class _TimeSpentCard extends StatelessWidget {
                                   CockpitRadii.sm,
                                 ),
                               ),
-                              child: Icon(icons[i], size: 7, color: colors[i]),
+                              child: Icon(icons[i], size: 13, color: colors[i]),
                             ),
                             const SizedBox(width: CockpitSpacing.xxs),
                             Expanded(
@@ -727,7 +727,7 @@ class _TimeSpentCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.labelSmall
                                     ?.copyWith(
-                                      fontSize: 4.8,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w600,
                                     ),
                               ),
@@ -780,7 +780,7 @@ class _AchievementsCard extends StatelessWidget {
       Icons.emoji_events,
     ];
     return _AnalyticsSurface(
-      height: 85,
+      height: 145,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -806,7 +806,7 @@ class _AchievementsCard extends StatelessWidget {
                             data.achievements[i].value,
                             style: Theme.of(context).textTheme.titleSmall
                                 ?.copyWith(
-                                  fontSize: 10,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                   height: 1.1,
                                 ),
@@ -819,7 +819,7 @@ class _AchievementsCard extends StatelessWidget {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: Theme.of(context).textTheme.labelSmall
-                                    ?.copyWith(fontSize: 5, height: 1),
+                                    ?.copyWith(fontSize: 11, height: 1),
                               ),
                             ),
                           ),
@@ -830,7 +830,7 @@ class _AchievementsCard extends StatelessWidget {
                             style: Theme.of(context).textTheme.labelSmall
                                 ?.copyWith(
                                   color: scheme.onSurfaceVariant,
-                                  fontSize: 4.2,
+                                  fontSize: 11,
                                 ),
                           ),
                         ],
@@ -895,7 +895,7 @@ class _AiInsightsCard extends StatelessWidget {
                       child: Text(
                         item.$3,
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          fontSize: 5.8,
+                          fontSize: 11,
                           height: 1.15,
                         ),
                       ),
@@ -909,7 +909,7 @@ class _AiInsightsCard extends StatelessWidget {
             textAlign: TextAlign.center,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: scheme.primary,
-              fontSize: 6,
+              fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -939,7 +939,7 @@ class _ReadinessCard extends StatelessWidget {
               children: [
                 SizedBox(
                   width: 78,
-                  height: 78,
+                  height: 133,
                   child: CustomPaint(
                     painter: _RingPainter(
                       value: 0.96,
@@ -989,7 +989,7 @@ class _ReadinessCard extends StatelessWidget {
                               'High',
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: CockpitColors.brand.success,
-                                fontSize: 6,
+                                fontSize: 11,
                               ),
                             ),
                           ),
@@ -1017,7 +1017,7 @@ class _ReadinessCard extends StatelessWidget {
             children: [
               Icon(
                 Icons.auto_awesome,
-                size: 9,
+                size: 13,
                 color: CockpitColors.brand.success,
               ),
               const SizedBox(width: CockpitSpacing.xs),
@@ -1029,7 +1029,7 @@ class _ReadinessCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: CockpitColors.brand.success,
-                    fontSize: 4.8,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1111,7 +1111,7 @@ class _CardTitle extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              fontSize: 8,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
               height: 1,
             ),
@@ -1119,7 +1119,7 @@ class _CardTitle extends StatelessWidget {
         ),
         if (info) ...[
           const SizedBox(width: CockpitSpacing.xs),
-          Icon(Icons.info_outline, size: 7, color: scheme.outline),
+          Icon(Icons.info_outline, size: 13, color: scheme.outline),
         ],
       ],
     );
@@ -1139,7 +1139,7 @@ class _TinyText extends StatelessWidget {
       overflow: TextOverflow.ellipsis,
       style: Theme.of(context).textTheme.labelSmall?.copyWith(
         color: Theme.of(context).colorScheme.onSurfaceVariant,
-        fontSize: 5.5,
+        fontSize: 11,
         height: 1.1,
       ),
     );
@@ -1158,16 +1158,20 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 4,
-          height: 4,
+          width: 6,
+          height: 6,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: CockpitSpacing.xs),
-        Text(
-          label,
-          style: Theme.of(
-            context,
-          ).textTheme.labelSmall?.copyWith(fontSize: 5.2),
+        Flexible(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(
+              context,
+            ).textTheme.labelSmall?.copyWith(fontSize: 10),
+          ),
         ),
       ],
     );
@@ -1224,7 +1228,7 @@ class _RoundIconButton extends StatelessWidget {
         onTap: onTap,
         child: SizedBox(
           width: 35,
-          height: 35,
+          height: 60,
           child: Icon(icon, size: 17, color: scheme.onSurface),
         ),
       ),
@@ -1271,7 +1275,7 @@ class _FooterButton extends StatelessWidget {
             children: [
               Icon(
                 icon,
-                size: 10,
+                size: 13,
                 color: filled ? scheme.onPrimary : scheme.primary,
               ),
               const SizedBox(width: CockpitSpacing.xs),
@@ -1282,7 +1286,7 @@ class _FooterButton extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: filled ? scheme.onPrimary : scheme.primary,
-                    fontSize: 6.5,
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1564,7 +1568,7 @@ void _paintBadge(
         color: color.computeLuminance() > 0.55
             ? color.withValues(alpha: 0.95)
             : ColorScheme.fromSeed(seedColor: color).onPrimary,
-        fontSize: 6,
+        fontSize: 11,
         fontWeight: FontWeight.w700,
       ),
     ),
