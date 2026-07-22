@@ -12,6 +12,13 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
   }
 
+  Future<void> setDesktopViewport(WidgetTester tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(1281, 720);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+  }
+
   Widget app(Widget home) {
     return MaterialApp(
       theme: CockpitTheme.build(
@@ -47,6 +54,17 @@ void main() {
     expect(find.text('Study Analytics'), findsOneWidget);
     expect(find.text('Overall Mastery'), findsOneWidget);
     expect(find.text('Predictive Exam Readiness'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Screen 16 lays out as two columns on desktop without overflow', (
+    tester,
+  ) async {
+    await setDesktopViewport(tester);
+    await tester.pumpWidget(app(const StudyAnalyticsPage(studioId: 'bio')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Study Analytics'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

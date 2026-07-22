@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/mock/mock_data.dart';
+import '../widgets/studio_scaffold.dart';
 
 /// Screen 16 — Study Analytics.
 ///
@@ -33,111 +34,163 @@ class _StudyAnalyticsPageState extends State<StudyAnalyticsPage> {
   @override
   Widget build(BuildContext context) {
     final data = studyAnalyticsMockData;
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: SingleChildScrollView(
+
+    // Build each card block once, then arrange for phone (single column) or
+    // desktop (two columns). Card widths stay close to the phone layout so the
+    // fixed-height, chart-bearing cards keep their tested proportions.
+    final header = _AnalyticsHeader(
+      title: data.studioTitle,
+      onBack: () => context.go('/study/${widget.studioId}'),
+      onCalendar: () => _soon('Calendar'),
+      onMore: () => _soon('More options'),
+    );
+    final selector = _PeriodSelector(
+      value: _period,
+      onChanged: (value) => setState(() => _period = value),
+    );
+    final mastery = _OverallMasteryCard(data: data);
+    final activityTrends = SizedBox(
+      height: 330,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _StudyActivityCard(data: data)),
+          const SizedBox(width: CockpitSpacing.sm),
+          Expanded(child: _PerformanceTrendsCard(data: data)),
+        ],
+      ),
+    );
+    final retentionTime = SizedBox(
+      height: 330,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _RetentionCard(data: data)),
+          const SizedBox(width: CockpitSpacing.sm),
+          Expanded(child: _TimeSpentCard(data: data)),
+        ],
+      ),
+    );
+    final achievements = _AchievementsCard(data: data);
+    final insightsReadiness = SizedBox(
+      height: 190,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Expanded(child: _AiInsightsCard()),
+          const SizedBox(width: CockpitSpacing.sm),
+          Expanded(child: _ReadinessCard(mastery: data.mastery)),
+        ],
+      ),
+    );
+    final footer = SizedBox(
+      height: 58,
+      child: Row(
+        children: [
+          Expanded(
+            flex: 10,
+            child: _FooterButton(
+              icon: Icons.menu_book_outlined,
+              label: 'Continue Learning',
+              onTap: () => context.go('/study/${widget.studioId}'),
+            ),
+          ),
+          const SizedBox(width: CockpitSpacing.sm),
+          Expanded(
+            flex: 13,
+            child: _FooterButton(
+              icon: Icons.auto_awesome,
+              label: 'View AI Study Plan',
+              filled: true,
+              onTap: () => _soon('AI Study Plan'),
+            ),
+          ),
+          const SizedBox(width: CockpitSpacing.sm),
+          Expanded(
+            flex: 10,
+            child: _FooterButton(
+              icon: Icons.share_outlined,
+              label: 'Share Progress',
+              onTap: () => _soon('Share Progress'),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    const gap = SizedBox(height: CockpitSpacing.sm);
+
+    return StudioShell(
+      selectedIndex: 1,
+      child: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final desktop = isDesktop(context);
+
+            final body = desktop
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      header,
+                      gap,
+                      selector,
+                      gap,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                mastery,
+                                gap,
+                                activityTrends,
+                                gap,
+                                achievements,
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: CockpitSpacing.md),
+                          Expanded(
+                            child: Column(
+                              children: [retentionTime, gap, insightsReadiness],
+                            ),
+                          ),
+                        ],
+                      ),
+                      gap,
+                      footer,
+                    ],
+                  )
+                : Column(
+                    children: [
+                      header,
+                      gap,
+                      selector,
+                      gap,
+                      mastery,
+                      gap,
+                      activityTrends,
+                      gap,
+                      retentionTime,
+                      gap,
+                      achievements,
+                      gap,
+                      insightsReadiness,
+                      gap,
+                      footer,
+                    ],
+                  );
+
+            return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(
                 CockpitSpacing.md,
                 CockpitSpacing.sm,
                 CockpitSpacing.md,
                 CockpitSpacing.sm,
               ),
-              child: Column(
-                children: [
-                  _AnalyticsHeader(
-                    title: data.studioTitle,
-                    onBack: () => context.go('/study/${widget.studioId}'),
-                    onCalendar: () => _soon('Calendar'),
-                    onMore: () => _soon('More options'),
-                  ),
-                  const SizedBox(height: CockpitSpacing.sm),
-                  _PeriodSelector(
-                    value: _period,
-                    onChanged: (value) => setState(() => _period = value),
-                  ),
-                  const SizedBox(height: CockpitSpacing.sm),
-                  _OverallMasteryCard(data: data),
-                  const SizedBox(height: CockpitSpacing.sm),
-                  SizedBox(
-                    height: 330,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: _StudyActivityCard(data: data)),
-                        const SizedBox(width: CockpitSpacing.sm),
-                        Expanded(child: _PerformanceTrendsCard(data: data)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: CockpitSpacing.sm),
-                  SizedBox(
-                    height: 330,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(child: _RetentionCard(data: data)),
-                        const SizedBox(width: CockpitSpacing.sm),
-                        Expanded(child: _TimeSpentCard(data: data)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: CockpitSpacing.sm),
-                  _AchievementsCard(data: data),
-                  const SizedBox(height: CockpitSpacing.sm),
-                  SizedBox(
-                    height: 190,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Expanded(child: _AiInsightsCard()),
-                        const SizedBox(width: CockpitSpacing.sm),
-                        Expanded(child: _ReadinessCard(mastery: data.mastery)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: CockpitSpacing.sm),
-                  SizedBox(
-                    height: 58,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 10,
-                          child: _FooterButton(
-                            icon: Icons.menu_book_outlined,
-                            label: 'Continue Learning',
-                            onTap: () =>
-                                context.go('/study/${widget.studioId}'),
-                          ),
-                        ),
-                        const SizedBox(width: CockpitSpacing.sm),
-                        Expanded(
-                          flex: 13,
-                          child: _FooterButton(
-                            icon: Icons.auto_awesome,
-                            label: 'View AI Study Plan',
-                            filled: true,
-                            onTap: () => _soon('AI Study Plan'),
-                          ),
-                        ),
-                        const SizedBox(width: CockpitSpacing.sm),
-                        Expanded(
-                          flex: 10,
-                          child: _FooterButton(
-                            icon: Icons.share_outlined,
-                            label: 'Share Progress',
-                            onTap: () => _soon('Share Progress'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+              child: ContentColumn(maxWidth: desktop ? 1160 : 480, child: body),
+            );
+          },
         ),
       ),
     );
