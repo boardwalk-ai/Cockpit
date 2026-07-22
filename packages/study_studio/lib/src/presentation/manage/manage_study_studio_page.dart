@@ -258,11 +258,15 @@ class _Header extends StatelessWidget {
                 children: [
                   Icon(Icons.auto_awesome, size: 15, color: scheme.primary),
                   const SizedBox(width: 5),
-                  Text(
-                    'Manage Study Studio',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
+                  Flexible(
+                    child: Text(
+                      'Manage Study Studio',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -531,10 +535,14 @@ class _NumberedSection extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                '$number. $title',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w800,
+              Flexible(
+                child: Text(
+                  '$number. $title',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
               if (badge != null) ...[
@@ -1220,7 +1228,7 @@ class _ExportShare extends StatelessWidget {
         crossAxisCount: 2,
         mainAxisSpacing: CockpitSpacing.sm,
         crossAxisSpacing: CockpitSpacing.sm,
-        mainAxisExtent: 118,
+        mainAxisExtent: 134,
       ),
       itemBuilder: (context, index) {
         final item = items[index];
@@ -1246,11 +1254,18 @@ class _ExportShare extends StatelessWidget {
                   const Spacer(),
                   Text(
                     item.$3,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  Text(item.$4, style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    item.$4,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ],
               ),
             ),

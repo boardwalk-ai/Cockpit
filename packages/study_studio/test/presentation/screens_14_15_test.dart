@@ -16,6 +16,13 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
   }
 
+  Future<void> setPhoneViewport(WidgetTester tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(375, 800);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+  }
+
   Widget app(Widget home) {
     return ProviderScope(
       child: MaterialApp(
@@ -56,4 +63,25 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('Screen 14 (Ask AI) renders on a phone without overflow', (
+    tester,
+  ) async {
+    await setPhoneViewport(tester);
+    await tester.pumpWidget(app(const AskAiPage(studioId: 'bio')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ask AI'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('Screen 15 (Manage) renders on a phone without overflow', (
+    tester,
+  ) async {
+    await setPhoneViewport(tester);
+    await tester.pumpWidget(app(const ManageStudyStudioPage(studioId: 'bio')));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+  });
 }
