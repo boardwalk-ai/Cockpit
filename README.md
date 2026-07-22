@@ -1,150 +1,192 @@
 # Boardwalks LLC — Internship Program
 
-Welcome to the team 👋
+Welcome to the team 👋 — **Phase 2: Desktop (PC) Design.**
 
-## What you'll be doing
+## Where we are now
 
-You will be designing and building our new selling tool — **Study Studio**.
+Study Studio's mobile screens are built and merged. **The Lead is now starting
+the backend**, so the UI needs to be *desktop-ready* in parallel — when the API
+lands, the app should already look right on a PC, not just on a phone.
 
-Study Studio is a module inside the **Octopilot Cockpit** super‑app. A user
-uploads their study materials (PDFs, slides, notes, audio…) and the app turns
-them into a structured, interactive AI learning environment — Teach Me, Quiz Me,
-Flashcards, Lightning Recall, Scenario Mode, Visualize, Progress, and more.
+**Your mission for this phase:**
 
-The whole app is built with **Flutter** (one codebase for Web + Android + iOS).
+> **Design the desktop (PC) view of the app.** Take the app screen by screen,
+> look at it the way a user on a laptop would, and lay it out so it's
+> comfortable and looks intentional on a wide screen — not a phone column
+> floating in the middle of a 1440px monitor.
 
-Your job is simple:
+> **Not everything on every screen needs to be redesigned.** Just see the whole
+> app from the user's perspective and design the PC version for the user's
+> convenience.
 
-> **Take your assigned pages and rebuild them so they match the design image
-> exactly — pixel‑precise — using mock data.** Then open a Pull Request.
+Some screens already have a good desktop layout (see **References** below) — use
+those as the bar. Others are still phone-only and need your attention. Part of
+the job is *judging* which is which.
 
-## Ground rules (read this twice)
+## The app map — every page you can browse
 
-1. **Finish your assigned task.** You own your pages end to end — layout,
-   spacing, colours, states, and navigation.
-2. **Match the design image exactly.** The design image the Lead places in
-   `docs/designs/` is the single source of truth. If something is unclear, ask
-   the Lead — do not guess and ship something different.
-3. **Use mock data only.** There is no backend yet. Pull from the existing mock
-   data (`packages/study_studio/lib/src/data/mock/mock_data.dart`) or add your
-   own mock objects. Never wire real network calls.
-4. **Work on a branch. Open a PR.** One branch per task, e.g.
-   `intern/<your-name>/screen-08-ai-mastery-report`. When done, open a Pull
-   Request **into the `dev` branch** (not `main`).
-5. **Never touch `main` without the Lead's explicit instruction.** No direct
-   commits, no merges, no force‑push. Ever. `main` is protected.
-6. **Keep it clean.** `flutter analyze` must report **No issues found** before
-   you open your PR.
+Run the app (below) and open these routes. Web uses hash routing (`/#/…`).
+`:studioId` is `bio` (Biology Midterm Studio) or `mbr` (MBR Training Studio).
+
+### App shell
+| Route | Page |
+| ----- | ---- |
+| `/` | Cockpit Home |
+| `/settings` | Settings |
+
+### Study Studio — top level
+| Route | Page |
+| ----- | ---- |
+| `/study` | Study Home |
+| `/study/upload` | Create Study Studio / Upload |
+| `/study/build/:jobId` | Building / Processing |
+| `/study/welcome` | Welcome Back |
+
+### Study Studio — inside a studio (`/study/:studioId/…`)
+| Route | Page |
+| ----- | ---- |
+| `/study/:studioId` | Dashboard — Inside the Studio |
+| `…/ready` | Ready |
+| `…/topics` | Topic Library |
+| `…/topics/:topicId` | Topic Detail |
+| `…/teach/:topicId` | Teach Me |
+| `…/quiz` | Quiz Me |
+| `…/flashcards` | Flashcards |
+| `…/progress` | Progress |
+| `…/study-plan` | Study Plan |
+| `…/knowledge-graph` | Knowledge Graph |
+| `…/analytics` | Study Analytics |
+| `…/ask-ai` | Ask AI |
+| `…/manage` | Manage Study Studio |
+
+Example: `http://localhost:PORT/#/study/bio/analytics`.
+`:topicId` for `bio`: `bio_dna`, `bio_meiosis`, `bio_photo`.
+
+## You are not starting from zero — the foundation is laid
+
+A responsive foundation already exists in
+`packages/study_studio/lib/src/presentation/widgets/studio_scaffold.dart`.
+**Build on it — do not reinvent it.**
+
+- **`isDesktop(context)`** — `true` when width ≥ `kStudioDesktop` (900). Branch
+  your layout on this.
+- **`StudioShell`** — wraps a page and renders the **navigation rail on
+  desktop** / **bottom nav on phone** automatically. Every page should sit
+  inside a `StudioShell`.
+- **`ContentColumn(maxWidth: …)`** — centers content and caps its width so a
+  page doesn't stretch edge-to-edge on a huge monitor (phone screens use ~480,
+  desktop dashboards use ~1160).
+- **Design tokens (`packages/cockpit_ui`)** — `CockpitColors`, `CockpitSpacing`,
+  `CockpitRadii`, `CockpitFonts` (Outfit, global). **Never hard-code a hex or a
+  magic number** — read from `Theme.of(context).colorScheme` and the tokens.
+- **`StudyPalette`** (`presentation/widgets/studio_palette.dart`) — the shared
+  decorative status/accent swatches (`success/warning/danger/info` +
+  `violet/pink/…`). Reuse these instead of inlining `Color(0xFF…)`.
+
+### The desktop pattern (copy this shape)
+
+```dart
+return StudioShell(
+  selectedIndex: 1,
+  child: SafeArea(
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = isDesktop(context);
+        return SingleChildScrollView(
+          child: ContentColumn(
+            maxWidth: desktop ? 1160 : 480,
+            child: desktop
+                ? Row(children: [/* multi-column desktop layout */])
+                : Column(children: [/* the existing phone layout */]),
+          ),
+        );
+      },
+    ),
+  ),
+);
+```
+
+**References — already done to the desktop bar:**
+- `presentation/dashboard/dashboard_page.dart` — responsive grid via `isDesktop`
+- `presentation/ask_ai/ask_ai_page.dart` — two-column (content + sidebar)
+- `presentation/analytics/study_analytics_page.dart` — two-column dashboard
+- Screens 1–7 (Home, Upload, Building, Ready, Dashboard, Teach Me, Quiz Me)
+
+## Who owns what — 5 interns, split by flow
+
+You own a **flow**, not a random pile of pages — so one person keeps a whole
+area of the app visually consistent. Audit every page in your flow on desktop
+and bring the weak ones up to the bar.
+
+| Intern | Flow | Pages |
+| ------ | ---- | ----- |
+| **#1** | Shell & Entry | Cockpit Home · Settings · Study Home · Welcome Back |
+| **#2** | Create & Enter | Upload · Building · Dashboard · Ready |
+| **#3** | Learn | Teach Me · Topic Library · Topic Detail |
+| **#4** | Practice | Quiz Me · Flashcards · Progress |
+| **#5** | Intelligence | Study Plan · Knowledge Graph · Analytics · Ask AI · Manage |
+
+*(The Lead can rebalance this — talk to them if your flow is too heavy or too
+light.)*
+
+## Coordinate — this is a team, not five solo tasks
+
+Design **consistency** is the whole point of a super-app. Screens designed in
+five silos will clash.
+
+- **Stay in touch with each other.** Agree on shared desktop conventions *before*
+  you build: content max-width, nav-rail behaviour, card grid gutters, breakpoint
+  (use the shared `kStudioDesktop = 900`), two-column vs. three-column rules.
+- **Eliminate duplication.** If two of you need the same desktop widget (a
+  two-column shell, a wide stat row, a sidebar), build it **once** in
+  `presentation/widgets/` and share it. Don't copy-paste layouts.
+- **Coordinate at the seams.** Pages that link to each other (Dashboard →
+  Teach Me → Quiz Me) must feel like one app. Check your neighbour's flow.
+- If a decision affects everyone (a new shared breakpoint, a token change), raise
+  it with the group and the Lead — don't decide it alone in your branch.
+
+## Ground rules
+
+1. **Desktop first, don't break phone.** Add the desktop layout behind
+   `isDesktop(context)`; the existing phone layout must still work.
+2. **Use `cockpit_ui` tokens + `StudioShell`/`ContentColumn`.** No hard-coded
+   colours or magic numbers.
+3. **Mock data only.** No backend yet — pull from
+   `packages/study_studio/lib/src/data/mock/mock_data.dart` or add realistic mock
+   objects. Never wire real network calls.
+4. **`flutter analyze` must report _No issues found_** before you open your PR.
+5. **Never touch `main`.** `main` is protected — no direct commits, no merges,
+   no force-push, ever.
 
 ## Getting started
 
 ```bash
-# 1. Clone and switch to your branch off dev
 git clone https://github.com/boardwalk-ai/Cockpit.git
 cd Cockpit
 git checkout dev
-git checkout -b intern/<your-name>/screen-08-ai-mastery-report
+git checkout -b intern/<your-name>/desktop-<flow>
 
-# 2. Get dependencies (monorepo uses a pub workspace)
 flutter pub get
 
-# 3. Run the app (web is easiest for design work)
 cd apps/cockpit
-flutter run -d chrome
+flutter run -d chrome   # web is easiest for design work
 ```
 
-The app opens on **Cockpit Home → Study Studio**. From there you can reach every
-screen (Home → Upload → Building → Ready → Studio dashboard → Teach Me / Quiz Me
-/ Flashcards …).
+## Submission
 
-## The design language (match this)
-
-Screens **1–7 are already built** — study them and copy their look and feel:
-
-- **Font:** `Outfit` (already bundled and set globally — do not change it).
-- **Design tokens:** always use `packages/cockpit_ui` — `CockpitColors`,
-  `CockpitSpacing`, `CockpitRadii`, and the shared widgets (`CockpitCard`,
-  `ProgressRing`, `StatTile`, `TagChip`, `StudioShell`, …). **Never
-  hard‑code a hex colour or a magic number** — read from the theme
-  (`Theme.of(context).colorScheme`) and the token classes.
-- **Style:** clean, academic, modern, friendly. White background, rounded glass
-  cards (radius 16–24), soft shadows, blue→purple gradients. Not childish.
-- **Reference pages** (copy these patterns):
-  - `.../presentation/home/study_home_page.dart` (Screen 1)
-  - `.../presentation/upload/upload_page.dart` (Screen 2)
-  - `.../presentation/building/building_page.dart` (Screen 3)
-  - `.../presentation/ready/ready_page.dart` (Screen 4)
-  - `.../presentation/dashboard/dashboard_page.dart` (Screen 5)
-  - `.../presentation/teach_me/teach_me_page.dart` (Screen 6)
-  - `.../presentation/quiz_me/quiz_me_page.dart` (Screen 7)
-
-All Study Studio pages live under
-`packages/study_studio/lib/src/presentation/<feature>/`.
-
-## Your assignment — Screens 8–17
-
-Each intern owns **two screens**. The design image for every screen is in
-[`docs/designs/`](docs/designs/). **The image is the single source of truth** —
-build the page so a reviewer can't tell it apart from the image.
-
-| Intern | Screens | Titles | Where it lives |
-| ------ | ------- | ------ | -------------- |
-| **Intern #1** | **8, 9** | AI Mastery Report · Lightning Recall | `presentation/mastery_report/` (new) · `presentation/lightning_recall/` (new) |
-| **Intern #2** | **10, 11** | Flashcards · Scenario Mode | `presentation/flashcards/flashcards_page.dart` · `presentation/scenario/` (new) |
-| **Intern #3** | **12, 13** | AI Study Plan · Knowledge Graph | `presentation/study_plan/` (new) · `presentation/knowledge_graph/` (new) |
-| **Intern #4** | **14, 15** | Ask AI · Manage Study Studio | `presentation/ask_ai/` (new) · `presentation/manage/` (new) |
-| **Intern #5** | **16, 17** | Study Analytics · Welcome Back | `presentation/analytics/` (new) · `presentation/welcome/` (new) |
-
-### What each task means
-
-> **Intern #1** — Build **Screen 8 (AI Mastery Report)** and **Screen 9
-> (Lightning Recall)** to match `docs/designs/Screen 8 (AI Mastery Report).jpg`
-> and `Screen 9 (Lightning Recall).jpg` exactly, pixel‑precise, using mock data.
->
-> **Intern #2** — Build **Screen 10 (Flashcards)** and **Screen 11 (Scenario
-> Mode)** to match `docs/designs/Screen 10 (Flashcards).jpg` and `Screen 11
-> (Scenario Mode).jpg` exactly, pixel‑precise, using mock data.
->
-> **Intern #3** — Build **Screen 12 (AI Study Plan)** and **Screen 13 (Knowledge
-> Graph)** to match `docs/designs/Screen 12 (AI Study Plan).jpg` and `Screen 13
-> (Knowledge Graph).jpg` exactly, pixel‑precise, using mock data.
->
-> **Intern #4** — Build **Screen 14 (Ask AI)** and **Screen 15 (Manage Study
-> Studio)** to match `docs/designs/Screen 14 (Ask AI).jpg` and `Screen 15 (Manage
-> Study Studio).jpg` exactly, pixel‑precise, using mock data.
->
-> **Intern #5** — Build **Screen 16 (Study Analytics)** and **Screen 17 (Welcome
-> Back)** to match `docs/designs/Screen 16 (Study Analytics).jpg` and `Screen 17
-> (Welcome Back).jpg` exactly, pixel‑precise, using mock data.
-
-## How to build a page (checklist)
-
-1. Open your design image in `docs/designs/` and study every detail — spacing,
-   font weights, icon choices, colours, and every state (empty, loading,
-   selected, correct/incorrect, etc.).
-2. Find (or create) your page file under `presentation/<feature>/`.
-3. If the page is **new**, register its route in
-   `packages/study_studio/lib/src/study_studio_module.dart` (copy how the
-   existing routes are declared) so it's reachable in the app.
-4. Build the UI with `cockpit_ui` tokens + shared widgets. Match the reference
-   screens' structure (constrained max width 480, `SafeArea`, gradient buttons,
-   etc.).
-5. Feed it **mock data** from `mock_data.dart` (or add your own mock objects —
-   keep them realistic).
-6. Run `flutter analyze` — it must say **No issues found**.
-7. Run the app and click through your page in the browser. Compare side‑by‑side
-   with the design image.
-8. Commit, push your branch, and open a **PR into `dev`**. Tag the Lead for
-   review.
+- **Fork-based Pull Request.** Work on a branch *or* fork the repo — **your
+  decision**. Open your PR **into `dev`** (never `main`) and tag the Lead.
+- **Submission date: open** (not fixed yet). Quality and consistency over speed.
 
 ## Definition of done
 
-- [ ] Looks like the design image (a reviewer can't tell them apart)
-- [ ] Uses `cockpit_ui` tokens — no hard‑coded colours or magic numbers
-- [ ] Uses mock data, no real network calls
+- [ ] The page looks intentional and comfortable on a desktop (≥ 1280 wide)
+- [ ] Wrapped in `StudioShell`; desktop behind `isDesktop(context)`; phone still works
+- [ ] Uses `cockpit_ui` tokens / `StudyPalette` — no hard-coded colours or magic numbers
+- [ ] Shared desktop widgets live in `presentation/widgets/`, not copy-pasted
+- [ ] Mock data only, no real network calls
 - [ ] `flutter analyze` is clean
-- [ ] New pages are reachable via a route
 - [ ] PR opened into `dev`, not `main`
 
-Questions? Ask your Lead before you assume. Good luck — build something you're
-proud to demo. 🚀
+Questions? Ask your Lead — and talk to each other. Build something you're proud
+to demo. 🚀
