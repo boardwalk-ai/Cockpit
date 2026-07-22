@@ -8,10 +8,7 @@ import '../../domain/entities/topic.dart';
 /// backend / AI provider is wired. Mirrors the examples in the brief.
 List<Studio> buildMockStudios() {
   final now = DateTime.now();
-  return [
-    _biologyStudio(now),
-    _mbrStudio(now),
-  ];
+  return [_biologyStudio(now), _mbrStudio(now)];
 }
 
 Studio _biologyStudio(DateTime now) {
@@ -40,12 +37,15 @@ Studio _biologyStudio(DateTime now) {
       ],
       relatedTopicIds: ['bio_meiosis', 'bio_photo'],
       prerequisites: ['Base pairing (A-T, G-C)'],
-      memoryHooks: ['"Semi-conservative" = each new helix keeps one OLD strand.'],
+      memoryHooks: [
+        '"Semi-conservative" = each new helix keeps one OLD strand.',
+      ],
       sources: const [
         SourceReference(
           fileName: 'biology_chapter_4.pdf',
           page: 112,
-          snippet: 'Replication is semi-conservative; each daughter molecule...',
+          snippet:
+              'Replication is semi-conservative; each daughter molecule...',
         ),
       ],
       difficulty: 4,
@@ -64,7 +64,8 @@ Studio _biologyStudio(DateTime now) {
           id: 'bio_dna_fc2',
           topicId: 'bio_dna',
           front: 'What are Okazaki fragments?',
-          back: 'Short DNA segments synthesized on the lagging strand, later joined by ligase.',
+          back:
+              'Short DNA segments synthesized on the lagging strand, later joined by ligase.',
           type: FlashcardType.process,
         ),
         Flashcard(
@@ -80,10 +81,12 @@ Studio _biologyStudio(DateTime now) {
           id: 'bio_dna_q1',
           topicId: 'bio_dna',
           type: QuizType.multipleChoice,
-          question: 'Which enzyme joins Okazaki fragments on the lagging strand?',
+          question:
+              'Which enzyme joins Okazaki fragments on the lagging strand?',
           choices: ['Helicase', 'Primase', 'DNA ligase', 'DNA polymerase I'],
           answer: 'DNA ligase',
-          explanation: 'Ligase seals the nicks between adjacent Okazaki fragments.',
+          explanation:
+              'Ligase seals the nicks between adjacent Okazaki fragments.',
           difficulty: 3,
           relatedConcept: 'Lagging strand synthesis',
         ),
@@ -91,10 +94,12 @@ Studio _biologyStudio(DateTime now) {
           id: 'bio_dna_q2',
           topicId: 'bio_dna',
           type: QuizType.trueFalse,
-          question: 'DNA replication produces two molecules, each with one old and one new strand.',
+          question:
+              'DNA replication produces two molecules, each with one old and one new strand.',
           choices: ['True', 'False'],
           answer: 'True',
-          explanation: 'This is the definition of semi-conservative replication.',
+          explanation:
+              'This is the definition of semi-conservative replication.',
           difficulty: 2,
         ),
       ],
@@ -154,9 +159,15 @@ Studio _biologyStudio(DateTime now) {
           topicId: 'bio_meiosis',
           type: QuizType.multipleChoice,
           question: 'Homologous chromosomes separate during which phase?',
-          choices: ['Anaphase I', 'Anaphase II', 'Metaphase II', 'Telophase II'],
+          choices: [
+            'Anaphase I',
+            'Anaphase II',
+            'Metaphase II',
+            'Telophase II',
+          ],
           answer: 'Anaphase I',
-          explanation: 'Meiosis I is the reductional division separating homologs.',
+          explanation:
+              'Meiosis I is the reductional division separating homologs.',
           difficulty: 3,
         ),
       ],
@@ -175,10 +186,14 @@ Studio _biologyStudio(DateTime now) {
       whyItMatters:
           'Photosynthesis is the foundation of most food chains and the source of atmospheric oxygen.',
       examples: ['6CO2 + 6H2O + light → C6H12O6 + 6O2'],
-      commonMistakes: ['Assuming the Calvin cycle needs light directly (it uses ATP/NADPH).'],
+      commonMistakes: [
+        'Assuming the Calvin cycle needs light directly (it uses ATP/NADPH).',
+      ],
       relatedTopicIds: ['bio_dna'],
       prerequisites: ['Cell organelles'],
-      memoryHooks: ['Calvin cycle = the "dark" reactions, but still daytime-powered.'],
+      memoryHooks: [
+        'Calvin cycle = the "dark" reactions, but still daytime-powered.',
+      ],
       sources: const [
         SourceReference(
           fileName: 'biology_chapter_4.pdf',
@@ -220,9 +235,21 @@ Studio _biologyStudio(DateTime now) {
     updatedAt: now.subtract(const Duration(days: 1)),
     lastStudied: now.subtract(const Duration(days: 1)),
     sourceFiles: const [
-      SourceFile(id: 'f1', name: 'biology_chapter_4.pdf', type: SourceFileType.pdf),
-      SourceFile(id: 'f2', name: 'lecture_slides.pptx', type: SourceFileType.pptx),
-      SourceFile(id: 'f3', name: 'handwritten_notes.png', type: SourceFileType.image),
+      SourceFile(
+        id: 'f1',
+        name: 'biology_chapter_4.pdf',
+        type: SourceFileType.pdf,
+      ),
+      SourceFile(
+        id: 'f2',
+        name: 'lecture_slides.pptx',
+        type: SourceFileType.pptx,
+      ),
+      SourceFile(
+        id: 'f3',
+        name: 'handwritten_notes.png',
+        type: SourceFileType.image,
+      ),
     ],
     topics: topics,
   );
@@ -258,7 +285,8 @@ Studio _mbrStudio(DateTime now) {
         SourceReference(
           fileName: 'mbr_training_manual.pdf',
           page: 14,
-          snippet: 'When a bag is not located, create an AHL to begin tracing...',
+          snippet:
+              'When a bag is not located, create an AHL to begin tracing...',
         ),
       ],
       difficulty: 2,
@@ -308,7 +336,9 @@ Studio _mbrStudio(DateTime now) {
           'The OHD captures the found bag\'s tag, description and location. The tracing system cross-matches OHDs against AHLs to reunite bags with passengers.',
       whyItMatters:
           'OHDs are the other half of tracing — matches happen between AHLs (missing) and OHDs (found).',
-      examples: ['Unclaimed bag on carousel after all passengers leave → create OHD.'],
+      examples: [
+        'Unclaimed bag on carousel after all passengers leave → create OHD.',
+      ],
       commonMistakes: ['Confusing OHD (found) with AHL (missing).'],
       relatedTopicIds: ['mbr_ahl'],
       prerequisites: ['Bag tag basics'],
@@ -337,7 +367,8 @@ Studio _mbrStudio(DateTime now) {
           id: 'mbr_ohd_q1',
           topicId: 'mbr_ohd',
           type: QuizType.trueFalse,
-          question: 'An OHD is matched against AHLs to reunite bags with passengers.',
+          question:
+              'An OHD is matched against AHLs to reunite bags with passengers.',
           choices: ['True', 'False'],
           answer: 'True',
           explanation: 'Tracing matches found (OHD) against missing (AHL).',
@@ -367,7 +398,8 @@ Studio _mbrStudio(DateTime now) {
         SourceReference(
           fileName: 'mbr_training_manual.pdf',
           page: 12,
-          snippet: 'Verify the bag is not on the carousel or forwarded before filing...',
+          snippet:
+              'Verify the bag is not on the carousel or forwarded before filing...',
         ),
       ],
       difficulty: 1,
@@ -388,9 +420,11 @@ Studio _mbrStudio(DateTime now) {
           id: 'mbr_car_q1',
           topicId: 'mbr_carousel',
           type: QuizType.shortAnswer,
-          question: 'Before creating an AHL, which records must you check besides the carousel?',
+          question:
+              'Before creating an AHL, which records must you check besides the carousel?',
           answer: 'forwarding',
-          explanation: 'Always confirm the bag was not already forwarded/rush-tagged.',
+          explanation:
+              'Always confirm the bag was not already forwarded/rush-tagged.',
           difficulty: 1,
         ),
       ],
@@ -405,8 +439,157 @@ Studio _mbrStudio(DateTime now) {
     updatedAt: now,
     lastStudied: now,
     sourceFiles: const [
-      SourceFile(id: 'm1', name: 'mbr_training_manual.pdf', type: SourceFileType.pdf),
+      SourceFile(
+        id: 'm1',
+        name: 'mbr_training_manual.pdf',
+        type: SourceFileType.pdf,
+      ),
     ],
     topics: topics,
   );
 }
+
+/// Small, presentation-focused data objects for Screens 16 and 17. They stay
+/// alongside the existing canned studios so both screens remain entirely
+/// offline and can be replaced by real analytics endpoints later.
+class AnalyticsSeriesMock {
+  const AnalyticsSeriesMock({required this.label, required this.values});
+
+  final String label;
+  final List<double> values;
+}
+
+class MockMetric {
+  const MockMetric({
+    required this.value,
+    required this.label,
+    this.detail = '',
+  });
+
+  final String value;
+  final String label;
+  final String detail;
+}
+
+class StudyAnalyticsMockData {
+  const StudyAnalyticsMockData({
+    required this.studioTitle,
+    required this.mastery,
+    required this.previousMastery,
+    required this.masteryTrend,
+    required this.performanceSeries,
+    required this.studyActivity,
+    required this.retention,
+    required this.activityBreakdown,
+    required this.achievements,
+  });
+
+  final String studioTitle;
+  final int mastery;
+  final int previousMastery;
+  final List<double> masteryTrend;
+  final List<AnalyticsSeriesMock> performanceSeries;
+  final List<List<int>> studyActivity;
+  final List<double> retention;
+  final List<MockMetric> activityBreakdown;
+  final List<MockMetric> achievements;
+}
+
+const studyAnalyticsMockData = StudyAnalyticsMockData(
+  studioTitle: 'Computer Networks Final Exam',
+  mastery: 84,
+  previousMastery: 66,
+  masteryTrend: [26, 31, 31, 36, 43, 49, 59, 62, 68, 64, 73, 79, 80, 84],
+  performanceSeries: [
+    AnalyticsSeriesMock(
+      label: 'Mastery',
+      values: [58, 62, 61, 67, 72, 75, 81, 84, 87, 81, 87, 92, 90, 93],
+    ),
+    AnalyticsSeriesMock(
+      label: 'Recall Speed',
+      values: [44, 48, 45, 55, 51, 56, 58, 64, 59, 64, 69, 67, 72, 74],
+    ),
+    AnalyticsSeriesMock(
+      label: 'Quiz Accuracy',
+      values: [38, 41, 36, 43, 47, 45, 46, 51, 44, 49, 54, 53, 55, 58],
+    ),
+    AnalyticsSeriesMock(
+      label: 'Scenario Success',
+      values: [24, 27, 22, 28, 30, 31, 33, 37, 40, 37, 40, 41, 39, 43],
+    ),
+    AnalyticsSeriesMock(
+      label: 'Study Time',
+      values: [10, 12, 9, 14, 15, 15, 15, 18, 17, 19, 21, 23, 27, 25],
+    ),
+  ],
+  studyActivity: [
+    [2, 1, 3, 2, 2, 1, 1, 2, 2, 0, 1, 0, 0],
+    [1, 3, 2, 3, 2, 3, 1, 3, 2, 3, 1, 1, 0],
+    [0, 4, 2, 2, 3, 3, 2, 3, 3, 1, 1, 0, 0],
+    [1, 1, 4, 3, 3, 1, 2, 3, 1, 3, 1, 4, 0],
+    [0, 2, 1, 2, 1, 3, 4, 4, 1, 4, 2, 0, 0],
+    [0, 1, 1, 1, 2, 4, 3, 1, 4, 1, 4, 1, 1],
+    [1, 0, 4, 4, 0, 2, 3, 3, 2, 1, 4, 1, 1],
+  ],
+  retention: [96, 80, 72, 57, 51],
+  activityBreakdown: [
+    MockMetric(value: '9h 12m', label: 'Teach Me', detail: '31%'),
+    MockMetric(value: '6h 18m', label: 'Quiz Me', detail: '21%'),
+    MockMetric(value: '5h 40m', label: 'Flashcards', detail: '19%'),
+    MockMetric(value: '4h 15m', label: 'Lightning Recall', detail: '15%'),
+    MockMetric(value: '3h 20m', label: 'Scenario Mode', detail: '11%'),
+    MockMetric(value: '20m', label: 'Other', detail: '3%'),
+  ],
+  achievements: [
+    MockMetric(value: '14', label: 'Day Streak', detail: 'Keep it up!'),
+    MockMetric(
+      value: '1,200',
+      label: 'Flashcards Reviewed',
+      detail: 'Amazing!',
+    ),
+    MockMetric(
+      value: '200',
+      label: 'Concepts Mastered',
+      detail: "You're crushing it!",
+    ),
+    MockMetric(value: '95%', label: 'Quiz Accuracy', detail: 'Excellent!'),
+    MockMetric(
+      value: '25',
+      label: 'Scenarios Completed',
+      detail: 'Problem solver!',
+    ),
+  ],
+);
+
+class WelcomeMockData {
+  const WelcomeMockData({
+    required this.userName,
+    required this.studioId,
+    required this.topicId,
+    required this.sessionMinutes,
+    required this.mastery,
+    required this.retention,
+    required this.streak,
+    required this.estimatedMastery,
+  });
+
+  final String userName;
+  final String studioId;
+  final String topicId;
+  final int sessionMinutes;
+  final int mastery;
+  final int retention;
+  final int streak;
+  final int estimatedMastery;
+}
+
+const welcomeMockData = WelcomeMockData(
+  userName: 'Hein',
+  studioId: 'bio',
+  topicId: 'bio_dna',
+  sessionMinutes: 18,
+  mastery: 95,
+  retention: 93,
+  streak: 21,
+  estimatedMastery: 97,
+);
