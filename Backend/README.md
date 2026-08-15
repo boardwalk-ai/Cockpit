@@ -128,6 +128,13 @@ Run tests (offline, no DB/network):
 make test      # or: pytest -q
 ```
 
+Sample study notes for upload testing (does not call the API):
+```bash
+python -m scripts.generate_sample_materials \
+  --count 4 --subject biology --size short --out ./sample_materials
+```
+See [scripts/README.md](scripts/README.md) for subjects, sizes, and more examples.
+
 ---
 
 ## Deploying to the server
@@ -218,8 +225,9 @@ Backend/
     services/        embeddings.py  vectorstore.py  objectstore.py
                      llm.py  credits.py  rag.py
     routers/         health.py  studios.py  documents.py  ask.py
-  scripts/           init_databases.py
-  tests/             test_units.py
+  scripts/           init_databases.py  generate_sample_materials.py
+                     sample_materials_catalog.py  README.md
+  tests/             test_units.py  test_generate_sample_materials.py
   docker-compose.yml  docker-compose.prod.yml  Dockerfile  Makefile
   requirements.txt    .env.example
 ```
