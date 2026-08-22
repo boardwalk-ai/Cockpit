@@ -166,6 +166,18 @@
   .motto-line{color:var(--muted);font-size:clamp(15px,2vw,18px);margin-top:8px;max-width:560px}
   .motto-line b{color:var(--text);font-weight:600}
 
+  /* week switcher + past weeks */
+  .weeks{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding-top:70px}
+  .weeks .lbl{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2);margin-right:6px}
+  .wk{display:inline-flex;align-items:center;gap:10px;font-family:'Poppins';font-weight:600;font-size:13.5px;letter-spacing:-.01em;color:var(--muted);text-decoration:none;border:1px solid var(--line);border-radius:100px;padding:10px 18px;transition:.28s var(--ease)}
+  .wk:hover{color:var(--text);border-color:var(--line-2)}
+  .wk.active{color:var(--text);border-color:rgba(255,46,57,.5);background:rgba(255,46,57,.06)}
+  .wk em{font-style:normal;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);border:1px solid rgba(255,46,57,.4);border-radius:100px;padding:3px 8px}
+  #week02{padding-top:36px}
+  .past-tag{font-family:'Poppins';font-weight:600;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted-2);border:1px solid var(--line);border-radius:100px;padding:4px 12px;align-self:flex-start;margin-bottom:2px}
+  .block a{color:var(--red);text-decoration:none;border-bottom:1px solid rgba(255,46,57,.4);transition:.2s}
+  .block a:hover{border-bottom-color:var(--red)}
+
   @media(max-width:860px){
     .grid{grid-template-columns:1fr;gap:20px}
     .index{position:static;flex-direction:row;flex-wrap:wrap;gap:8px;margin-bottom:8px}
@@ -216,7 +228,7 @@
       <p>Your assignment board. Every week a new set of missions lands here — each one a self-contained module you own end to end. Past assignments stay on the board, so you can revisit any week's tasks anytime.</p>
       <div class="hero-meta">
         <div class="m"><span class="k">Team</span><span class="v">05</span></div>
-        <div class="m"><span class="k">Current</span><span class="v">Assignment 01</span></div>
+        <div class="m"><span class="k">Current</span><span class="v">Assignment 02</span></div>
         <div class="m"><span class="k">Cadence</span><span class="v r">Weekly</span></div>
       </div>
     </div>
@@ -224,16 +236,310 @@
   </section>
 
   <div class="marquee"><div class="marquee-track">
-    <span>Test Coverage</span><span>Text Extraction</span><span>Semantic Grading</span><span>API Reliability</span><span>Test Data</span>
-    <span>Test Coverage</span><span>Text Extraction</span><span>Semantic Grading</span><span>API Reliability</span><span>Test Data</span>
+    <span>GhostWriter</span><span>Guided Generation</span><span>Outline</span><span>Source Search</span><span>Humanizer</span><span>Flutter UI</span>
+    <span>GhostWriter</span><span>Guided Generation</span><span>Outline</span><span>Source Search</span><span>Humanizer</span><span>Flutter UI</span>
   </div></div>
 
-  <!-- ===================== ASSIGNMENT 01 · 01 AUG 2026 ===================== -->
-  <section class="week wrap">
+  <!-- WEEK SWITCHER -->
+  <section class="wrap weeks">
+    <span class="lbl">Weeks</span>
+    <a class="wk active" href="#week03">Assignment 03 · 22 Aug <em>Current</em></a>
+    <a class="wk" href="#week02">Assignment 02 · 12 Aug</a>
+    <a class="wk" href="#week01">Assignment 01 · 01 Aug</a>
+  </section>
+
+  <!-- ===================== ASSIGNMENT 03 · 22 AUG 2026 (CURRENT) ===================== -->
+  <section class="week wrap" id="week03">
     <div class="week-head">
+      <span class="week-tag">Assignment 03 · Current</span>
+      <h1 class="week-title">22 August 2026</h1>
+      <p class="week-note">This week leans hard into <strong style="color:var(--text)">backend</strong>. Build the services behind the modules in <strong style="color:var(--text)">GoLang + Python</strong> — Go for the APIs (saving, folder loading, credits), Python for the AI calls — and rewrite the agents from the now-public reference repo. Anagha takes a frontend craft task. A deep, systems-heavy week: your chance to show real expertise.</p>
+      <div class="week-stats">
+        <span class="s"><b>3</b> tasks</span>
+        <span class="s"><b>Go + Python</b> backend</span>
+        <span class="s"><b>Complex</b> systems</span>
+      </div>
+    </div>
+
+    <!-- submission / focus / check-ins -->
+    <div class="brief">
+      <div class="brief-item"><span class="bi-k">Submission</span><span class="bi-v">Fork-based pull request</span></div>
+      <div class="brief-item"><span class="bi-k">Focus</span><span class="bi-v r">Backend · Go + Python</span></div>
+      <div class="brief-item"><span class="bi-k">Check-ins</span><span class="bi-v">Daily · via WhatsApp</span></div>
+    </div>
+
+    <div class="grid">
+      <nav class="index">
+        <a href="#sean3" data-target="sean3"><span class="n">01</span> Sean</a>
+        <a href="#team3" data-target="team3"><span class="n">02</span> Amirjon + Chris</a>
+        <a href="#anagha3" data-target="anagha3"><span class="n">03</span> Anagha</a>
+      </nav>
+
+      <div class="cards">
+
+        <!-- 1 SEAN -->
+        <article class="card" id="sean3">
+          <div class="card-num">01</div>
+          <div class="card-top">
+            <div class="avatar">S</div>
+            <div class="who"><div class="name">Sean</div><div class="role">Backend · GhostWriter</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~1 week</span>
+          </div>
+          <h3>GhostWriter — Agent Backend</h3>
+          <p class="lede">Build the backend that powers the GhostWriter module — a <strong style="color:#fff">GoLang + Python</strong> service with rewritten agent tools and semantic chat memory. A deep, systems-heavy build; your chance to showcase real expertise.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Reference</span><p>The tools reference for the main GhostWriter lives in the now-public repo <strong><a href="https://github.com/boardwalk-ai/OctopilotWeb" target="_blank" rel="noopener">boardwalk-ai/OctopilotWeb</a></strong>. Study it and rewrite the agent tools for this backend.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>A two-language backend: <strong>GoLang</strong> for the APIs (saving, folder loading, user-credits loading, …) and <strong>Python</strong> for the AI/model calls — driven by rewritten agent tools and backed by a semantic memory for the chat session.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Rewrite the <strong>agent tools</strong> — reference the tools used in the main GhostWriter (OctopilotWeb repo).</span></li>
+                <li><span class="cbx"></span><span>Build <strong>GoLang APIs</strong> for the saving mechanism, folder loading, user-credits loading, etc.</span></li>
+                <li><span class="cbx"></span><span>Use <strong>Python</strong> for the AI calls.</span></li>
+                <li><span class="cbx"></span><span>Implement <strong>semantic memory</strong> for the chat session — persist and retrieve context across turns.</span></li>
+                <li><span class="cbx"></span><span>You may use a <strong>self-hosted VectorDB</strong> for the agent's memory context.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>The GhostWriter backend runs end to end — Go APIs handle persistence &amp; credits, Python handles the AI calls, the rewritten agent tools work, and the chat session carries semantic memory.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Go · Python</b></span>
+            <span class="pill">Scope <b>backend</b></span>
+            <span class="pill">Branch <b>your own · fork PR</b></span>
+          </div>
+        </article>
+
+        <!-- 2 AMIRJON + CHRIS -->
+        <article class="card" id="team3">
+          <div class="card-num">02</div>
+          <div class="card-top">
+            <div class="avatar">AC</div>
+            <div class="who"><div class="name">Amirjon + Chris</div><div class="role">Backend · Guided Generation</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~1 week</span>
+          </div>
+          <h3>Guided Generation — Agent Backend</h3>
+          <p class="lede">Team up on the backend for Guided Generation — a <strong style="color:#fff">GoLang + Python</strong> service with rewritten agents. Your frontend tasks share one Mode, so build this backend together. A chance to show real depth.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Cooperation</span><p>Amirjon &amp; Chris — since your Guided Generation frontend tasks are under <strong>one Mode</strong>, cooperate on this backend as one team: split the work and integrate it.</p></div>
+            <div class="block"><span class="block-label">Reference</span><p>The agents reference for the main Guided-Generation lives in the now-public repo <strong><a href="https://github.com/boardwalk-ai/OctopilotWeb" target="_blank" rel="noopener">boardwalk-ai/OctopilotWeb</a></strong>. Study it and rewrite the agents for this backend.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>A two-language backend: <strong>GoLang</strong> for the APIs (saving, folder loading, user-credits loading, …) and <strong>Python</strong> for the AI/model calls — driven by rewritten Guided-Generation agents.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span><strong>Cooperate</strong> — one Mode, one backend; divide and integrate the work between you.</span></li>
+                <li><span class="cbx"></span><span>Rewrite the <strong>agents</strong> — reference the agents used in the main Guided-Generation (OctopilotWeb repo).</span></li>
+                <li><span class="cbx"></span><span>Build <strong>GoLang APIs</strong> for the saving mechanism, folder loading, user-credits loading, etc.</span></li>
+                <li><span class="cbx"></span><span>Use <strong>Python</strong> for the AI calls.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>The Guided Generation backend runs end to end — Go APIs handle persistence &amp; credits, Python handles the AI calls, and the rewritten agents drive the flow.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Go · Python</b></span>
+            <span class="pill">Scope <b>backend</b></span>
+            <span class="pill">Team <b>Amirjon + Chris</b></span>
+            <span class="pill">Branch <b>fork PR</b></span>
+          </div>
+        </article>
+
+        <!-- 3 ANAGHA -->
+        <article class="card" id="anagha3">
+          <div class="card-num">03</div>
+          <div class="card-top">
+            <div class="avatar">A</div>
+            <div class="who"><div class="name">Anagha</div><div class="role">Frontend · Motion &amp; Layout</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~2–3 days</span>
+          </div>
+          <h3>Streaming Animation + Viewport-Fit Layout</h3>
+          <p class="lede">Two frontend crafts in one: design the iconic <strong style="color:#fff">Star Wars-style</strong> AI-output streaming animation, then refit your past pages so every screen fits its viewport — no scrolling, anywhere.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">What you'll build</span><p>A reusable <strong>streaming reveal animation</strong> for AI output — the classic Star Wars opening-crawl feel, text emerging in perspective as it streams in — plus a layout pass over the <strong>Guided Generation pages you built last week</strong> so they fit the screen exactly.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Design the <strong>Star Wars-style streaming animation</strong> for AI output — the perspective "crawl" reveal as tokens/content stream in.</span></li>
+                <li><span class="cbx"></span><span>Make it <strong>smooth, performant and reusable</strong> — a widget any generation screen can drop in.</span></li>
+                <li><span class="cbx"></span><span>Revisit <strong>your past pages</strong> (Generation → Humanizer) and <strong>adjust the layout to fit the viewport</strong> on every target screen size.</span></li>
+                <li><span class="cbx"></span><span><strong>No scrolling needed, no scrolling allowed</strong> — everything lives within the visible viewport at desktop and mobile widths.</span></li>
+                <li><span class="cbx"></span><span>Responsive layout · reusable widgets · clean state handling.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>The Star Wars streaming animation plays over AI output, and every one of your pages fits its viewport across screen sizes with <strong>zero scrolling</strong>.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Flutter · Dart</b></span>
+            <span class="pill">Scope <b>frontend</b></span>
+            <span class="pill">Branch <b>your own · fork PR</b></span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ASSIGNMENT 02 · 12 AUG 2026 (PAST) ===================== -->
+  <section class="week wrap" id="week02">
+    <div class="week-head">
+      <span class="past-tag">Past · Archived</span>
+      <span class="week-tag">Assignment 02</span>
+      <h1 class="week-title">12 August 2026</h1>
+      <p class="week-note">Last week — all <strong style="color:var(--text)">frontend</strong>. Each page drafted in <strong style="color:var(--text)">Flutter</strong> from its live reference on octopilotai.app. Kept on the board for reference.</p>
+      <div class="week-stats">
+        <span class="s"><b>4</b> tasks</span>
+        <span class="s"><b>1</b> per person</span>
+        <span class="s"><b>Flutter</b> frontend</span>
+      </div>
+    </div>
+
+    <!-- submission / focus / check-ins -->
+    <div class="brief">
+      <div class="brief-item"><span class="bi-k">Submission</span><span class="bi-v">Fork-based pull request</span></div>
+      <div class="brief-item"><span class="bi-k">Focus</span><span class="bi-v r">Frontend draft only</span></div>
+      <div class="brief-item"><span class="bi-k">Check-ins</span><span class="bi-v">Daily · via WhatsApp</span></div>
+    </div>
+
+    <div class="grid">
+      <nav class="index">
+        <a href="#sean2" data-target="sean2"><span class="n">01</span> Sean</a>
+        <a href="#amirjon2" data-target="amirjon2"><span class="n">02</span> Amirjon</a>
+        <a href="#chris2" data-target="chris2"><span class="n">03</span> Chris</a>
+        <a href="#anagha2" data-target="anagha2"><span class="n">04</span> Anagha</a>
+      </nav>
+
+      <div class="cards">
+
+        <!-- 1 SEAN -->
+        <article class="card" id="sean2">
+          <div class="card-num">01</div>
+          <div class="card-top">
+            <div class="avatar">S</div>
+            <div class="who"><div class="name">Sean</div><div class="role">Frontend · GhostWriter</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~2–3 days</span>
+          </div>
+          <h3>GhostWriter — Flutter Frontend</h3>
+          <p class="lede">Rebuild the GhostWriter experience as a native Flutter screen. A faithful frontend draft — recreate the page's layout, controls and states from the live reference.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Reference</span><p>Study and rebuild the page at <strong><a href="https://octopilotai.app/ghostwriter" target="_blank" rel="noopener">octopilotai.app/ghostwriter</a></strong>. That live page is your single source of truth for layout, components and behaviour.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>The full <strong>GhostWriter screen</strong> in Flutter — the prompt/input area, the writing controls &amp; options, primary actions, and the generated-output area — matching the reference's structure and visual hierarchy.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Match the reference's <strong>layout &amp; visual hierarchy</strong> — spacing, typography, sections.</span></li>
+                <li><span class="cbx"></span><span>Build every <strong>interactive control</strong> — inputs, toggles, dropdowns, primary/secondary buttons.</span></li>
+                <li><span class="cbx"></span><span>Wire the <strong>UI states</strong> — empty, typing, loading, and result — against <strong>mock/stub data</strong> (no backend).</span></li>
+                <li><span class="cbx"></span><span>Make it <strong>responsive</strong> across desktop and mobile widths.</span></li>
+                <li><span class="cbx"></span><span>Compose it from <strong>reusable widgets</strong> with clean, tidy state handling.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>The GhostWriter screen renders in Flutter, matches the reference layout, and every control + state works against mock data — no backend required.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Flutter · Dart</b></span>
+            <span class="pill">Scope <b>frontend draft only</b></span>
+            <span class="pill">Branch <b>your own · fork PR</b></span>
+          </div>
+        </article>
+
+        <!-- 2 AMIRJON -->
+        <article class="card" id="amirjon2">
+          <div class="card-num">02</div>
+          <div class="card-top">
+            <div class="avatar">A</div>
+            <div class="who"><div class="name">Amirjon</div><div class="role">Frontend · Guided Generation</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~2–3 days</span>
+          </div>
+          <h3>Guided Generation — Outline Page</h3>
+          <p class="lede">Draft <strong style="color:#fff">page 1</strong> of the Guided Generation flow: the Outline Generation screen where a project begins. A Flutter frontend rebuilt from the live reference.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Reference</span><p>Rebuild the <strong>Outline Generation</strong> step (the first page) of <strong><a href="https://octopilotai.app/guided-generation" target="_blank" rel="noopener">octopilotai.app/guided-generation</a></strong>. Follow the live page for structure and behaviour.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>The <strong>Outline Generation screen</strong> in Flutter — the topic/prompt entry, generation controls, and the generated <strong>outline view</strong> with its editable sections and the "continue" step forward.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Recreate the <strong>input &amp; options</strong> that start an outline (topic, settings, generate action).</span></li>
+                <li><span class="cbx"></span><span>Build the <strong>outline result view</strong> — sections/headings the user can review and edit.</span></li>
+                <li><span class="cbx"></span><span>Wire <strong>UI states</strong> — empty, generating (loading), and generated — with <strong>mock/stub data</strong>.</span></li>
+                <li><span class="cbx"></span><span>Include the step's <strong>navigation affordance</strong> (proceed to the next guided step).</span></li>
+                <li><span class="cbx"></span><span>Responsive layout · reusable widgets · clean state handling.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>The Outline page renders in Flutter, mirrors the reference, and its controls + states work on mock data — no backend wiring.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Flutter · Dart</b></span>
+            <span class="pill">Scope <b>frontend draft only</b></span>
+            <span class="pill">Branch <b>your own · fork PR</b></span>
+          </div>
+        </article>
+
+        <!-- 3 CHRIS -->
+        <article class="card" id="chris2">
+          <div class="card-num">03</div>
+          <div class="card-top">
+            <div class="avatar">C</div>
+            <div class="who"><div class="name">Chris</div><div class="role">Frontend · Guided Generation</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~2–3 days</span>
+          </div>
+          <h3>Guided Generation — Customization</h3>
+          <p class="lede">Draft the Customization step — the source-gathering screen with <strong style="color:#fff">manual source search</strong> and <strong style="color:#fff">Octopilot search</strong>. The richest UI of the flow.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Reference</span><p>Rebuild the <strong>Customization</strong> page of <strong><a href="https://octopilotai.app/guided-generation" target="_blank" rel="noopener">octopilotai.app/guided-generation</a></strong> — the step that includes the manual source search and the Octopilot search features.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>The <strong>Customization screen</strong> in Flutter — the <strong>manual source search</strong> (query field, results, add/select), the <strong>Octopilot search</strong> feature, the list of chosen sources, and the customization controls.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Build the <strong>manual source search</strong> — search field, result cards/list, add &amp; remove sources.</span></li>
+                <li><span class="cbx"></span><span>Build the <strong>Octopilot search</strong> feature UI alongside it (tabs/modes as in the reference).</span></li>
+                <li><span class="cbx"></span><span>Show the <strong>selected-sources</strong> state and any customization options/controls.</span></li>
+                <li><span class="cbx"></span><span>Wire <strong>UI states</strong> — empty, searching (loading), results, selected — with <strong>mock/stub data</strong>.</span></li>
+                <li><span class="cbx"></span><span>Responsive layout · reusable widgets · clean state handling.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>The Customization page renders in Flutter with both search experiences and source selection working on mock data — matching the reference, no backend.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Flutter · Dart</b></span>
+            <span class="pill">Scope <b>frontend draft only</b></span>
+            <span class="pill">Branch <b>your own · fork PR</b></span>
+          </div>
+        </article>
+
+        <!-- 4 ANAGHA -->
+        <article class="card" id="anagha2">
+          <div class="card-num">04</div>
+          <div class="card-top">
+            <div class="avatar">A</div>
+            <div class="who"><div class="name">Anagha</div><div class="role">Frontend · Guided Generation</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~2–3 days</span>
+          </div>
+          <h3>Guided Generation — Generation → Humanizer</h3>
+          <p class="lede">Draft the tail end of the flow: the Generation screen through to the <strong style="color:#fff">Humanizer</strong> umbrella page. A Flutter frontend from the live reference.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Reference</span><p>Rebuild the <strong>Generation page through the Humanizer umbrella page</strong> of <strong><a href="https://octopilotai.app/guided-generation" target="_blank" rel="noopener">octopilotai.app/guided-generation</a></strong>. The live pages define layout and behaviour.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>Two connected Flutter screens — the <strong>Generation</strong> screen (content generation progress + the generated output), flowing into the <strong>Humanizer</strong> umbrella page (its humanize controls/options and output).</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Build the <strong>Generation screen</strong> — progress/generating state and the generated content view.</span></li>
+                <li><span class="cbx"></span><span>Build the <strong>Humanizer umbrella page</strong> — its options/controls and the humanized output area.</span></li>
+                <li><span class="cbx"></span><span>Wire the <strong>flow + states</strong> between them (generating → generated → humanize) with <strong>mock/stub data</strong>.</span></li>
+                <li><span class="cbx"></span><span>Match the reference's layout and visual hierarchy on both screens.</span></li>
+                <li><span class="cbx"></span><span>Responsive layout · reusable widgets · clean state handling.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>Both screens render in Flutter, the Generation → Humanizer flow works on mock data, and the layout matches the reference — no backend wiring.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Flutter · Dart</b></span>
+            <span class="pill">Scope <b>frontend draft only</b></span>
+            <span class="pill">Branch <b>your own · fork PR</b></span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ASSIGNMENT 01 · 01 AUG 2026 (PAST) ===================== -->
+  <section class="week wrap" id="week01">
+    <div class="week-head">
+      <span class="past-tag">Past · Archived</span>
       <span class="week-tag">Assignment 01</span>
       <h1 class="week-title">01 August 2026</h1>
-      <p class="week-note">This week's tasks — pick yours up and build. Work at your own pace; there's no hard deadline.</p>
+      <p class="week-note">Last week's tasks — kept on the board for reference. Work at your own pace; there's no hard deadline.</p>
       <div class="week-stats">
         <span class="s"><b>5</b> tasks</span>
         <span class="s"><b>1</b> per person</span>
@@ -417,7 +723,7 @@
     <!-- upcoming next week -->
     <div class="upcoming">
       <div>
-        <div class="ud">Assignment 02</div>
+        <div class="ud">Assignment 03</div>
         <div class="ul">New tasks drop next week — and this board keeps every past assignment too</div>
       </div>
       <div class="dots"><i></i><i></i><i></i></div>
