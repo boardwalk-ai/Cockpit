@@ -11,4 +11,5 @@ workspace:
   - packages/cockpit_core
   - packages/cockpit_ui
   - packages/cockpit_module
+  - packages/guided_generation
   - packages/study_studio

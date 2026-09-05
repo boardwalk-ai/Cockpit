@@ -1,6 +1,7 @@
 import 'package:cockpit_core/cockpit_core.dart';
 import 'package:cockpit_module/cockpit_module.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:guided_generation/guided_generation.dart';
 import 'package:study_studio/study_studio.dart';
 
 /// The set of modules currently mounted in the super-app, after applying
@@ -15,5 +16,6 @@ final activeModulesProvider = Provider<List<CockpitModule>>((ref) {
   final flags = ref.watch(featureFlagsProvider);
   return [
     if (flags.studyStudioEnabled) const StudyStudioModule(),
+    const GuidedGenerationModule(),
   ];
 });
