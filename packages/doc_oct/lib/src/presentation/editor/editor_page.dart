@@ -1,5 +1,6 @@
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../theme/doc_tokens.dart';
 import '../widgets/doc_scaffold.dart';
@@ -42,12 +43,18 @@ class _EditorPageState extends State<EditorPage> {
     ..._fields.values,
   ];
 
+  // The body prose — flutter_quill (EditableText underneath → works on web).
+  final QuillController _body = QuillController.basic();
+  final FocusNode _bodyFocus = FocusNode();
+  final ScrollController _bodyScroll = ScrollController();
+
   @override
   void initState() {
     super.initState();
     for (final c in _all) {
       c.addListener(_onChanged);
     }
+    _body.addListener(_onChanged);
   }
 
   void _onChanged() => setState(() {});
@@ -59,15 +66,25 @@ class _EditorPageState extends State<EditorPage> {
       c.dispose();
     }
     _docTitle.dispose();
+    _body.removeListener(_onChanged);
+    _body.dispose();
+    _bodyFocus.dispose();
+    _bodyScroll.dispose();
     super.dispose();
   }
 
-  int get _words => _all
-      .expand((c) => c.text.trim().split(RegExp(r'\s+')))
-      .where((w) => w.isNotEmpty)
-      .length;
+  String get _bodyText => _body.document.toPlainText();
 
-  int get _chars => _all.fold(0, (n, c) => n + c.text.length);
+  int get _words => [
+        ..._all.map((c) => c.text),
+        _bodyText,
+      ]
+          .expand((t) => t.trim().split(RegExp(r'\s+')))
+          .where((w) => w.isNotEmpty)
+          .length;
+
+  int get _chars =>
+      _all.fold(0, (n, c) => n + c.text.length) + _bodyText.trim().length;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +107,7 @@ class _EditorPageState extends State<EditorPage> {
       cursorColor: scheme.primary,
     );
     final spec = FormatSpec.of(_style);
-    final pages = spec.buildPages(context, fields);
+    final pages = spec.buildPages(context, fields, body: _bodyEditor());
     final lastName = fields.authorLastName;
 
     // Auto fit-to-height so a short viewport isn't stuck at a giant 1:1 page;
@@ -110,23 +127,32 @@ class _EditorPageState extends State<EditorPage> {
             Expanded(
               child: ColoredBox(
                 color: scheme.surface,
-                child: SingleChildScrollView(
-                  child: Center(
-                    child: Padding(
-                      padding:
-                          const EdgeInsets.symmetric(vertical: CockpitSpacing.md),
-                      child: SizedBox(
-                        width: PagedDocument.pageWidth * zoom,
-                        child: FittedBox(
-                          fit: BoxFit.fitWidth,
-                          alignment: Alignment.topCenter,
-                          child: SizedBox(
-                            width: PagedDocument.pageWidth,
-                            child: PagedDocument(
-                              pages: pages,
-                              pageLabel: (n) => _style == FormatStyle.mla
-                                  ? '$lastName $n'
-                                  : '$n',
+                // flutter_quill needs its localization delegate in-tree.
+                child: Localizations(
+                  locale: const Locale('en'),
+                  delegates: const [
+                    FlutterQuillLocalizations.delegate,
+                    DefaultMaterialLocalizations.delegate,
+                    DefaultWidgetsLocalizations.delegate,
+                  ],
+                  child: SingleChildScrollView(
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            vertical: CockpitSpacing.md),
+                        child: SizedBox(
+                          width: PagedDocument.pageWidth * zoom,
+                          child: FittedBox(
+                            fit: BoxFit.fitWidth,
+                            alignment: Alignment.topCenter,
+                            child: SizedBox(
+                              width: PagedDocument.pageWidth,
+                              child: PagedDocument(
+                                pages: pages,
+                                pageLabel: (n) => _style == FormatStyle.mla
+                                    ? '$lastName $n'
+                                    : '$n',
+                              ),
                             ),
                           ),
                         ),
@@ -145,6 +171,52 @@ class _EditorPageState extends State<EditorPage> {
 
   void _setZoom(double v) =>
       setState(() => _zoomOverride = v.clamp(0.4, 2.0));
+
+  /// The body prose editor — non-scrollable so it grows the page as you type
+  /// (the page column scrolls). Paper serif styling; the real per-page overflow
+  /// pagination lands next.
+  Widget _bodyEditor() {
+    return QuillEditor(
+      controller: _body,
+      focusNode: _bodyFocus,
+      scrollController: _bodyScroll,
+      config: QuillEditorConfig(
+        scrollable: false,
+        expands: false,
+        autoFocus: false,
+        placeholder: 'Start writing your paper…',
+        padding: EdgeInsets.zero,
+        customStyles: DefaultStyles(
+          paragraph: DefaultTextBlockStyle(
+            const TextStyle(
+              fontFamily: 'Times New Roman',
+              fontFamilyFallback: ['Georgia', 'serif'],
+              fontSize: 16,
+              height: 2.0,
+              color: Color(0xFF1A1A1A),
+            ),
+            const HorizontalSpacing(0, 0),
+            const VerticalSpacing(0, 0),
+            const VerticalSpacing(0, 0),
+            null,
+          ),
+          placeHolder: DefaultTextBlockStyle(
+            const TextStyle(
+              fontFamily: 'Times New Roman',
+              fontFamilyFallback: ['Georgia', 'serif'],
+              fontSize: 16,
+              height: 2.0,
+              color: Color(0xFFB4B8BE),
+            ),
+            const HorizontalSpacing(0, 0),
+            const VerticalSpacing(0, 0),
+            const VerticalSpacing(0, 0),
+            null,
+          ),
+        ),
+      ),
+    );
+  }
 
   // ── Document bar: menu · title · Finish ──────────────────────────────────
   Widget _docBar(ThemeData theme, ColorScheme scheme) {

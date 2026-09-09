@@ -122,7 +122,11 @@ abstract class FormatSpec {
         _ => const MlaSpec(),
       };
 
-  List<DocPage> buildPages(BuildContext context, EditorFields f);
+  /// [body] is the shared prose editor; each style places it where its body
+  /// begins (MLA: after the title on page 1; APA: on its own page after the
+  /// abstract).
+  List<DocPage> buildPages(BuildContext context, EditorFields f,
+      {required Widget body});
 }
 
 /// Shared paper metrics + a couple of helpers.
@@ -143,7 +147,8 @@ class ApaSpec extends FormatSpec {
   const ApaSpec();
 
   @override
-  List<DocPage> buildPages(BuildContext context, EditorFields f) {
+  List<DocPage> buildPages(BuildContext context, EditorFields f,
+      {required Widget body}) {
     return [
       // ── Title page ──
       DocPage(
@@ -202,6 +207,8 @@ class ApaSpec extends FormatSpec {
           ],
         ),
       ),
+      // ── Body page ──
+      DocPage(runningHead: const SizedBox.shrink(), content: body),
     ];
   }
 }
@@ -212,7 +219,8 @@ class MlaSpec extends FormatSpec {
   const MlaSpec();
 
   @override
-  List<DocPage> buildPages(BuildContext context, EditorFields f) {
+  List<DocPage> buildPages(BuildContext context, EditorFields f,
+      {required Widget body}) {
     return [
       DocPage(
         runningHead: null, // MLA head is the page-number line (author + n)
@@ -225,6 +233,8 @@ class MlaSpec extends FormatSpec {
             f.field(DocFieldKind.date, align: TextAlign.left),
             const SizedBox(height: 4),
             f.editable(f.title, hint: 'Untitled Paper', align: TextAlign.center),
+            const SizedBox(height: 8),
+            body,
           ],
         ),
       ),
