@@ -1,183 +1,152 @@
+import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 
-import '../../theme/doc_theme.dart';
 import '../../theme/doc_tokens.dart';
 
-/// A borderless elevated panel — the fundamental building block. No outline:
-/// a filled, rounded surface that floats on a soft shadow. Optionally tappable
-/// with a hover-lift (raises the surface + shadow) for web/desktop.
-class DocPanel extends StatefulWidget {
-  const DocPanel({
-    super.key,
-    required this.child,
-    this.padding = const EdgeInsets.all(DocSpacing.lg),
-    this.radius = DocRadii.lg,
-    this.onTap,
-    this.raised = false,
-    this.color,
-  });
+/// Borderless building blocks for Doc Oct — grouping via whitespace + subtle
+/// background, never outlines or shadows. Mirrors OctoNotes' `octo_widgets`,
+/// kept local so Doc Oct stays self-contained.
 
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  final double radius;
-  final VoidCallback? onTap;
-
-  /// Start from the raised surface instead of the resting one.
-  final bool raised;
-  final Color? color;
-
-  @override
-  State<DocPanel> createState() => _DocPanelState();
-}
-
-class _DocPanelState extends State<DocPanel> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = DocTheme.surfacesOf(context);
-    final interactive = widget.onTap != null;
-    final lifted = widget.raised || (_hover && interactive);
-    final radius = BorderRadius.circular(widget.radius);
-
-    Widget panel = AnimatedContainer(
-      duration: const Duration(milliseconds: 160),
-      curve: Curves.easeOut,
-      transform: lifted && interactive
-          ? (Matrix4.identity()..translateByDouble(0.0, -3.0, 0.0, 1.0))
-          : Matrix4.identity(),
-      decoration: BoxDecoration(
-        color: widget.color ?? (lifted ? s.surfaceHigh : s.surface),
-        borderRadius: radius,
-        boxShadow: lifted ? s.shadowLift : s.shadowSoft,
-      ),
-      child: Padding(padding: widget.padding, child: widget.child),
-    );
-
-    if (!interactive) return panel;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(onTap: widget.onTap, child: panel),
-    );
-  }
-}
-
-/// A soft-tinted pill — used for the citation-style badge and meta tags. Filled
-/// tint, no border.
-class DocChip extends StatelessWidget {
-  const DocChip({
-    super.key,
-    required this.label,
-    this.color,
-    this.icon,
-    this.dense = false,
-  });
-
-  final String label;
-  final Color? color;
-  final IconData? icon;
-  final bool dense;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final c = color ?? scheme.primary;
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: dense ? DocSpacing.sm : DocSpacing.md,
-        vertical: dense ? 3 : 5,
-      ),
-      decoration: BoxDecoration(
-        color: c.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(DocRadii.pill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: dense ? 12 : 14, color: c),
-            const SizedBox(width: 5),
-          ],
-          Text(
-            label,
-            style: TextStyle(
-              color: c,
-              fontSize: dense ? 11 : 12.5,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The colored, rounded style badge (letter on a soft tint) for a citation
-/// style — the borderless analogue of the web's square badge.
-class DocStyleBadge extends StatelessWidget {
-  const DocStyleBadge({super.key, required this.style, this.size = 40});
-  final FormatStyle style;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            style.color.withValues(alpha: 0.9),
-            Color.lerp(style.color, Colors.black, 0.35)!,
-          ],
-        ),
-        borderRadius: BorderRadius.circular(size * 0.32),
-        boxShadow: [
-          BoxShadow(
-            color: style.color.withValues(alpha: 0.35),
-            blurRadius: 14,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        style.abbr,
-        style: TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: size * 0.42,
-        ),
-      ),
-    );
-  }
-}
-
-/// Small uppercase section eyebrow used above titles.
-class DocEyebrow extends StatelessWidget {
-  const DocEyebrow(this.text, {super.key});
+/// A small, muted, letter-spaced section label — the docs-style "eyebrow" that
+/// opens every section (the workhorse of grouping).
+class Eyebrow extends StatelessWidget {
+  const Eyebrow(this.text, {super.key});
   final String text;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text.toUpperCase(),
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+        letterSpacing: 1.2,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+/// The one sanctioned subtle background — a soft rounded fill, no border, no
+/// shadow. For things that should feel slightly raised (a highlighted item).
+class DocSurface extends StatelessWidget {
+  const DocSurface({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.padding = const EdgeInsets.all(CockpitSpacing.lg),
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(CockpitRadii.lg);
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: radius,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(onTap: onTap, child: Padding(padding: padding, child: child)),
+    );
+  }
+}
+
+/// An interactive row with no border — affordance comes from a hover fill (and
+/// an optional selected red tint), never an outline or divider.
+class DocHoverRow extends StatelessWidget {
+  const DocHoverRow({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.selected = false,
+    this.padding = const EdgeInsets.symmetric(
+      horizontal: CockpitSpacing.md,
+      vertical: CockpitSpacing.md,
+    ),
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final bool selected;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final radius = BorderRadius.circular(CockpitRadii.md);
+    return Material(
+      color: selected
+          ? scheme.primary.withValues(alpha: 0.10)
+          : Colors.transparent,
+      borderRadius: radius,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: radius,
+        hoverColor: scheme.onSurface.withValues(alpha: 0.05),
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+  }
+}
+
+/// A subtle, borderless pill chip (tags, meta).
+class DocChip extends StatelessWidget {
+  const DocChip(this.label, {super.key, this.color});
+  final String label;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final onColor = color ?? theme.colorScheme.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: CockpitSpacing.md,
+        vertical: CockpitSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: color == null
+            ? theme.colorScheme.surfaceContainerHighest
+            : color!.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(CockpitRadii.pill),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: onColor,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// The citation style, shown the borderless way: a small colored dot + label.
+class StyleTag extends StatelessWidget {
+  const StyleTag(this.style, {super.key, this.dense = false});
+  final FormatStyle style;
+  final bool dense;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(width: 16, height: 2, color: scheme.primary),
-        const SizedBox(width: DocSpacing.sm),
+        Container(
+          width: dense ? 7 : 8,
+          height: dense ? 7 : 8,
+          decoration: BoxDecoration(color: style.color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: CockpitSpacing.sm),
         Text(
-          text.toUpperCase(),
-          style: TextStyle(
-            color: scheme.primary,
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 2.2,
+          dense ? style.short : style.label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],

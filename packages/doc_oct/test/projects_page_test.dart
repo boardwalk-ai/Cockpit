@@ -1,13 +1,8 @@
+import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:doc_oct/doc_oct.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-/// Forces the light theme for the light-mode case.
-class _LightController extends DocThemeController {
-  @override
-  ThemeMode build() => ThemeMode.light;
-}
 
 void main() {
   Future<void> setDesktop(WidgetTester tester) async {
@@ -17,39 +12,23 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
   }
 
-  testWidgets('saved projects renders in dark without overflow', (tester) async {
+  testWidgets('saved projects renders (borderless) without overflow',
+      (tester) async {
     await setDesktop(tester);
     await tester.pumpWidget(const ProviderScope(child: DocOctApp()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Your documents'), findsOneWidget);
-    expect(find.text('New document'), findsWidgets);
+    expect(find.text('Documents'), findsOneWidget);
+    expect(find.text('New document'), findsOneWidget);
     expect(
       find.text('The Vikings: Seafaring, Trade, and Settlement'),
       findsOneWidget,
     );
+    expect(find.byType(ThemeSwitcher), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('saved projects renders in light + theme switcher present',
-      (tester) async {
-    await setDesktop(tester);
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          docThemeControllerProvider.overrideWith(_LightController.new),
-        ],
-        child: const DocOctApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Your documents'), findsOneWidget);
-    expect(find.byType(DocThemeSwitcher), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('theme switcher toggles mode', (tester) async {
+  testWidgets('theme switcher drives the shared controller', (tester) async {
     await setDesktop(tester);
     late WidgetRef ref;
     await tester.pumpWidget(
@@ -62,9 +41,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(ref.read(docThemeControllerProvider), ThemeMode.dark);
-    await tester.tap(find.byType(DocThemeSwitcher));
+    ref.read(themeControllerProvider.notifier).setMode(ThemeMode.light);
     await tester.pumpAndSettle();
-    expect(ref.read(docThemeControllerProvider), ThemeMode.light);
+    expect(ref.read(themeControllerProvider).mode, ThemeMode.light);
+    expect(tester.takeException(), isNull);
   });
 }
