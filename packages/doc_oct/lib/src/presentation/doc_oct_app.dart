@@ -18,7 +18,26 @@ class DocOctApp extends ConsumerWidget {
       theme: DocTheme.light(),
       darkTheme: DocTheme.dark(),
       themeMode: ref.watch(docThemeControllerProvider),
-      home: SavedProjectsPage(
+      home: const DocOctRoot(),
+    );
+  }
+}
+
+/// Doc Oct mounted as a **route inside a host app** (e.g. Cockpit). Applies the
+/// Doc Oct theme locally to its own subtree — driven by the floating switcher —
+/// so it keeps its borderless look regardless of the host's theme.
+class DocOctRoot extends ConsumerWidget {
+  const DocOctRoot({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(docThemeControllerProvider);
+    final dark = mode == ThemeMode.dark ||
+        (mode == ThemeMode.system &&
+            MediaQuery.platformBrightnessOf(context) == Brightness.dark);
+    return Theme(
+      data: dark ? DocTheme.dark() : DocTheme.light(),
+      child: SavedProjectsPage(
         onNew: () {}, // wizard — wired next
         onOpen: (_) {}, // editor — Phase 2
       ),

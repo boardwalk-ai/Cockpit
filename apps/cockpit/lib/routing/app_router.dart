@@ -1,4 +1,5 @@
 import 'package:cockpit_module/cockpit_module.dart';
+import 'package:doc_oct/doc_oct.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -18,6 +19,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/', builder: (_, _) => const CockpitHomePage()),
       GoRoute(path: '/settings', builder: (_, _) => const SettingsPage()),
+      GoRoute(path: '/doc-oct', builder: (_, _) => const DocOctRoot()),
       ...registry.allRoutes(),
     ],
   );

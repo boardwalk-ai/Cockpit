@@ -36,6 +36,8 @@ dependencies:
     path: ../../packages/cockpit_module
   study_studio:
     path: ../../packages/study_studio
+  doc_oct:
+    path: ../../packages/doc_oct
 
 dev_dependencies:
   flutter_test:
