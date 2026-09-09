@@ -1,0 +1,379 @@
+import 'package:cockpit_ui/cockpit_ui.dart';
+import 'package:flutter/material.dart';
+
+import '../../theme/doc_tokens.dart';
+import '../widgets/doc_scaffold.dart';
+import 'doc_model.dart';
+import 'format_spec.dart';
+import 'paged_document.dart';
+
+/// The central editor — Doc Oct's web editor, restyled borderless. The paper is
+/// the one light element (a real page); the chrome is flat charcoal. The style
+/// pills re-project the *same* semantic fields, so switching APA↔MLA reflows
+/// without touching content.
+class EditorPage extends StatefulWidget {
+  const EditorPage({super.key, this.initialStyle = FormatStyle.apa, this.onBack});
+
+  final FormatStyle initialStyle;
+  final VoidCallback? onBack;
+
+  @override
+  State<EditorPage> createState() => _EditorPageState();
+}
+
+class _EditorPageState extends State<EditorPage> {
+  late FormatStyle _style = widget.initialStyle;
+
+  /// null = auto fit-to-height; otherwise a manual zoom the user set with ±.
+  double? _zoomOverride;
+
+  final _docTitle = TextEditingController(text: 'Untitled document');
+  final _title = TextEditingController();
+  final _abstract = TextEditingController();
+  final _keywords = TextEditingController();
+  late final Map<DocFieldKind, TextEditingController> _fields = {
+    for (final k in DocFieldKind.values) k: TextEditingController(),
+  };
+
+  late final List<TextEditingController> _all = [
+    _title,
+    _abstract,
+    _keywords,
+    ..._fields.values,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    for (final c in _all) {
+      c.addListener(_onChanged);
+    }
+  }
+
+  void _onChanged() => setState(() {});
+
+  @override
+  void dispose() {
+    for (final c in _all) {
+      c.removeListener(_onChanged);
+      c.dispose();
+    }
+    _docTitle.dispose();
+    super.dispose();
+  }
+
+  int get _words => _all
+      .expand((c) => c.text.trim().split(RegExp(r'\s+')))
+      .where((w) => w.isNotEmpty)
+      .length;
+
+  int get _chars => _all.fold(0, (n, c) => n + c.text.length);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final fields = EditorFields(
+      title: _title,
+      fields: _fields,
+      abstractText: _abstract,
+      keywords: _keywords,
+      baseStyle: const TextStyle(
+        fontFamily: 'Times New Roman',
+        fontFamilyFallback: ['Georgia', 'serif'],
+        fontSize: 16,
+        height: 2.0,
+        color: Color(0xFF1A1A1A),
+      ),
+      hintColor: const Color(0xFFB4B8BE),
+      cursorColor: scheme.primary,
+    );
+    final spec = FormatSpec.of(_style);
+    final pages = spec.buildPages(context, fields);
+    final lastName = fields.authorLastName;
+
+    // Auto fit-to-height so a short viewport isn't stuck at a giant 1:1 page;
+    // the user can override with the ± zoom control.
+    final viewportH = MediaQuery.sizeOf(context).height;
+    final fitZoom = ((viewportH - 210) / PagedDocument.pageWidth * 8.5 / 11)
+        .clamp(0.5, 1.0);
+    final zoom = _zoomOverride ?? fitZoom;
+
+    return DocScaffold(
+      child: SafeArea(
+        child: Column(
+          children: [
+            _docBar(theme, scheme),
+            _styleRow(theme, scheme),
+            _formatToolbar(scheme, zoom),
+            Expanded(
+              child: ColoredBox(
+                color: scheme.surface,
+                child: SingleChildScrollView(
+                  child: Center(
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(vertical: CockpitSpacing.md),
+                      child: SizedBox(
+                        width: PagedDocument.pageWidth * zoom,
+                        child: FittedBox(
+                          fit: BoxFit.fitWidth,
+                          alignment: Alignment.topCenter,
+                          child: SizedBox(
+                            width: PagedDocument.pageWidth,
+                            child: PagedDocument(
+                              pages: pages,
+                              pageLabel: (n) => _style == FormatStyle.mla
+                                  ? '$lastName $n'
+                                  : '$n',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            _statusBar(theme, scheme),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _setZoom(double v) =>
+      setState(() => _zoomOverride = v.clamp(0.4, 2.0));
+
+  // ── Document bar: menu · title · Finish ──────────────────────────────────
+  Widget _docBar(ThemeData theme, ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          CockpitSpacing.md, CockpitSpacing.sm, CockpitSpacing.md, 0),
+      child: Row(
+        children: [
+          if (widget.onBack != null)
+            _tapIcon(Icons.chevron_left_rounded, scheme.onSurfaceVariant,
+                widget.onBack!),
+          Icon(Icons.notes_rounded, size: 18, color: scheme.primary),
+          const SizedBox(width: CockpitSpacing.sm),
+          SizedBox(
+            width: 240,
+            child: TextField(
+              controller: _docTitle,
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
+              cursorColor: scheme.primary,
+              decoration: const InputDecoration.collapsed(hintText: 'Document'),
+            ),
+          ),
+          const Spacer(),
+          _RedPill(
+            icon: Icons.download_rounded,
+            label: 'Finish',
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// A compact (32px) tappable icon — no 48px default tap target.
+  Widget _tapIcon(IconData i, Color color, VoidCallback onTap, {double size = 18}) {
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: IconButton(
+        onPressed: onTap,
+        icon: Icon(i, size: size),
+        color: color,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(),
+        splashRadius: 18,
+      ),
+    );
+  }
+
+  // ── Style row: STYLE pills · Format ──────────────────────────────────────
+  Widget _styleRow(ThemeData theme, ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(CockpitSpacing.md, CockpitSpacing.xs,
+          CockpitSpacing.md, CockpitSpacing.xs),
+      child: Row(
+        children: [
+          Text('STYLE',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                letterSpacing: 1.6,
+                fontWeight: FontWeight.w700,
+              )),
+          const SizedBox(width: CockpitSpacing.md),
+          for (final s in FormatStyle.values) ...[
+            _StylePill(
+              style: s,
+              selected: _style == s,
+              onTap: () => setState(() => _style = s),
+            ),
+            const SizedBox(width: CockpitSpacing.xs),
+          ],
+          const Spacer(),
+          _RedPill(icon: Icons.refresh_rounded, label: 'Format', onTap: () {}),
+        ],
+      ),
+    );
+  }
+
+  // ── Formatting toolbar (visual for now, except the working zoom) ─────────
+  Widget _formatToolbar(ColorScheme scheme, double zoom) {
+    Widget ico(IconData i) => _tapIcon(i, scheme.onSurfaceVariant, () {}, size: 17);
+    Widget zoomBtn(IconData i, VoidCallback onTap) =>
+        _tapIcon(i, scheme.onSurfaceVariant, onTap, size: 16);
+    Widget sep() => Container(
+          width: 1,
+          height: 16,
+          margin: const EdgeInsets.symmetric(horizontal: CockpitSpacing.xs),
+          color: scheme.onSurface.withValues(alpha: 0.08),
+        );
+    Widget label(String t) => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.sm),
+          child: Text(t,
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
+        );
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(
+          horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xxs),
+      child: Row(
+        children: [
+          ico(Icons.undo_rounded),
+          ico(Icons.redo_rounded),
+          sep(),
+          zoomBtn(Icons.remove_rounded, () => _setZoom(zoom - 0.1)),
+          GestureDetector(
+            onTap: () => setState(() => _zoomOverride = null), // reset to fit
+            child: SizedBox(
+              width: 44,
+              child: Text('${(zoom * 100).round()}%',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13)),
+            ),
+          ),
+          zoomBtn(Icons.add_rounded, () => _setZoom(zoom + 0.1)),
+          sep(),
+          label('Times New Roman'),
+          sep(),
+          ico(Icons.format_bold_rounded),
+          ico(Icons.format_italic_rounded),
+          ico(Icons.format_underlined_rounded),
+          sep(),
+          ico(Icons.format_align_left_rounded),
+          ico(Icons.format_align_center_rounded),
+          ico(Icons.format_align_right_rounded),
+          ico(Icons.format_align_justify_rounded),
+          sep(),
+          ico(Icons.format_list_bulleted_rounded),
+          ico(Icons.format_list_numbered_rounded),
+          sep(),
+          ico(Icons.format_indent_decrease_rounded),
+          ico(Icons.format_indent_increase_rounded),
+          sep(),
+          ico(Icons.format_clear_rounded),
+        ],
+      ),
+    );
+  }
+
+  // ── Status bar ───────────────────────────────────────────────────────────
+  Widget _statusBar(ThemeData theme, ColorScheme scheme) {
+    final s = theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant);
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: CockpitSpacing.lg, vertical: CockpitSpacing.sm),
+      child: Row(
+        children: [
+          Text('$_words words', style: s),
+          const SizedBox(width: CockpitSpacing.md),
+          Text('$_chars characters', style: s),
+          const SizedBox(width: CockpitSpacing.md),
+          Text('Editing', style: s),
+          const Spacer(),
+          Text('Zoom: 100%', style: s),
+        ],
+      ),
+    );
+  }
+}
+
+class _StylePill extends StatelessWidget {
+  const _StylePill(
+      {required this.style, required this.selected, required this.onTap});
+  final FormatStyle style;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Material(
+      color: selected
+          ? style.color.withValues(alpha: 0.18)
+          : scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(CockpitRadii.pill),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xs),
+          child: Text(
+            style.short,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RedPill extends StatelessWidget {
+  const _RedPill(
+      {required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.primary,
+      borderRadius: BorderRadius.circular(CockpitRadii.pill),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xs),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: Colors.white),
+              const SizedBox(width: 6),
+              Text(label,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

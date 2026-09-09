@@ -24,12 +24,21 @@ extension FormatStyleX on FormatStyle {
         FormatStyle.harvard => 'Harvard',
       };
 
-  /// A restrained accent for the style's dot.
+  /// One-letter mark for the style's dot (mirrors the web `abbr`).
+  String get abbr => switch (this) {
+        FormatStyle.mla => 'M',
+        FormatStyle.apa => 'A',
+        FormatStyle.chicago => 'C',
+        FormatStyle.ieee => 'I',
+        FormatStyle.harvard => 'H',
+      };
+
+  /// The functional accent for this style (matches the web FORMAT_STYLES).
   Color get color => switch (this) {
-        FormatStyle.mla => const Color(0xFF8B5CF6),
-        FormatStyle.apa => const Color(0xFF3B82F6),
+        FormatStyle.mla => const Color(0xFF7C3AED),
+        FormatStyle.apa => const Color(0xFF2563EB),
         FormatStyle.chicago => const Color(0xFFEA580C),
         FormatStyle.ieee => const Color(0xFF16A34A),
-        FormatStyle.harvard => const Color(0xFF0EA5A6),
+        FormatStyle.harvard => const Color(0xFF0369A1),
       };
 }

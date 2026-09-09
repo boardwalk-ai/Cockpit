@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 /// left; Save · (optional credits) · avatar on the right. No boxes — just type,
 /// spacing and a couple of soft affordances.
 class DocOctTopBar extends StatelessWidget {
-  const DocOctTopBar({super.key, this.credits, this.onSave});
+  const DocOctTopBar({super.key, this.credits, this.onSave, this.onAvatarTap});
 
   /// When signed in, the Octocredits balance (e.g. 56085).
   final int? credits;
   final VoidCallback? onSave;
+
+  /// Tapping the avatar (used to toggle the signed-in preview state).
+  final VoidCallback? onAvatarTap;
 
   @override
   Widget build(BuildContext context) {
@@ -59,16 +62,20 @@ class DocOctTopBar extends StatelessWidget {
             ),
           ],
           const SizedBox(width: CockpitSpacing.lg),
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHigh,
-              shape: BoxShape.circle,
+          InkWell(
+            onTap: onAvatarTap,
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(Icons.person_outline_rounded,
+                  size: 18, color: scheme.onSurfaceVariant),
             ),
-            alignment: Alignment.center,
-            child: Icon(Icons.person_outline_rounded,
-                size: 18, color: scheme.onSurfaceVariant),
           ),
         ],
       ),

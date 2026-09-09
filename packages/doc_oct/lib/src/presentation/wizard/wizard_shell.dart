@@ -15,6 +15,7 @@ class WizardShell extends StatelessWidget {
     required this.headline,
     required this.child,
     this.onBack,
+    this.scroll = false,
   });
 
   /// 1..3
@@ -25,6 +26,10 @@ class WizardShell extends StatelessWidget {
   final Widget headline;
   final Widget child;
   final VoidCallback? onBack;
+
+  /// When true the content column can overflow and scrolls (top-aligned)
+  /// instead of vertically centering — used by the taller Analysis step.
+  final bool scroll;
 
   static const _labels = ['Topic', 'Setup', 'Analysis'];
 
@@ -70,18 +75,21 @@ class WizardShell extends StatelessWidget {
       ),
     );
 
+    // Vertically center the content only when it fits (wide, non-scroll);
+    // otherwise top-align so it can grow and scroll.
+    final centered = wide && !scroll;
     final content = Padding(
       padding: EdgeInsets.all(wide ? CockpitSpacing.xxxl : CockpitSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: centered ? MainAxisSize.max : MainAxisSize.min,
         mainAxisAlignment:
-            wide ? MainAxisAlignment.center : MainAxisAlignment.start,
+            centered ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: [
-          if (onBack != null)
-            _BackButton(onTap: onBack!)
-          else
-            const SizedBox.shrink(),
-          if (onBack != null) const SizedBox(height: CockpitSpacing.xl),
+          if (onBack != null) ...[
+            _BackButton(onTap: onBack!),
+            const SizedBox(height: CockpitSpacing.xl),
+          ],
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
             child: child,
@@ -98,8 +106,10 @@ class WizardShell extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SizedBox(width: 440, child: rail),
-        Expanded(child: content),
+        Expanded(child: rail),
+        Expanded(
+          child: scroll ? SingleChildScrollView(child: content) : content,
+        ),
       ],
     );
   }

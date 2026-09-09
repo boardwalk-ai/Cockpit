@@ -8,10 +8,18 @@ import 'wizard_shell.dart';
 /// Wizard · Step 1 (logged-out welcome). The web's entry, restyled borderless:
 /// a display headline on the left, and two entry choices on the right.
 class WizardWelcomePage extends StatelessWidget {
-  const WizardWelcomePage({super.key, this.onSpecifyTopic, this.onStartWriting});
+  const WizardWelcomePage({
+    super.key,
+    this.onSpecifyTopic,
+    this.onStartWriting,
+    this.onSignIn,
+  });
 
   final VoidCallback? onSpecifyTopic;
   final VoidCallback? onStartWriting;
+
+  /// Tapping the avatar — jumps to the signed-in workspace (preview).
+  final VoidCallback? onSignIn;
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +30,7 @@ class WizardWelcomePage extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            const DocOctTopBar(),
+            DocOctTopBar(onAvatarTap: onSignIn),
             Expanded(
               child: WizardShell(
                 step: 1,
