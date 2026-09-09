@@ -1,0 +1,31 @@
+name: octo_notes
+description: "OctoNotes — the lecture-capture & AI notes module for the Octopilot super-app."
+version: 0.0.1
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.6.2
+  cockpit_core:
+    path: ../cockpit_core
+  cockpit_ui:
+    path: ../cockpit_ui
+  cockpit_module:
+    path: ../cockpit_module
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  # The design-system font (Plus Jakarta Sans) is bundled once in cockpit_ui and
+  # used app-wide as `packages/cockpit_ui/PlusJakartaSans` — nothing to declare here.

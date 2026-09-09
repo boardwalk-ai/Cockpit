@@ -52,13 +52,40 @@ class SentenceTransformerEmbedder(Embedder):
         self.dim = dim
 
     def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
         vectors = self._model.encode(
-            texts, normalize_embeddings=True, convert_to_numpy=True
+            texts,
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            batch_size=32,
+            show_progress_bar=False,
         )
         return [v.tolist() for v in vectors]
 
 
+class RemoteEmbedder(Embedder):
+    """HTTP client for the dedicated embed worker (one model copy, not in the API)."""
+
+    def __init__(self, url: str, dim: int) -> None:
+        self._url = url.rstrip("/")
+        self.dim = dim
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        import httpx
+
+        resp = httpx.post(
+            f"{self._url}/embed", json={"texts": texts}, timeout=180.0
+        )
+        resp.raise_for_status()
+        return resp.json()["vectors"]
+
+
 def _build(settings: Settings) -> Embedder:
+    if settings.embed_service_url.strip():
+        return RemoteEmbedder(settings.embed_service_url, settings.embedding_dim)
     if settings.embeddings_backend == "sentence-transformers":
         return SentenceTransformerEmbedder(settings.embeddings_model, settings.embedding_dim)
     return FallbackEmbedder(settings.embedding_dim)

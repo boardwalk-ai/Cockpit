@@ -1,6 +1,39 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../theme/theme_controller.dart';
 import '../tokens/spacing_tokens.dart';
+
+/// A floating light / system / dark theme switcher (boxless — just the icons).
+/// Drives the app-wide [themeControllerProvider], so it re-skins the whole app.
+class ThemeSwitcher extends ConsumerWidget {
+  const ThemeSwitcher({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(themeControllerProvider).mode;
+    final ctrl = ref.read(themeControllerProvider.notifier);
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget btn(IconData icon, ThemeMode m, String tip) => IconButton(
+          tooltip: tip,
+          visualDensity: VisualDensity.compact,
+          onPressed: () => ctrl.setMode(m),
+          icon: Icon(icon,
+              size: 18,
+              color: mode == m ? scheme.primary : scheme.onSurfaceVariant),
+        );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        btn(Icons.light_mode, ThemeMode.light, 'Light'),
+        btn(Icons.settings, ThemeMode.system, 'System'),
+        btn(Icons.dark_mode, ThemeMode.dark, 'Dark'),
+      ],
+    );
+  }
+}
 
 /// A bordered surface card with consistent padding and tap support.
 class CockpitCard extends StatelessWidget {

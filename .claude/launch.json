@@ -2,6 +2,20 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "octonotes-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8766"],
+      "cwd": "apps/cockpit/build/web",
+      "port": 8766
+    },
+    {
+      "name": "octonotes-web",
+      "runtimeExecutable": "/Users/leon/AndroidStudioProjects/flutter/bin/flutter",
+      "runtimeArgs": ["run", "-d", "web-server", "--web-port=8765"],
+      "cwd": "apps/cockpit",
+      "port": 8765
+    },
+    {
       "name": "cockpit-web",
       "runtimeExecutable": "C:\\Users\\USER\\sdk\\flutter\\bin\\flutter.bat",
       "runtimeArgs": ["run", "-d", "chrome", "--web-port=8765"],

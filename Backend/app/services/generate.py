@@ -294,21 +294,16 @@ async def _lesson_context(
     if user_id is None or studio_id_uuid is None:
         return fallback, []
     try:
-        from ..db import VectorSession
-        from .embeddings import get_embedder
-        from .vectorstore import hybrid_search
+        from .vectorstore import retrieve
 
         q = f"{title}. {scope}".strip()
-        q_vec = get_embedder().embed([q])[0]
-        async with VectorSession() as vector:
-            hits = await hybrid_search(
-                vector,
-                user_id=user_id,
-                studio_id=studio_id_uuid,
-                query_text=q,
-                query_embedding=q_vec,
-                top_k=_DETAIL_TOP_K,
-            )
+        hits = await retrieve(
+            None,
+            user_id=user_id,
+            studio_id=studio_id_uuid,
+            query_text=q,
+            top_k=_DETAIL_TOP_K,
+        )
         joined = "\n\n".join(h.content for h in hits)
         return (joined or fallback), hits
     except Exception:  # noqa: BLE001 — retrieval optional; use full material

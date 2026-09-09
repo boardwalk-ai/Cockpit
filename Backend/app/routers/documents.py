@@ -19,6 +19,7 @@ from fastapi import (
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import get_settings
 from ..db import CockpitSession, VectorSession, get_cockpit_session
 from ..deps import get_current_user_id
 from ..models.cockpit import Document, IngestJob, Studio
@@ -74,7 +75,20 @@ async def upload_document(
     await session.commit()
     await session.refresh(job)
 
-    background.add_task(_ingest_task, job.id, document.id)
+    settings = get_settings()
+    if settings.redis_url.strip():
+        import json
+
+        import redis as redis_sync
+
+        r = redis_sync.from_url(settings.redis_url, decode_responses=True)
+        r.rpush(
+            "cockpit:ingest",
+            json.dumps({"job_id": str(job.id), "document_id": str(document.id)}),
+        )
+        r.close()
+    else:
+        background.add_task(_ingest_task, job.id, document.id)
     return job
 
 

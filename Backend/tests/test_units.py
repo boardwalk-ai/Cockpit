@@ -45,6 +45,22 @@ def test_chunk_text_empty():
     assert chunk_text("   ", size=10, overlap=2) == []
 
 
+def test_pdf_text_local_garbage_is_empty():
+    from app.services.rag import pdf_text_local
+
+    text, pages = pdf_text_local(b"not a pdf")
+    assert text == ""
+    assert pages == 0
+
+
+def test_text_layer_usable_skips_sparse_scans():
+    from app.services.rag import _text_layer_usable
+
+    assert _text_layer_usable("x" * 2000, pages=5)
+    assert not _text_layer_usable("header", pages=20)
+    assert not _text_layer_usable("", pages=1)
+
+
 def test_context_block_numbering():
     block = build_context_block(["alpha", "beta"])
     assert "[1] alpha" in block

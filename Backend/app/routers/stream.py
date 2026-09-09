@@ -486,32 +486,22 @@ async def ask(
     async def gen() -> AsyncIterator[dict]:
         try:
             # Best-effort retrieval (empty until documents are ingested).
-            from ..services.embeddings import get_embedder
-            from ..services.vectorstore import hybrid_search
+            from ..services.vectorstore import retrieve
 
-            # Real (DB) studios have UUID ids and their chunks are stored under
-            # that exact UUID. Only the seed demo studios use slug ids ("bio"),
-            # which have no ingested chunks — map those to a stable uuid5.
             try:
                 sid = uuid.UUID(studio_id)
             except ValueError:
                 sid = uuid.uuid5(uuid.NAMESPACE_DNS, studio_id)
 
-            # Retrieval + credential lookup use SHORT-LIVED sessions so no DB
-            # connection is held during the (potentially long) LLM stream — a
-            # held connection leaks if the client disconnects mid-answer.
             hits = []
             try:
-                q_vec = get_embedder().embed([q])[0]
-                async with VectorSession() as vector:
-                    hits = await hybrid_search(
-                        vector,
-                        user_id=user_id,
-                        studio_id=sid,
-                        query_text=q,
-                        query_embedding=q_vec,
-                        top_k=settings.rag_top_k,
-                    )
+                hits = await retrieve(
+                    None,
+                    user_id=user_id,
+                    studio_id=sid,
+                    query_text=q,
+                    top_k=settings.rag_top_k,
+                )
             except Exception:  # noqa: BLE001 — retrieval optional in seed mode
                 hits = []
 

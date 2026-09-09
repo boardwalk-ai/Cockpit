@@ -1,7 +1,7 @@
 """RAG orchestration: text extraction, chunking, ingestion, and answering.
 
 Ingestion pipeline (async, kicked off after upload):
-    object storage -> extract text -> chunk -> embed (local) -> pgvector
+    object storage -> extract text -> chunk -> store (fast) -> embed (background)
 
 Answering pipeline:
     embed question -> hybrid search (tenant-scoped) -> build context -> OpenRouter
@@ -9,7 +9,11 @@ Answering pipeline:
 
 from __future__ import annotations
 
+import asyncio
 import base64
+import io
+import logging
+import time
 import uuid
 
 import httpx
@@ -19,8 +23,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import get_settings
 from ..models.cockpit import Document, IngestJob
 from . import generate, llm, vectorstore
-from .embeddings import get_embedder
+from .embeddings import FallbackEmbedder, get_embedder
 from .objectstore import get_object_store
+
+logger = logging.getLogger("cockpit.ingest")
 
 
 # ---------------------------------------------------------------------------
@@ -48,13 +54,45 @@ async def _hirara_call(tool: str, arguments: dict) -> dict:
         return resp.json()
 
 
+_MIN_PDF_TEXT_CHARS = 20
+_MIN_CHARS_PER_PAGE = 40  # below this, treat as scanned / image-only
+
+
+def pdf_text_local(data: bytes) -> tuple[str, int]:
+    """Return (extracted text, page count) from the PDF's embedded text layer."""
+    from pypdf import PdfReader
+
+    try:
+        reader = PdfReader(io.BytesIO(data))
+    except Exception:  # noqa: BLE001
+        return "", 0
+    parts: list[str] = []
+    for page in reader.pages:
+        try:
+            parts.append(page.extract_text() or "")
+        except Exception:  # noqa: BLE001
+            continue
+    return "\n\n".join(parts).strip(), len(reader.pages)
+
+
+def _text_layer_usable(text: str, pages: int) -> bool:
+    """True when the PDF already has a real text layer — skip OCR.
+
+    A scanned PDF often still has a few header/footer glyphs; require both a
+    floor of characters and a minimum density per page.
+    """
+    if len(text) < _MIN_PDF_TEXT_CHARS:
+        return False
+    n = max(pages, 1)
+    return (len(text) / n) >= _MIN_CHARS_PER_PAGE
+
+
 async def extract_text(filename: str, mime: str, data: bytes) -> str:
     """Extract plain text from an uploaded file.
 
-    Text/markdown decode directly (fast path, no network). Everything else is
-    handled by the Hirara hub: PDFs via `pdf_read` (with an `ocr_read` fallback
-    for scanned/no-text-layer PDFs), Office docs via `office_read` (Markdown),
-    and images via `ocr_read`. Audio/video (STT) is not enabled yet.
+    Text/markdown decode directly. PDFs use local pypdf first (text layer).
+    Whole-file OCR runs only when that layer is missing or too sparse to be a
+    real document (scanned / image-only PDFs). Digital PDFs never hit OCR.
     """
     name = filename.lower()
     mime = mime or ""
@@ -63,18 +101,34 @@ async def extract_text(filename: str, mime: str, data: bytes) -> str:
     if mime.startswith("text/") or name.endswith((".txt", ".md", ".markdown")):
         return data.decode("utf-8", errors="replace")
 
-    b64 = base64.b64encode(data).decode()
-
-    # PDF — embedded text layer first, OCR fallback when it comes back empty.
+    # PDF — local text layer first (seconds). OCR only if it's a scan.
     if mime == "application/pdf" or name.endswith(".pdf"):
+        local, pages = await asyncio.to_thread(pdf_text_local, data)
+        if _text_layer_usable(local, pages):
+            logger.info(
+                "PDF extract local (skip OCR): %s (%s chars, %s pages)",
+                filename, len(local), pages,
+            )
+            return local
+        logger.info(
+            "PDF %s has no usable text layer (%s chars / %s pages) — OCR",
+            filename, len(local), pages,
+        )
+        b64 = base64.b64encode(data).decode()
         res = await _hirara_call("pdf_read", {"pdf_base64": b64})
         text = (res.get("text") or "").strip()
-        if len(text) >= 20:
+        if _text_layer_usable(text, pages):
+            logger.info("PDF extract hirara pdf_read: %s (%s chars)", filename, len(text))
             return text
+        if not get_settings().ingest_pdf_ocr:
+            logger.warning("PDF %s needs OCR but INGEST_PDF_OCR=false", filename)
+            return text or local
         ocr = await _hirara_call(
             "ocr_read", {"file_base64": b64, "languages": ["en"]}
         )
-        return (ocr.get("text") or ocr.get("markdown") or text).strip()
+        return (ocr.get("text") or ocr.get("markdown") or text or local).strip()
+
+    b64 = base64.b64encode(data).decode()
 
     # Office documents → Markdown.
     if name.endswith(_OFFICE_EXT) or "officedocument" in mime or "msword" in mime \
@@ -130,14 +184,19 @@ async def run_ingest(
 ) -> None:
     settings = get_settings()
     await _set_job(cockpit, job_id, status="running")
+    t0 = time.monotonic()
     try:
-        raw = get_object_store().get(document.object_key)
+        raw = await asyncio.to_thread(get_object_store().get, document.object_key)
+        t_get = time.monotonic()
         text = await extract_text(document.filename, document.mime, raw)
+        t_extract = time.monotonic()
         pieces = chunk_text(
             text, size=settings.rag_chunk_tokens, overlap=settings.rag_chunk_overlap
         )
-        embedder = get_embedder()
-        vectors = embedder.embed(pieces) if pieces else []
+        # Cheap placeholder vectors so we can mark the document ready (and let
+        # studio build start) without waiting on BGE-m3 CPU inference.
+        dim = settings.embedding_dim
+        placeholders = FallbackEmbedder(dim).embed(pieces) if pieces else []
 
         rows = [
             {
@@ -147,13 +206,10 @@ async def run_ingest(
                 "user_id": document.user_id,
                 "ordinal": i,
                 "content": piece,
-                "embedding": vectors[i],
+                "embedding": placeholders[i],
             }
             for i, piece in enumerate(pieces)
         ]
-        # Ingest = extract → chunk → embed → store vectors. Study-object
-        # generation is a separate studio-level pass (run_studio_build) that runs
-        # ONCE over all uploaded files, so lessons cover the combined material.
         written = await vectorstore.insert_chunks(vector, rows=rows)
 
         await _set_job(cockpit, job_id, status="done", chunks_written=written)
@@ -161,6 +217,32 @@ async def run_ingest(
             update(Document).where(Document.id == document.id).values(status="ready")
         )
         await cockpit.commit()
+        logger.info(
+            "ingest ready %s extract=%.1fs store=%.1fs chunks=%s",
+            document.filename,
+            t_extract - t_get,
+            time.monotonic() - t0,
+            written,
+        )
+
+        embedder = get_embedder()
+        if pieces and not isinstance(embedder, FallbackEmbedder):
+            try:
+                real = await asyncio.to_thread(embedder.embed, pieces)
+                await vectorstore.update_embeddings(
+                    vector,
+                    rows=[
+                        {"id": rows[i]["id"], "embedding": real[i]}
+                        for i in range(len(rows))
+                    ],
+                )
+                logger.info(
+                    "ingest embeddings %s extra=%.1fs",
+                    document.filename,
+                    time.monotonic() - t_extract,
+                )
+            except Exception:  # noqa: BLE001 — text is already ready for generate
+                logger.exception("background embed failed for %s", document.filename)
     except Exception as exc:  # noqa: BLE001 — record the failure on the job
         await _set_job(cockpit, job_id, status="failed", error=str(exc))
         await cockpit.execute(
@@ -380,7 +462,7 @@ async def answer_question(
     embedder = get_embedder()
     q_vec = embedder.embed([question])[0]
 
-    hits = await vectorstore.hybrid_search(
+    hits = await vectorstore.retrieve(
         vector,
         user_id=user_id,
         studio_id=studio_id,
