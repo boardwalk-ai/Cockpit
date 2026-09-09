@@ -18,6 +18,28 @@ class StudyHomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // EXPERIMENT: the whole first page is wrapped in the shared borderless
+    // design system (Poppins · neutral #222323 · no card/divider outlines) to
+    // trial the OctoNotes look in Study Studio. Reversible — remove this wrap to
+    // revert. Nothing ships until re-deployed.
+    return BorderlessTheme.wrap(
+      context: context,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: Builder(builder: (context) => _build(context, ref)),
+          ),
+          const Positioned(
+            right: CockpitSpacing.xl,
+            bottom: CockpitSpacing.lg,
+            child: ThemeSwitcher(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authStateProvider);
     final signedIn = auth.valueOrNull ?? ref.watch(authServiceProvider).isSignedIn;
 
@@ -140,7 +162,7 @@ class _HomeDesktop extends StatelessWidget {
     return Padding(
         padding: const EdgeInsets.fromLTRB(40, 26, 40, 26),
         child: ContentColumn(
-          maxWidth: 1180,
+          maxWidth: 1600,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -163,18 +185,7 @@ class _HomeDesktop extends StatelessWidget {
                               action: 'View all',
                             ),
                             const SizedBox(height: CockpitSpacing.md),
-                            SizedBox(
-                              height: 168,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                padding: EdgeInsets.zero,
-                                itemCount: byRecent.length,
-                                separatorBuilder: (_, _) =>
-                                    const SizedBox(width: CockpitSpacing.md),
-                                itemBuilder: (_, i) =>
-                                    _ContinueCard(studio: byRecent[i]),
-                              ),
-                            ),
+                            _ContinueFeature(studio: _latestCreated(studios)),
                             const SizedBox(height: CockpitSpacing.lg),
                           ],
                           _SectionLabel(
@@ -266,16 +277,9 @@ class _HomeBody extends StatelessWidget {
             ),
           ),
           const SizedBox(height: CockpitSpacing.md),
-          SizedBox(
-            height: 168,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg),
-              itemCount: byRecent.length,
-              separatorBuilder: (_, _) =>
-                  const SizedBox(width: CockpitSpacing.md),
-              itemBuilder: (_, i) => _ContinueCard(studio: byRecent[i]),
-            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg),
+            child: _ContinueFeature(studio: _latestCreated(studios)),
           ),
         ],
         const SizedBox(height: CockpitSpacing.xl),
@@ -408,116 +412,75 @@ class _NewStudioHero extends StatelessWidget {
         child: InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(CockpitRadii.xl),
-          child: Ink(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.all(CockpitSpacing.lg),
             decoration: BoxDecoration(
+              // Matte red — flat solid, no gradient, no border.
+              color: scheme.primary,
               borderRadius: BorderRadius.circular(CockpitRadii.xl),
-              // A fixed near-black panel in both themes — the page's anchor.
-              gradient: const LinearGradient(
-                begin: Alignment.centerLeft,
-                end: Alignment.centerRight,
-                colors: [Color(0xFF17130F), Color(0xFF0A0908)],
-              ),
-              border: Border.all(color: Colors.black, width: 1),
-              // Neutral drop shadow only — a red glow here bleeds past the
-              // rounded card and reads as a hard-edged red box on the black page.
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: hovered ? 0.6 : 0.45),
-                  blurRadius: hovered ? 26 : 18,
-                  offset: const Offset(0, 10),
+                  color: scheme.primary
+                      .withValues(alpha: hovered ? 0.38 : 0.20),
+                  blurRadius: hovered ? 28 : 16,
+                  offset: const Offset(0, 8),
                 ),
               ],
             ),
-            // Clip the glow to the rounded corners — otherwise it bleeds past
-            // the radius and the top-right corner reads as a sharp rectangle.
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(CockpitRadii.xl),
-              child: Stack(
-                children: [
-                  // Red glow bleeding from the right edge.
-                  Positioned(
-                    right: -40,
-                    top: -30,
-                    child: Container(
-                      width: 180,
-                      height: 180,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: RadialGradient(
-                          colors: [
-                            scheme.primary.withValues(alpha: 0.35),
-                            scheme.primary.withValues(alpha: 0.0),
-                          ],
-                        ),
-                      ),
-                    ),
+            child: Row(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(CockpitRadii.md),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.all(CockpitSpacing.lg),
-                    child: Row(
+                  child: Icon(Icons.add_rounded,
+                      color: scheme.primary, size: 30),
+                ),
+                const SizedBox(width: CockpitSpacing.lg),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 52,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: scheme.primary,
-                          borderRadius: BorderRadius.circular(CockpitRadii.md),
-                          boxShadow: [
-                            BoxShadow(
-                              color: scheme.primary.withValues(alpha: 0.5),
-                              blurRadius: 18,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(Icons.add_rounded,
-                            color: Colors.white, size: 30),
-                      ),
-                      const SizedBox(width: CockpitSpacing.lg),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'New Study Studio',
-                              style: TextStyle(
-                                color: Color(0xFFF4EEE0),
-                                fontSize: 19,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: -0.3,
-                              ),
-                            ),
-                            SizedBox(height: 3),
-                            Text(
-                              'Upload materials and let AI build your '
-                              'personalized study space',
-                              style: TextStyle(
-                                color: Color(0xFF9C948A),
-                                fontSize: 13,
-                                height: 1.3,
-                              ),
-                            ),
-                          ],
+                      Text(
+                        'New Study Studio',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 19,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
                         ),
                       ),
-                      const SizedBox(width: CockpitSpacing.md),
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white
-                              .withValues(alpha: hovered ? 0.14 : 0.07),
+                      SizedBox(height: 3),
+                      Text(
+                        'Upload materials and let AI build your '
+                        'personalized study space',
+                        style: TextStyle(
+                          color: Color(0xFFFFDFDF),
+                          fontSize: 13,
+                          height: 1.3,
                         ),
-                        child: const Icon(Icons.arrow_forward_rounded,
-                            color: Color(0xFFF4EEE0), size: 20),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: CockpitSpacing.md),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white
+                        .withValues(alpha: hovered ? 0.30 : 0.16),
+                  ),
+                  child: const Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white, size: 20),
+                ),
               ],
-              ),
             ),
           ),
         ),
@@ -551,18 +514,11 @@ class _ContinueCard extends StatelessWidget {
           padding: const EdgeInsets.all(CockpitSpacing.lg),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(CockpitRadii.xl),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Color.lerp(scheme.surfaceContainerHighest, scheme.primary,
-                    0.10)!,
-                scheme.surfaceContainerLowest,
-              ],
-            ),
+            // Subtle border always; the surface fills in on hover.
+            color: hovered ? scheme.surfaceContainerHigh : Colors.transparent,
             border: Border.all(
               color: hovered
-                  ? scheme.primary.withValues(alpha: 0.45)
+                  ? scheme.primary.withValues(alpha: 0.4)
                   : scheme.outlineVariant,
             ),
           ),
@@ -632,6 +588,77 @@ class _ContinueCard extends StatelessWidget {
   }
 }
 
+/// Continue learning = the most-recently-created studio (one card) + a few
+/// analytics lines for it.
+class _ContinueFeature extends StatelessWidget {
+  const _ContinueFeature({required this.studio});
+  final Studio studio;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 168,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ContinueCard(studio: studio),
+          const SizedBox(width: CockpitSpacing.xl),
+          Expanded(child: _ContinueAnalytics(studio: studio)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ContinueAnalytics extends StatelessWidget {
+  const _ContinueAnalytics({required this.studio});
+  final Studio studio;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final pct = (studio.overallMastery.clamp(0, 1) * 100).round();
+
+    Widget line(IconData icon, String label, String value) => Padding(
+          padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: scheme.onSurfaceVariant),
+              const SizedBox(width: CockpitSpacing.sm),
+              Text(label,
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: scheme.onSurfaceVariant)),
+              const Spacer(),
+              Text(value,
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(studio.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleMedium),
+        const SizedBox(height: CockpitSpacing.md),
+        line(Icons.topic_outlined, 'Topics', '${studio.topicCount}'),
+        line(Icons.style_outlined, 'Flashcards', '${studio.flashcardCount}'),
+        line(Icons.insights_outlined, 'Mastery', '$pct%'),
+        line(Icons.schedule, 'Last studied',
+            relativeDay(studio.lastStudied)),
+      ],
+    );
+  }
+}
+
+Studio _latestCreated(List<Studio> studios) =>
+    [...studios].reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b);
+
 // ---------------------------------------------------------------------------
 // Your Studios — numbered editorial row
 // ---------------------------------------------------------------------------
@@ -650,15 +677,9 @@ class _StudioRow extends StatelessWidget {
       builder: (hovered) => AnimatedContainer(
         duration: const Duration(milliseconds: 160),
         decoration: BoxDecoration(
-          color: hovered
-              ? scheme.surfaceContainer
-              : scheme.surfaceContainerLow,
+          // Cardless: transparent until hover — grouping via space + the number.
+          color: hovered ? scheme.surfaceContainerHigh : Colors.transparent,
           borderRadius: BorderRadius.circular(CockpitRadii.lg),
-          border: Border.all(
-            color: hovered
-                ? scheme.primary.withValues(alpha: 0.35)
-                : scheme.outlineVariant,
-          ),
         ),
         child: Material(
           color: Colors.transparent,
@@ -692,7 +713,6 @@ class _StudioRow extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: scheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(CockpitRadii.md),
-                      border: Border.all(color: scheme.outlineVariant),
                     ),
                     child: Icon(_iconFor(studio.subject),
                         color: scheme.onSurface, size: 21),
@@ -869,7 +889,7 @@ class _RecommendationCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: scheme.surfaceContainerLow,
           borderRadius: BorderRadius.circular(CockpitRadii.lg),
-          border: Border.all(color: scheme.primary.withValues(alpha: 0.28)),
+          border: Border.all(color: scheme.outlineVariant),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1037,7 +1057,6 @@ class _EmptyStudios extends StatelessWidget {
       decoration: BoxDecoration(
         color: scheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(CockpitRadii.lg),
-        border: Border.all(color: scheme.outlineVariant),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

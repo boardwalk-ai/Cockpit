@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     # host-networked, so the gateway is reachable on loopback. Token is opt-in.
     hirara_hub_url: str = "http://127.0.0.1:8080"
     hirara_hub_token: str = ""
+    # Whole-file OCR of a PDF is extremely slow (minutes). Default off: use the
+    # embedded text layer (pypdf, then Hirara pdf_read). Images still OCR.
+    ingest_pdf_ocr: bool = True
+
+    # Go workers
+    embed_service_url: str = ""  # http://127.0.0.1:8091 — dedicated embed process
+    search_service_url: str = ""  # http://127.0.0.1:8092
+    redis_url: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

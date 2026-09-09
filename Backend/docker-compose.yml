@@ -17,10 +17,12 @@ services:
     build: .
     container_name: cockpit-api
     env_file: .env
+    environment:
+      EMBED_SERVICE_URL: ${EMBED_SERVICE_URL:-http://cockpit-embed:8091}
+      SEARCH_SERVICE_URL: ${SEARCH_SERVICE_URL:-http://cockpit-worker:8092}
+      REDIS_URL: ${REDIS_URL:-redis://cockpit-redis:6379/0}
     ports:
-      # API_BIND=127.0.0.1 in prod keeps the API on loopback (nginx fronts it);
-      # defaults to 0.0.0.0 for local dev.
-      - "${API_BIND:-0.0.0.0}:${API_PORT:-8100}:8100"
+      - "${API_BIND:-0.0.0.0}:${API_PORT:-8101}:8100"
     depends_on:
       cockpit-db:
         condition: service_healthy
@@ -28,9 +30,76 @@ services:
         condition: service_healthy
       cockpit-minio:
         condition: service_healthy
+      cockpit-redis:
+        condition: service_healthy
     volumes:
-      - ./app:/srv/app:ro          # code (dev hot-reload via uvicorn --reload)
-      - hf-cache:/root/.cache/huggingface   # embedding model cache
+      - ./app:/srv/app:ro
+    restart: unless-stopped
+
+  cockpit-embed:
+    build: .
+    container_name: cockpit-embed
+    env_file: .env
+    environment:
+      EMBED_SERVICE_URL: ""
+      EMBEDDINGS_BACKEND: ${EMBEDDINGS_BACKEND:-sentence-transformers}
+    command: >
+      uvicorn app.embed_main:app --host 0.0.0.0 --port 8091 --workers 1
+    volumes:
+      - ./app:/srv/app:ro
+      - hf-cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+  cockpit-redis:
+    image: redis:7-alpine
+    container_name: cockpit-redis
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  cockpit-gateway:
+    build:
+      context: ./go
+    container_name: cockpit-gateway
+    env_file: .env
+    environment:
+      GO_ROLE: gateway
+      GO_LISTEN: 0.0.0.0:8100
+      UPSTREAM_API: http://cockpit-api:8100
+      REDIS_URL: redis://cockpit-redis:6379/0
+      OBJECT_STORE_ENDPOINT: http://cockpit-minio:9000
+    ports:
+      - "${API_BIND:-0.0.0.0}:8100:8100"
+    depends_on:
+      cockpit-api:
+        condition: service_started
+      cockpit-redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  cockpit-worker:
+    build:
+      context: ./go
+    container_name: cockpit-worker
+    env_file: .env
+    environment:
+      GO_ROLE: worker
+      GO_LISTEN: 0.0.0.0:8092
+      REDIS_URL: redis://cockpit-redis:6379/0
+      EMBED_SERVICE_URL: http://cockpit-embed:8091
+      OBJECT_STORE_ENDPOINT: http://cockpit-minio:9000
+    ports:
+      - "127.0.0.1:8092:8092"
+    depends_on:
+      cockpit-redis:
+        condition: service_healthy
+      cockpit-embed:
+        condition: service_started
     restart: unless-stopped
 
   # --- Cockpit business data (studios, documents, ingest jobs) --------------

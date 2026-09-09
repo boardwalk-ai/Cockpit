@@ -47,6 +47,22 @@ async def insert_chunks(
     return len(rows)
 
 
+async def update_embeddings(
+    session: AsyncSession,
+    *,
+    rows: list[dict],
+) -> int:
+    """Overwrite `embedding` for existing chunks. Each row: id, embedding."""
+    if not rows:
+        return 0
+    await session.execute(
+        text("UPDATE chunks SET embedding = :embedding WHERE id = :id"),
+        rows,
+    )
+    await session.commit()
+    return len(rows)
+
+
 async def fetch_studio_chunks(
     session: AsyncSession,
     *,
@@ -83,6 +99,60 @@ async def delete_studio_chunks(
     )
     await session.commit()
     return result.rowcount or 0
+
+
+async def retrieve(
+    session: AsyncSession | None,
+    *,
+    user_id: uuid.UUID,
+    studio_id: uuid.UUID,
+    query_text: str,
+    top_k: int,
+    query_embedding: list[float] | None = None,
+) -> list[Retrieved]:
+    """Hybrid search via the Go search worker when configured, else in-process."""
+    from ..config import get_settings
+
+    settings = get_settings()
+    if settings.search_service_url.strip():
+        import httpx
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                f"{settings.search_service_url.rstrip('/')}/search",
+                json={
+                    "user_id": str(user_id),
+                    "studio_id": str(studio_id),
+                    "query": query_text,
+                    "top_k": top_k,
+                },
+            )
+            resp.raise_for_status()
+            hits = resp.json().get("hits") or []
+        return [
+            Retrieved(
+                chunk_id=uuid.UUID(h["chunk_id"]),
+                document_id=uuid.UUID(h["document_id"]),
+                ordinal=int(h["ordinal"]),
+                content=h["content"],
+                score=float(h["score"]),
+            )
+            for h in hits
+        ]
+    if query_embedding is None:
+        from .embeddings import get_embedder
+
+        query_embedding = get_embedder().embed([query_text])[0]
+    if session is None:
+        return []
+    return await hybrid_search(
+        session,
+        user_id=user_id,
+        studio_id=studio_id,
+        query_text=query_text,
+        query_embedding=query_embedding,
+        top_k=top_k,
+    )
 
 
 async def hybrid_search(

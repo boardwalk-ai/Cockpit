@@ -12,4 +12,5 @@ workspace:
   - packages/cockpit_ui
   - packages/cockpit_module
   - packages/study_studio
+  - packages/octo_notes
   - packages/doc_oct

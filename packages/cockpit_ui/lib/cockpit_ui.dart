@@ -3,6 +3,7 @@
 library;
 
 export 'src/components/cockpit_widgets.dart';
+export 'src/theme/borderless_theme.dart';
 export 'src/theme/cockpit_theme.dart';
 export 'src/theme/theme_controller.dart';
 export 'src/tokens/color_tokens.dart';

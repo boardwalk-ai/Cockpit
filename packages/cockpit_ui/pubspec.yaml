@@ -19,3 +19,16 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  # Plus Jakarta Sans — the shared borderless design-system font (OFL).
+  # Available to every package that depends on cockpit_ui as family
+  # `packages/cockpit_ui/PlusJakartaSans`.
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+        - asset: assets/fonts/PlusJakartaSans-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700

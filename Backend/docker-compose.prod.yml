@@ -17,23 +17,62 @@ services:
   cockpit-api:
     build: .
     network_mode: host
-    # Host network: bind loopback only (public exposure would be a security bug).
-    # 2 workers (not 4): each worker loads its OWN copy of the BGE-m3 embedding
-    # model (~2.5GB). This box has 15GB RAM, no swap, and runs the live octopilot
-    # app — 4 workers could OOM it. 2 keeps peak ~5GB with headroom.
     command: >
-      uvicorn app.main:app --host 127.0.0.1 --port 8100 --workers 2
-    # Persist the downloaded embedding model across recreates (no code mount).
-    volumes:
-      - hf-cache:/root/.cache/huggingface
-    ports: !override []            # host networking can't publish ports
+      uvicorn app.main:app --host 127.0.0.1 --port 8101 --workers 2
+    volumes: !override []
+    ports: !override []
     environment:
       APP_ENV: prod
+      EMBED_SERVICE_URL: http://127.0.0.1:8091
+      SEARCH_SERVICE_URL: http://127.0.0.1:8092
+      REDIS_URL: redis://127.0.0.1:6379/0
     restart: always
 
-  # db/vector/minio on the bridge, published to loopback only so the
-  # host-networked API can reach them. `!override` REPLACES the base list
-  # (compose otherwise merges/appends ports). Never public — 127.0.0.1 bound.
+  cockpit-embed:
+    build: .
+    network_mode: host
+    command: >
+      uvicorn app.embed_main:app --host 127.0.0.1 --port 8091 --workers 1
+    volumes:
+      - hf-cache:/root/.cache/huggingface
+    ports: !override []
+    environment:
+      APP_ENV: prod
+      EMBED_SERVICE_URL: ""
+      EMBEDDINGS_BACKEND: sentence-transformers
+    restart: always
+
+  cockpit-gateway:
+    build:
+      context: ./go
+    network_mode: host
+    environment:
+      APP_ENV: prod
+      GO_ROLE: gateway
+      GO_LISTEN: 127.0.0.1:8100
+      UPSTREAM_API: http://127.0.0.1:8101
+      REDIS_URL: redis://127.0.0.1:6379/0
+      OBJECT_STORE_ENDPOINT: http://127.0.0.1:9000
+    ports: !override []
+    restart: always
+
+  cockpit-worker:
+    build:
+      context: ./go
+    network_mode: host
+    environment:
+      GO_ROLE: worker
+      GO_LISTEN: 127.0.0.1:8092
+      REDIS_URL: redis://127.0.0.1:6379/0
+      EMBED_SERVICE_URL: http://127.0.0.1:8091
+      OBJECT_STORE_ENDPOINT: http://127.0.0.1:9000
+      HIRARA_HUB_URL: http://127.0.0.1:8080
+    ports: !override []
+    restart: always
+
+  cockpit-redis:
+    ports: !override ["127.0.0.1:6379:6379"]
+
   cockpit-db:
     ports: !override ["127.0.0.1:5433:5432"]
   cockpit-vectordb:

@@ -31,3 +31,5 @@ httpx==0.28.1
 # --- Utils ---
 tenacity==9.0.0                 # retries for network calls
 python-json-logger==3.2.1
+pypdf==5.1.0                    # local PDF text-layer extract
+redis==5.2.1                    # ingest job queue for the Go worker

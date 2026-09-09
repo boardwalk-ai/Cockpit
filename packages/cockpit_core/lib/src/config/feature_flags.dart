@@ -10,13 +10,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 class FeatureFlags {
   const FeatureFlags({
     this.studyStudioEnabled = true,
+    this.octoNotesEnabled = true,
   });
 
   final bool studyStudioEnabled;
+  final bool octoNotesEnabled;
 
-  FeatureFlags copyWith({bool? studyStudioEnabled}) {
+  FeatureFlags copyWith({bool? studyStudioEnabled, bool? octoNotesEnabled}) {
     return FeatureFlags(
       studyStudioEnabled: studyStudioEnabled ?? this.studyStudioEnabled,
+      octoNotesEnabled: octoNotesEnabled ?? this.octoNotesEnabled,
     );
   }
 }
@@ -29,6 +32,9 @@ class FeatureFlagsController extends Notifier<FeatureFlags> {
 
   void setStudyStudioEnabled(bool value) =>
       state = state.copyWith(studyStudioEnabled: value);
+
+  void setOctoNotesEnabled(bool value) =>
+      state = state.copyWith(octoNotesEnabled: value);
 
   void replace(FeatureFlags flags) => state = flags;
 }
