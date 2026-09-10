@@ -7,6 +7,7 @@ import 'presentation/ask_ai/ask_ai_page.dart';
 import 'presentation/building/building_page.dart';
 import 'presentation/dashboard/dashboard_page.dart';
 import 'presentation/flashcards/flashcards_page.dart';
+import 'presentation/ghostwriter/ghostwriter_page.dart';
 import 'presentation/home/study_home_page.dart';
 import 'presentation/knowledge_graph/knowledge_graph_page.dart';
 import 'presentation/lightning_recall/lightning_recall_page.dart';
@@ -57,6 +58,12 @@ class StudyStudioModule extends CockpitModule {
       routes: [
         // Static siblings declared before the `:studioId` param route.
         GoRoute(path: 'upload', builder: (_, _) => const UploadPage()),
+
+        GoRoute(
+          path: 'ghostwriter',
+          builder: (_, _) => const GhostWriterPage(),
+        ),
+
         GoRoute(
           path: 'build/:jobId',
           builder: (_, state) => BuildingPage(

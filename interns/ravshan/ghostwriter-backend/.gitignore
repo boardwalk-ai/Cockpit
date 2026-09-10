@@ -1,0 +1,7 @@
+python-agent/.venv/
+**/__pycache__/
+*.pyc
+.env
+.DS_Store
+go-api/data/
+python-agent/data/
