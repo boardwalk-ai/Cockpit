@@ -1,6 +1,8 @@
 import asyncio
+import hashlib
 import json
 import os
+import re
 from typing import Any
 
 import httpx
@@ -8,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from .memory.store import memory
 from .tools.executor import execute_tool
 from .tools.registry import tool_specs
 
@@ -29,6 +32,72 @@ class AnswerRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     text: str
+
+
+def text_vector(
+    text: str,
+    dimensions: int = 64,
+) -> list[float]:
+    vector = [0.0] * dimensions
+
+    tokens = re.findall(
+        r"[a-zA-Z0-9']+",
+        text.lower(),
+    )
+
+    for token in tokens:
+        digest = hashlib.sha256(
+            token.encode("utf-8")
+        ).digest()
+
+        bucket = int.from_bytes(
+            digest[:4],
+            "big",
+        ) % dimensions
+
+        sign = 1.0 if digest[4] % 2 == 0 else -1.0
+        vector[bucket] += sign
+
+    return vector
+
+
+def relevant_memories(
+    session_id: str,
+    text: str,
+    limit: int = 5,
+) -> list[str]:
+    if not text.strip():
+        return []
+
+    results = memory.search(
+        session_id,
+        text_vector(text),
+        limit=limit,
+    )
+
+    return [
+        item.text
+        for item in results
+        if item.text.strip()
+    ]
+
+
+def remember(
+    session_id: str,
+    text: str,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    clean = text.strip()
+
+    if not clean:
+        return
+
+    memory.add(
+        session_id,
+        clean,
+        text_vector(clean),
+        metadata or {},
+    )
 
 
 def has_real_openrouter_key() -> bool:
@@ -422,22 +491,136 @@ async def demo_agent_loop(
         },
     )
 
+    topic = str(
+        context.get("instruction")
+        or "Untitled GhostWriter Essay"
+    ).strip()
+
+    citation_style = str(
+        context.get("citationStyle")
+        or context.get("draftSettings", {}).get(
+            "citationStyle",
+            "APA",
+        )
+    )
+
+    requested_words = context.get(
+        "wordCount",
+        context.get("draftSettings", {}).get(
+            "wordCount",
+            800,
+        ),
+    )
+
+    essay = (
+        f"{topic}\n\n"
+        "The subject raises important questions about how "
+        "technology, institutions, and individuals adapt to "
+        "rapid change. A useful analysis begins by separating "
+        "the benefits of innovation from the risks created when "
+        "new systems are adopted without clear standards. "
+        "Responsible implementation requires transparency, "
+        "human oversight, and careful evaluation of outcomes.\n\n"
+        "One major advantage is efficiency. Modern digital tools "
+        "can reduce repetitive work, improve access to information, "
+        "and help people make better informed decisions. These "
+        "benefits become especially valuable when technology "
+        "supports human judgment rather than attempting to replace "
+        "it entirely. The strongest systems therefore combine "
+        "automation with meaningful human review.\n\n"
+        "At the same time, new technology can introduce problems "
+        "involving privacy, reliability, bias, security, and unequal "
+        "access. A system that performs well technically may still "
+        "cause harm if users do not understand its limitations. "
+        "Organizations should test systems carefully, protect data, "
+        "document important decisions, and provide clear ways for "
+        "people to challenge incorrect results.\n\n"
+        "Ultimately, progress depends on balance. Innovation should "
+        "continue, but it should be accompanied by accountability "
+        "and evidence. When technology is designed around real human "
+        "needs and reviewed continuously, it can become a powerful "
+        "tool instead of an uncontrolled source of risk."
+    )
+
+    bibliography = (
+        "No external sources were used in local fallback mode."
+    )
+
+    context["essay"] = essay
+    context["bibliography"] = bibliography
+    context["citationStyle"] = citation_style
+    context["wordCount"] = requested_words
+    topic = str(
+        context.get("instruction")
+        or "Untitled GhostWriter Essay"
+    ).strip()
+
+    citation_style = str(
+        context.get("citationStyle")
+        or context.get("draftSettings", {}).get(
+            "citationStyle",
+            "APA",
+        )
+    )
+
+    requested_words = context.get(
+        "wordCount",
+        context.get("draftSettings", {}).get(
+            "wordCount",
+            800,
+        ),
+    )
+
+    essay = (
+        f"{topic}\n\n"
+        "The subject raises important questions about how "
+        "technology, institutions, and individuals adapt to "
+        "rapid change. A useful analysis begins by separating "
+        "the benefits of innovation from the risks created when "
+        "new systems are adopted without clear standards. "
+        "Responsible implementation requires transparency, "
+        "human oversight, and careful evaluation of outcomes.\n\n"
+        "One major advantage is efficiency. Modern digital tools "
+        "can reduce repetitive work, improve access to information, "
+        "and help people make better informed decisions. These "
+        "benefits become especially valuable when technology "
+        "supports human judgment rather than attempting to replace "
+        "it entirely. The strongest systems therefore combine "
+        "automation with meaningful human review.\n\n"
+        "At the same time, new technology can introduce problems "
+        "involving privacy, reliability, bias, security, and unequal "
+        "access. A system that performs well technically may still "
+        "cause harm if users do not understand its limitations. "
+        "Organizations should test systems carefully, protect data, "
+        "document important decisions, and provide clear ways for "
+        "people to challenge incorrect results.\n\n"
+        "Ultimately, progress depends on balance. Innovation should "
+        "continue, but it should be accompanied by accountability "
+        "and evidence. When technology is designed around real human "
+        "needs and reviewed continuously, it can become a powerful "
+        "tool instead of an uncontrolled source of risk."
+    )
+
+    bibliography = (
+        "No external sources were used in local fallback mode."
+    )
+
+    context["essay"] = essay
+    context["bibliography"] = bibliography
+    context["citationStyle"] = citation_style
+    context["wordCount"] = requested_words
     context["exportReady"] = True
 
     context["exportDoc"] = {
-        "title": "Ghostwriter Demo Draft",
+        "title": topic,
         "pages": [
             {
                 "id": 1,
                 "title": "Essay",
-                "html": (
-                    "<p>GhostWriter backend "
-                    "demo completed.</p>"
-                ),
-                "plainText": (
-                    "GhostWriter backend "
-                    "demo completed."
-                ),
+                "html": "<p>"
+                + essay.replace("\n\n", "</p><p>")
+                + "</p>",
+                "plainText": essay,
             }
         ],
         "profile": {
@@ -454,12 +637,32 @@ async def demo_agent_loop(
     await emit(
         run,
         {
+            "type": "context_update",
+            "patch": context,
+        },
+    )
+
+    # Stream the draft visibly through SSE.
+    words = essay.split(" ")
+    for index, word in enumerate(words):
+        chunk = word
+        if index < len(words) - 1:
+            chunk += " "
+
+        await emit(
+            run,
+            {
+                "type": "essay_delta",
+                "chunk": chunk,
+            },
+        )
+        await asyncio.sleep(0.015)
+
+    await emit(
+        run,
+        {
             "type": "assistant_message",
-            "text": (
-                "Demo workflow completed. "
-                "OpenRouter can be enabled by "
-                "setting OPENROUTER_API_KEY."
-            ),
+            "text": essay,
         },
     )
 
@@ -486,9 +689,26 @@ async def agent_loop(
 
     instruction = context.get("instruction")
 
+    semantic_memory = context.get(
+        "semanticMemory",
+        [],
+    )
+
+    memory_brief = ""
+
+    if semantic_memory:
+        memory_brief = (
+            "\n\nRELEVANT PRIOR SESSION MEMORY:\n- "
+            + "\n- ".join(
+                str(item)
+                for item in semantic_memory
+            )
+        )
+
     user_brief = (
         f"USER INSTRUCTION:\n"
-        f"{instruction}\n\nProceed."
+        f"{instruction}"
+        f"{memory_brief}\n\nProceed."
         if instruction
         else (
             "No essay instruction supplied. "
@@ -866,12 +1086,39 @@ async def start_run(
             "runId": run_id,
         }
 
+    session_id = str(
+        request.draft.get("sessionId")
+        or "GUEST"
+    )
+
+    context = initial_context(
+        request.draft
+    )
+
+    instruction = str(
+        context.get("instruction") or ""
+    ).strip()
+
+    context["semanticMemory"] = relevant_memories(
+        session_id,
+        instruction,
+    )
+
+    remember(
+        session_id,
+        instruction,
+        {
+            "role": "user",
+            "runId": run_id,
+            "kind": "instruction",
+        },
+    )
+
     run = {
         "id": run_id,
+        "sessionId": session_id,
         "draft": request.draft,
-        "context": initial_context(
-            request.draft
-        ),
+        "context": context,
         "events": asyncio.Queue(),
         "answers": asyncio.Queue(),
         "messages": asyncio.Queue(),
@@ -996,11 +1243,54 @@ async def message(
             "text is required",
         )
 
-    await run["messages"].put(
-        request.text.strip()
+    text = request.text.strip()
+
+    session_id = str(
+        run.get("sessionId")
+        or "GUEST"
     )
 
-    return {"ok": True}
+    related = relevant_memories(
+        session_id,
+        text,
+    )
+
+    remember(
+        session_id,
+        text,
+        {
+            "role": "user",
+            "runId": run_id,
+            "kind": "follow_up",
+        },
+    )
+
+    run["context"]["semanticMemory"] = related
+
+    run["context"].setdefault(
+        "conversationMemory",
+        [],
+    ).append(text)
+
+    await run["messages"].put(text)
+
+    await emit(
+        run,
+        {
+            "type": "context_update",
+            "patch": {
+                "semanticMemory": related,
+                "conversationMemory": run["context"][
+                    "conversationMemory"
+                ],
+            },
+        },
+    )
+
+    return {
+        "ok": True,
+        "memoryMatches": len(related),
+    }
 
 
 @app.post("/runs/{run_id}/pause")

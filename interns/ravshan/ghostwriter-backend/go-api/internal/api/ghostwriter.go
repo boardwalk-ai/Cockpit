@@ -40,11 +40,14 @@ func (s *Server) startRun(w http.ResponseWriter, r *http.Request) {
 
 	s.Runs.Create(run)
 
+	remainingCredits := s.Workspace.UseCredits(1)
+
 	go s.startPythonAgent(run)
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"runId": run.ID,
-		"mode":  "agentic",
+		"runId":   run.ID,
+		"mode":    "agentic",
+		"credits": remainingCredits,
 	})
 }
 

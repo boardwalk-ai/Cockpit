@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+
+import 'ghostwriter_api.dart';
 
 enum GhostWriterStage { idle, typing, generating, finished }
 
@@ -14,18 +18,28 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
   final TextEditingController _chatController = TextEditingController();
   final List<String> _chatMessages = [];
 
+  final GhostWriterApi _api = GhostWriterApi();
+  StreamSubscription<Map<String, dynamic>>? _eventSubscription;
+
+  String? _runId;
+  String _assistantText = '';
+  String? _errorMessage;
+  String? _pendingField;
+  String? _pendingQuestion;
+  Map<String, dynamic> _agentContext = {};
+
   GhostWriterStage _stage = GhostWriterStage.idle;
 
-  final List<String> _threads = [
-    'Artificial Intelligence in Education',
-    'Genghis Khan',
-    '400 words essay about alex...',
-    'Alexander Pope',
-    'Alexander Pope',
-  ];
+  List<Map<String, dynamic>> _threads = [];
+  List<Map<String, dynamic>> _folders = [];
+
+  String _sessionName = 'GUEST';
+  int _credits = 0;
+  bool _workspaceLoading = true;
+  bool _saving = false;
+  bool _starting = false;
 
   int _selectedThreadIndex = 0;
-  int? _hoveredThreadIndex;
   bool _showAskOcto = false;
   final TextEditingController _askOctoController = TextEditingController();
   String _askOctoAnswer =
@@ -39,21 +53,402 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
   static const Color _accent = Color(0xFFFF343C);
 
   @override
+  void initState() {
+    super.initState();
+    _loadWorkspace();
+  }
+
+  Future<void> _loadWorkspace() async {
+    try {
+      final data = await _api.workspace();
+
+      if (!mounted) return;
+
+      final rawThreads = data['threads'];
+      final rawFolders = data['folders'];
+
+      setState(() {
+        _sessionName = data['sessionName']?.toString() ?? 'GUEST';
+        _credits = data['credits'] is int
+            ? data['credits'] as int
+            : int.tryParse(data['credits']?.toString() ?? '') ?? 0;
+
+        _threads = rawThreads is List
+            ? rawThreads
+                  .whereType<Map>()
+                  .map(
+                    (item) => item.map(
+                      (key, value) => MapEntry(key.toString(), value),
+                    ),
+                  )
+                  .toList()
+            : [];
+
+        _folders = rawFolders is List
+            ? rawFolders
+                  .whereType<Map>()
+                  .map(
+                    (item) => item.map(
+                      (key, value) => MapEntry(key.toString(), value),
+                    ),
+                  )
+                  .toList()
+            : [];
+
+        _workspaceLoading = false;
+
+        if (_threads.isEmpty) {
+          _selectedThreadIndex = 0;
+        } else if (_selectedThreadIndex >= _threads.length) {
+          _selectedThreadIndex = 0;
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _workspaceLoading = false;
+        _errorMessage = 'Workspace failed: $error';
+      });
+    }
+  }
+
+  Future<void> _saveCurrentThread() async {
+    if (_saving) return;
+
+    final prompt = _promptController.text.trim();
+
+    if (prompt.isEmpty) {
+      setState(() {
+        _errorMessage = 'Nothing to save yet.';
+      });
+      return;
+    }
+
+    setState(() {
+      _saving = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final draftSettings = _agentContext['draftSettings'];
+      final settings = draftSettings is Map
+          ? draftSettings.map((key, value) => MapEntry(key.toString(), value))
+          : <String, dynamic>{};
+
+      final exportDoc = _agentContext['exportDoc'];
+      final export = exportDoc is Map
+          ? exportDoc.map((key, value) => MapEntry(key.toString(), value))
+          : <String, dynamic>{};
+
+      String essay = '';
+
+      for (final key in [
+        'essay',
+        'essay_content',
+        'content',
+        'humanizedEssay',
+        'finalEssay',
+      ]) {
+        final value = export[key] ?? _agentContext[key];
+
+        if (value != null && value.toString().trim().isNotEmpty) {
+          essay = value.toString();
+          break;
+        }
+      }
+
+      if (essay.isEmpty) {
+        essay = _assistantText;
+      }
+
+      String bibliography = '';
+
+      for (final key in ['bibliography', 'references', 'referenceList']) {
+        final value = export[key] ?? _agentContext[key];
+
+        if (value != null && value.toString().trim().isNotEmpty) {
+          bibliography = value.toString();
+          break;
+        }
+      }
+
+      final rawSources =
+          _agentContext['sources'] ??
+          _agentContext['researchSources'] ??
+          _agentContext['scrapedSources'];
+
+      final sources = rawSources is List
+          ? rawSources
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      item.map((key, value) => MapEntry(key.toString(), value)),
+                )
+                .toList()
+          : <Map<String, dynamic>>[];
+
+      final citationStyle =
+          settings['citationStyle']?.toString() ??
+          _agentContext['citationStyle']?.toString() ??
+          'APA';
+
+      final rawWordCount = settings['wordCount'] ?? _agentContext['wordCount'];
+
+      final wordCount = rawWordCount is int
+          ? rawWordCount
+          : int.tryParse(rawWordCount?.toString() ?? '') ??
+                essay
+                    .trim()
+                    .split(RegExp(r'\s+'))
+                    .where((e) => e.isNotEmpty)
+                    .length;
+
+      String? folderId;
+
+      if (_folders.isEmpty) {
+        final createdFolder = await _api.createFolder('My Essays');
+
+        folderId = createdFolder['id']?.toString();
+
+        if (folderId == null || folderId.isEmpty) {
+          throw Exception('Backend created a folder without an id');
+        }
+
+        _folders = [
+          createdFolder.map((key, value) => MapEntry(key.toString(), value)),
+        ];
+      } else {
+        folderId = _folders.first['id']?.toString();
+      }
+
+      await _api.saveThread(
+        runId: _runId,
+        folderId: folderId,
+        title: prompt.length > 60 ? '${prompt.substring(0, 60)}...' : prompt,
+        prompt: prompt,
+        status: _stage == GhostWriterStage.finished ? 'Finished' : 'Running',
+        essay: essay,
+        bibliography: bibliography,
+        citationStyle: citationStyle,
+        wordCount: wordCount,
+        sources: sources,
+      );
+
+      await _loadWorkspace();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('GhostWriter thread saved')));
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = 'Save failed: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    _eventSubscription?.cancel();
     _promptController.dispose();
     _chatController.dispose();
     _askOctoController.dispose();
     super.dispose();
   }
 
-  void _start() {
+  Future<void> _start() async {
+    if (_starting) return;
+
     final message = _promptController.text.trim();
     if (message.isEmpty) return;
 
+    _starting = true;
+
+    await _eventSubscription?.cancel();
+
+    if (mounted) {
+      setState(() {
+        _chatMessages
+          ..clear()
+          ..add(message);
+        _assistantText = '';
+        _errorMessage = null;
+        _pendingField = null;
+        _pendingQuestion = null;
+        _agentContext = {};
+        _stage = GhostWriterStage.generating;
+      });
+    }
+
+    try {
+      final runId = await _api.start(message);
+
+      if (!mounted) return;
+
+      setState(() {
+        _runId = runId;
+      });
+
+      await _loadWorkspace();
+
+      _eventSubscription = _api
+          .events(runId)
+          .listen(
+            _handleAgentEvent,
+            onError: (Object error) {
+              if (!mounted) return;
+
+              setState(() {
+                _errorMessage = 'Stream disconnected: $error';
+              });
+            },
+          );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = 'Could not start GhostWriter: $error';
+      });
+    } finally {
+      _starting = false;
+    }
+  }
+
+  Future<void> _retryStream() async {
+    final runId = _runId;
+
+    if (runId == null) {
+      await _start();
+      return;
+    }
+
+    await _eventSubscription?.cancel();
+
+    if (!mounted) return;
+
     setState(() {
-      _chatMessages.add(message);
-      _stage = GhostWriterStage.generating;
+      _errorMessage = null;
     });
+
+    try {
+      _eventSubscription = _api
+          .events(runId)
+          .listen(
+            _handleAgentEvent,
+            onError: (Object error) {
+              if (!mounted) return;
+
+              setState(() {
+                _errorMessage = 'Stream disconnected: $error';
+              });
+            },
+          );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = 'Reconnect failed: $error';
+      });
+    }
+  }
+
+  void _handleAgentEvent(Map<String, dynamic> event) {
+    if (!mounted) return;
+
+    final type = event['type']?.toString();
+
+    setState(() {
+      switch (type) {
+        case 'assistant_delta':
+        case 'essay_delta':
+          _assistantText += event['chunk']?.toString() ?? '';
+          break;
+
+        case 'assistant_message':
+          final text = event['text']?.toString() ?? '';
+          if (_assistantText.trim().isEmpty) {
+            _assistantText = text;
+          }
+          break;
+
+        case 'question':
+          _pendingField = event['field']?.toString();
+          _pendingQuestion = event['question']?.toString();
+          break;
+
+        case 'context_update':
+          final patch = event['patch'];
+          if (patch is Map) {
+            _agentContext.addAll(
+              patch.map((key, value) => MapEntry(key.toString(), value)),
+            );
+          }
+          break;
+
+        case 'step_error':
+        case 'fatal':
+          _errorMessage = event['error']?.toString() ?? 'GhostWriter failed.';
+          break;
+
+        case 'done':
+          _pendingField = null;
+          _pendingQuestion = null;
+          _stage = GhostWriterStage.finished;
+          break;
+      }
+    });
+  }
+
+  Future<void> _sendComposerMessage() async {
+    final message = _chatController.text.trim();
+    if (message.isEmpty) return;
+
+    final runId = _runId;
+
+    if (runId == null) {
+      setState(() {
+        _errorMessage = 'No active GhostWriter session.';
+      });
+      return;
+    }
+
+    _chatController.clear();
+
+    try {
+      if (_pendingField != null) {
+        final field = _pendingField!;
+
+        setState(() {
+          _chatMessages.add(message);
+          _pendingField = null;
+          _pendingQuestion = null;
+        });
+
+        await _api.answer(runId: runId, field: field, value: message);
+      } else {
+        setState(() {
+          _chatMessages.add(message);
+        });
+
+        await _api.message(runId: runId, text: message);
+      }
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage = 'Message failed: $error';
+      });
+    }
   }
 
   @override
@@ -68,7 +463,12 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
           SafeArea(
             child: Column(
               children: [
-                const _GhostWriterTopBar(),
+                _GhostWriterTopBar(
+                  sessionName: _sessionName,
+                  credits: _credits,
+                  saving: _saving,
+                  onSave: _saveCurrentThread,
+                ),
                 Expanded(
                   child:
                       _stage == GhostWriterStage.idle ||
@@ -558,6 +958,12 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                   _promptController.clear();
                   _chatController.clear();
                   _chatMessages.clear();
+                  _assistantText = '';
+                  _errorMessage = null;
+                  _pendingField = null;
+                  _pendingQuestion = null;
+                  _runId = null;
+                  _agentContext = {};
                 });
               },
               icon: const Icon(Icons.add, size: 18),
@@ -573,6 +979,70 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             ),
           ),
           const SizedBox(height: 20),
+
+          const Text(
+            'FOLDERS',
+            style: TextStyle(
+              color: Color(0xFF5E6065),
+              fontSize: 11,
+              letterSpacing: 2.2,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          if (_workspaceLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: LinearProgressIndicator(),
+            )
+          else if (_folders.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                'No folders yet',
+                style: TextStyle(color: _muted, fontSize: 13),
+              ),
+            )
+          else
+            for (final folder in _folders)
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: _panelSoft,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _border),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.folder_rounded,
+                      size: 18,
+                      color: Color(0xFFFF6268),
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        (folder['name'] ?? 'Untitled Folder').toString(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+          const SizedBox(height: 18),
+
           const Text(
             'THREADS',
             style: TextStyle(
@@ -583,180 +1053,102 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             ),
           ),
           const SizedBox(height: 10),
-          Expanded(
-            child: ListView.separated(
-              itemCount: _threads.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final selected = _selectedThreadIndex == index;
-                final hovered = _hoveredThreadIndex == index;
 
-                final status = index == 0
-                    ? 'Running...'
-                    : index == 3
-                    ? 'Finished'
-                    : 'Error';
+          if (_workspaceLoading)
+            const Expanded(child: Center(child: CircularProgressIndicator()))
+          else if (_threads.isEmpty)
+            const Expanded(
+              child: Center(
+                child: Text(
+                  'No saved threads yet',
+                  style: TextStyle(color: _muted, fontSize: 13),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadWorkspace,
+                child: ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: _threads.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final thread = _threads[index];
+                    final selected = _selectedThreadIndex == index;
 
-                return MouseRegion(
-                  onEnter: (_) {
-                    setState(() {
-                      _hoveredThreadIndex = index;
-                    });
-                  },
-                  onExit: (_) {
-                    setState(() {
-                      _hoveredThreadIndex = null;
-                    });
-                  },
-                  child: InkWell(
-                    onTap: () {
-                      setState(() {
-                        _selectedThreadIndex = index;
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? _accent.withValues(alpha: 0.10)
-                            : hovered
-                            ? const Color(0xFF181A1D)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _threads[index],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: selected
-                                        ? Colors.white
-                                        : const Color(0xFFD0D1D4),
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  status,
-                                  style: const TextStyle(
-                                    color: _muted,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (hovered || selected)
-                            PopupMenuButton<String>(
-                              tooltip: '',
-                              color: const Color(0xFF1A1B1E),
-                              elevation: 8,
-                              offset: const Offset(0, 34),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                                side: const BorderSide(
-                                  color: Color(0xFF34363A),
-                                ),
+                    final title =
+                        thread['title']?.toString() ??
+                        'Untitled GhostWriter Essay';
+
+                    final status = thread['status']?.toString() ?? 'Saved';
+
+                    return InkWell(
+                      onTap: () {
+                        setState(() {
+                          _selectedThreadIndex = index;
+
+                          final prompt = thread['prompt']?.toString() ?? '';
+
+                          final essay = thread['essay']?.toString() ?? '';
+
+                          _promptController.text = prompt;
+                          _assistantText = essay;
+                          _stage = status.toLowerCase() == 'finished'
+                              ? GhostWriterStage.finished
+                              : GhostWriterStage.generating;
+
+                          _agentContext = {
+                            'bibliography': thread['bibliography'] ?? '',
+                            'citationStyle': thread['citationStyle'] ?? '',
+                            'wordCount': thread['wordCount'] ?? 0,
+                            'sources': thread['sources'] ?? [],
+                          };
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? _accent.withValues(alpha: 0.10)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: selected
+                                    ? Colors.white
+                                    : const Color(0xFFD0D1D4),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
                               ),
-                              icon: const Icon(
-                                Icons.more_horiz,
-                                color: Color(0xFF8C8E93),
-                                size: 22,
-                              ),
-                              onSelected: (value) {
-                                if (value == 'delete') {
-                                  setState(() {
-                                    _threads.removeAt(index);
-
-                                    if (_threads.isEmpty) {
-                                      _selectedThreadIndex = 0;
-                                    } else if (_selectedThreadIndex >=
-                                        _threads.length) {
-                                      _selectedThreadIndex =
-                                          _threads.length - 1;
-                                    }
-
-                                    _hoveredThreadIndex = null;
-                                  });
-                                }
-                              },
-                              itemBuilder: (context) => const [
-                                PopupMenuItem<String>(
-                                  value: 'folder',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.folder_outlined,
-                                        color: Color(0xFFBFC0C4),
-                                      ),
-                                      SizedBox(width: 12),
-                                      Text(
-                                        'Add to folder',
-                                        style: TextStyle(
-                                          color: Color(0xFFD0D1D4),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuDivider(),
-                                PopupMenuItem<String>(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.delete_outline_rounded,
-                                        color: Color(0xFFFF4B52),
-                                      ),
-                                      SizedBox(width: 12),
-                                      Text(
-                                        'Delete thread',
-                                        style: TextStyle(
-                                          color: Color(0xFFFF4B52),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
                             ),
-                        ],
+                            const SizedBox(height: 4),
+                            Text(
+                              status,
+                              style: const TextStyle(
+                                color: _muted,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomLeft,
-            child: InkWell(
-              onTap: () {
-                setState(() {
-                  _showAskOcto = !_showAskOcto;
-                });
-              },
-              borderRadius: BorderRadius.circular(999),
-              child: const CircleAvatar(
-                radius: 34,
-                backgroundColor: Color(0xFF15100B),
-                child: Text('👻', style: TextStyle(fontSize: 30)),
+                    );
+                  },
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -767,7 +1159,31 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
       color: _panel,
       child: Column(
         children: [
-          _WorkspaceHeader(finished: _stage == GhostWriterStage.finished),
+          _WorkspaceHeader(
+            finished: _stage == GhostWriterStage.finished,
+            title: _promptController.text.trim().isEmpty
+                ? 'Untitled GhostWriter Essay'
+                : _promptController.text.trim(),
+            citationStyle:
+                (_agentContext['citationStyle'] ??
+                        (_agentContext['draftSettings'] is Map
+                            ? (_agentContext['draftSettings']
+                                  as Map)['citationStyle']
+                            : null) ??
+                        'APA')
+                    .toString(),
+            wordCount:
+                int.tryParse(
+                  (_agentContext['wordCount'] ??
+                          (_agentContext['draftSettings'] is Map
+                              ? (_agentContext['draftSettings']
+                                    as Map)['wordCount']
+                              : null) ??
+                          0)
+                      .toString(),
+                ) ??
+                0,
+          ),
           Expanded(
             child: _stage == GhostWriterStage.finished
                 ? _buildFinishedState()
@@ -789,47 +1205,137 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
           const Positioned.fill(
             child: CustomPaint(painter: _GhostWriterGridPainter()),
           ),
-
           Positioned.fill(
-            child: ListView.builder(
-              reverse: true,
+            child: ListView(
               padding: const EdgeInsets.fromLTRB(30, 30, 30, 30),
-              itemCount: _chatMessages.length,
-              itemBuilder: (context, index) {
-                final message = _chatMessages[_chatMessages.length - 1 - index];
-
-                return Align(
-                  alignment: Alignment.centerRight,
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 420),
-                    margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFDC2C33),
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(
-                            0xFFFF343C,
-                          ).withValues(alpha: 0.18),
-                          blurRadius: 28,
+              children: [
+                for (final message in _chatMessages)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 420),
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDC2C33),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Text(
+                        message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
                         ),
-                      ],
-                    ),
-                    child: Text(
-                      message,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
-                );
-              },
+
+                if (_assistantText.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 700),
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF17191D),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: _border),
+                      ),
+                      child: Text(
+                        _assistantText,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 15,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                if (_pendingQuestion != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 600),
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF211012),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(color: const Color(0xFF7A2D31)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'GhostWriter needs your input',
+                            style: TextStyle(
+                              color: Color(0xFFFF777D),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _pendingQuestion!,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Answer below and press send.',
+                            style: TextStyle(color: _muted, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                if (_errorMessage != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 700),
+                      margin: const EdgeInsets.only(bottom: 14),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF251013),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: const Color(0xFFFF4B52)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(
+                                color: Color(0xFFFF777D),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          TextButton.icon(
+                            onPressed: _retryStream,
+                            icon: const Icon(Icons.refresh_rounded, size: 17),
+                            label: const Text('Retry'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFFFF777D),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         ],
@@ -838,13 +1344,22 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
   }
 
   Widget _buildFinishedState() {
+    final contextEssay = (_agentContext['essay'] ?? '').toString().trim();
+    final essay = contextEssay.isNotEmpty
+        ? contextEssay
+        : _assistantText.trim();
+
+    final bibliography = (_agentContext['bibliography'] ?? '')
+        .toString()
+        .trim();
+
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(30, 20, 30, 30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'All done. Your humanized essay is packaged and ready to download. Let me know if you’d like any revisions, a full rewrite, or anything else.',
+            'Your GhostWriter draft is complete.',
             style: TextStyle(color: Colors.white70, fontSize: 16, height: 1.5),
           ),
           const SizedBox(height: 18),
@@ -872,7 +1387,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'Refine the humanized essay before your final download',
+                        'Review and refine your generated essay',
                         style: TextStyle(color: _muted, fontSize: 13),
                       ),
                     ],
@@ -884,7 +1399,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
           ),
           const SizedBox(height: 20),
           const Text(
-            'HUMANIZED · STEALTHGPT',
+            'FINAL ESSAY',
             style: TextStyle(
               color: Color(0xFF5E6065),
               fontSize: 11,
@@ -894,21 +1409,54 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
           ),
           const SizedBox(height: 12),
           Container(
+            width: double.infinity,
             padding: const EdgeInsets.all(18),
             decoration: BoxDecoration(
               color: _panelSoft,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _border),
             ),
-            child: const Text(
-              'Artificial intelligence is rapidly reshaping education by supporting personalized learning, reducing repetitive workloads, and helping students access information more efficiently. At the same time, responsible use requires careful attention to privacy, fairness, transparency, and the continuing role of human teachers.\n\nAI systems can adapt lessons to a learner’s pace and provide targeted feedback. Yet these tools should augment human judgment rather than replace it. The strongest educational systems will combine technological capability with human empathy, creativity, and accountability.\n\nAs adoption expands, schools and universities must establish clear policies that ensure artificial intelligence strengthens learning without narrowing it into purely data-driven outcomes.',
-              style: TextStyle(
-                color: Colors.white60,
+            child: Text(
+              essay.isEmpty
+                  ? 'No essay content was returned by the backend.'
+                  : essay,
+              style: const TextStyle(
+                color: Colors.white70,
                 fontSize: 14,
                 height: 1.55,
               ),
             ),
           ),
+          if (bibliography.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text(
+              'REFERENCES',
+              style: TextStyle(
+                color: Color(0xFF5E6065),
+                fontSize: 11,
+                letterSpacing: 2.0,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _border),
+              ),
+              child: Text(
+                bibliography,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  height: 1.55,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -925,10 +1473,30 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
   }
 
   Widget _buildEssayInfoPanel() {
-    return const Column(
+    final topic = _promptController.text.trim().isEmpty
+        ? 'Untitled GhostWriter Essay'
+        : _promptController.text.trim();
+
+    final citationStyle =
+        (_agentContext['citationStyle'] ??
+                (_agentContext['draftSettings'] is Map
+                    ? (_agentContext['draftSettings'] as Map)['citationStyle']
+                    : null) ??
+                'Pending')
+            .toString();
+
+    final wordCount =
+        (_agentContext['wordCount'] ??
+                (_agentContext['draftSettings'] is Map
+                    ? (_agentContext['draftSettings'] as Map)['wordCount']
+                    : null) ??
+                'Pending')
+            .toString();
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'ESSAY INFORMATION',
           style: TextStyle(
             color: Color(0xFF5E6065),
@@ -937,34 +1505,41 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             fontWeight: FontWeight.w700,
           ),
         ),
-        SizedBox(height: 26),
+        const SizedBox(height: 26),
+        _InfoBlock(label: 'TOPIC', value: topic),
         _InfoBlock(
-          label: 'TOPIC',
-          value: 'Artificial Intelligence in Education',
+          label: 'STATUS',
+          value: _stage == GhostWriterStage.finished
+              ? 'Finished'
+              : 'Generating',
         ),
-        _InfoBlock(label: 'ESSAY TYPE', value: 'Argumentative'),
-        _InfoBlock(label: 'CITATION', value: 'APA'),
-        _InfoBlock(label: 'WORD COUNT', value: '1000'),
-        SizedBox(height: 20),
-        Text(
-          'Outlines',
-          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
-        ),
+        _InfoBlock(label: 'CITATION', value: citationStyle),
+        _InfoBlock(label: 'WORD COUNT', value: wordCount),
       ],
     );
   }
 
   Widget _buildSourcesPanel() {
-    const sources = [
-      ('Artificial intelligence in education – AI', 'UNESCO'),
-      ('AI in Education: Benefits, Risks, and Real Examples', 'Netguru'),
-      (
-        'Artificial Intelligence in Education: Benefits, Risks and Challenges',
-        'Fairmont School of Business',
-      ),
-      ('How Khan Academy Is Building a Better AI Tutor', 'Khan Academy'),
-      ('What is MATHia?', 'Carnegie Learning'),
-    ];
+    final rawSources =
+        _agentContext['compactedSources'] ??
+        _agentContext['sources'] ??
+        const [];
+
+    final sources = <Map<String, dynamic>>[];
+
+    if (rawSources is List) {
+      for (final item in rawSources) {
+        if (item is Map) {
+          sources.add(
+            item.map((key, value) => MapEntry(key.toString(), value)),
+          );
+        }
+      }
+    }
+
+    final bibliography = (_agentContext['bibliography'] ?? '')
+        .toString()
+        .trim();
 
     return SingleChildScrollView(
       child: Column(
@@ -980,29 +1555,80 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             ),
           ),
           const SizedBox(height: 24),
-          for (final source in sources) ...[
-            Text(
-              source.$1,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                height: 1.35,
-                fontWeight: FontWeight.w600,
+          if (sources.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: _border),
+              ),
+              child: const Text(
+                'No sources were returned by the backend.',
+                style: TextStyle(color: _muted, fontSize: 13, height: 1.4),
+              ),
+            )
+          else
+            for (final source in sources) ...[
+              Text(
+                (source['title'] ?? 'Untitled source').toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 6),
+              if ((source['author'] ?? '').toString().trim().isNotEmpty)
+                Text(
+                  source['author'].toString(),
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              if ((source['publisher'] ?? '').toString().trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    source['publisher'].toString(),
+                    style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ),
+              if ((source['url'] ?? '').toString().trim().isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    source['url'].toString(),
+                    style: const TextStyle(
+                      color: Color(0xFFFF6268),
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              const Divider(color: _border, height: 1),
+              const SizedBox(height: 16),
+            ],
+          if (bibliography.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            const Text(
+              'REFERENCE LIST',
+              style: TextStyle(
+                color: Color(0xFF5E6065),
+                fontSize: 11,
+                letterSpacing: 2.0,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 12),
             Text(
-              source.$2,
-              style: const TextStyle(color: _muted, fontSize: 12),
+              bibliography,
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 12,
+                height: 1.5,
+              ),
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'https://example.com/source',
-              style: TextStyle(color: Color(0xFFFF6268), fontSize: 12),
-            ),
-            const SizedBox(height: 16),
-            const Divider(color: _border, height: 1),
-            const SizedBox(height: 16),
           ],
         ],
       ),
@@ -1020,11 +1646,14 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
           Expanded(
             child: TextField(
               controller: _chatController,
+              onSubmitted: (_) => _sendComposerMessage(),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: _stage == GhostWriterStage.finished
-                    ? 'Ask Ghostwriter anything about your essay...'
-                    : 'Ask for different focus areas, or describe what to emphasize...',
+                hintText:
+                    _pendingQuestion ??
+                    (_stage == GhostWriterStage.finished
+                        ? 'Ask Ghostwriter anything about your essay...'
+                        : 'Ask for different focus areas, or describe what to emphasize...'),
                 hintStyle: const TextStyle(color: _muted),
                 filled: true,
                 fillColor: _panelSoft,
@@ -1050,16 +1679,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
-              onPressed: () {
-                final message = _chatController.text.trim();
-
-                if (message.isEmpty) return;
-
-                setState(() {
-                  _chatMessages.add(message);
-                  _chatController.clear();
-                });
-              },
+              onPressed: _sendComposerMessage,
               icon: const Icon(Icons.send_rounded, color: Color(0xFFFF6C72)),
             ),
           ),
@@ -1070,7 +1690,17 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
 }
 
 class _GhostWriterTopBar extends StatelessWidget {
-  const _GhostWriterTopBar();
+  const _GhostWriterTopBar({
+    required this.sessionName,
+    required this.credits,
+    required this.saving,
+    required this.onSave,
+  });
+
+  final String sessionName;
+  final int credits;
+  final bool saving;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -1091,11 +1721,14 @@ class _GhostWriterTopBar extends StatelessWidget {
           const Spacer(),
           const Icon(Icons.notifications_none_rounded, color: Colors.white60),
           const SizedBox(width: 20),
-          _TopChip(label: 'GUEST', dotColor: Color(0xFFA7D6FF)),
+          _TopChip(
+            label: sessionName.toUpperCase(),
+            dotColor: const Color(0xFFA7D6FF),
+          ),
           const SizedBox(width: 10),
-          const _TopChip(
-            label: '2,067 OCTOCREDITS',
-            dotColor: Color(0xFFFFD54F),
+          _TopChip(
+            label: '$credits OCTOCREDITS',
+            dotColor: const Color(0xFFFFD54F),
           ),
           const SizedBox(width: 10),
           _OutlinePillButton(
@@ -1106,9 +1739,9 @@ class _GhostWriterTopBar extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           _OutlinePillButton(
-            icon: Icons.save_outlined,
-            label: 'Save',
-            onTap: () {},
+            icon: saving ? Icons.hourglass_top_rounded : Icons.save_outlined,
+            label: saving ? 'Saving...' : 'Save',
+            onTap: saving ? () {} : onSave,
           ),
           const SizedBox(width: 18),
           const CircleAvatar(
@@ -1123,9 +1756,17 @@ class _GhostWriterTopBar extends StatelessWidget {
 }
 
 class _WorkspaceHeader extends StatelessWidget {
-  const _WorkspaceHeader({required this.finished});
+  const _WorkspaceHeader({
+    required this.finished,
+    required this.title,
+    required this.citationStyle,
+    required this.wordCount,
+  });
 
   final bool finished;
+  final String title;
+  final String citationStyle;
+  final int wordCount;
 
   @override
   Widget build(BuildContext context) {
@@ -1160,9 +1801,9 @@ class _WorkspaceHeader extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Artificial Intelligence in Education',
-                      style: TextStyle(
+                    Text(
+                      title,
+                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 23,
                         fontWeight: FontWeight.w700,
@@ -1179,12 +1820,12 @@ class _WorkspaceHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              const Wrap(
+              Wrap(
                 spacing: 8,
                 children: [
-                  _TopChip(label: 'ARGUMENTATIVE'),
-                  _TopChip(label: 'APA'),
-                  _TopChip(label: '1,000 WORDS'),
+                  const _TopChip(label: 'GHOSTWRITER'),
+                  _TopChip(label: citationStyle.toUpperCase()),
+                  _TopChip(label: '${wordCount.toString()} WORDS'),
                 ],
               ),
             ],
