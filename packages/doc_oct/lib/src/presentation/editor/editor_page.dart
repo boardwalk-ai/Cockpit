@@ -213,7 +213,7 @@ class _EditorPageState extends State<EditorPage> {
               title: 'Tools',
               onToggle: () => setState(() => _rightOpen = !_rightOpen),
               onResize: (w) => setState(() => _rightWidth = w),
-              child: const ToolsPanel(),
+              child: ToolsPanel(currentStyle: _style),
             ),
           ],
         ),
