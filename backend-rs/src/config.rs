@@ -8,6 +8,11 @@ pub struct Config {
     /// undetectable.ai key for the paraphraser; when absent the endpoint is a
     /// no-op passthrough so the rest of the API still runs locally.
     pub humanizer_api_key: Option<String>,
+    /// OpenRouter key for source search / outline; absent ⇒ those endpoints 503.
+    pub openrouter_api_key: Option<String>,
+    pub openrouter_model: String,
+    /// Upstream page scraper (the octopilot backend).
+    pub upstream_scraper: String,
     pub port: u16,
 }
 
@@ -16,13 +21,20 @@ impl Config {
         Self {
             firebase_project_id: std::env::var("FIREBASE_PROJECT_ID")
                 .unwrap_or_else(|_| "octopilot-ai-7b29e".to_string()),
-            humanizer_api_key: std::env::var("HUMANIZER_API_KEY")
-                .ok()
-                .filter(|s| !s.is_empty()),
+            humanizer_api_key: env_opt("HUMANIZER_API_KEY"),
+            openrouter_api_key: env_opt("OPENROUTER_API_KEY"),
+            openrouter_model: std::env::var("OPENROUTER_MODEL")
+                .unwrap_or_else(|_| "openai/gpt-4o-mini".to_string()),
+            upstream_scraper: std::env::var("UPSTREAM_SCRAPER")
+                .unwrap_or_else(|_| "https://api.octopilotai.com/api/scrape".to_string()),
             port: std::env::var("PORT")
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(8787),
         }
     }
+}
+
+fn env_opt(key: &str) -> Option<String> {
+    std::env::var(key).ok().filter(|s| !s.is_empty())
 }

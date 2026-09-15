@@ -7,6 +7,8 @@
 mod auth;
 mod config;
 mod error;
+mod openrouter;
+mod sources;
 mod tools;
 
 use std::sync::Arc;
@@ -51,6 +53,8 @@ async fn main() {
         .route("/v1/dictionary", get(tools::dictionary))
         .route("/v1/thesaurus", get(tools::thesaurus))
         .route("/v1/paraphrase", post(tools::paraphrase))
+        .route("/v1/scrape", get(sources::scrape))
+        .route("/v1/sources/search", post(sources::search))
         .route("/v1/me", get(me))
         .layer(CorsLayer::permissive())
         .with_state(state);

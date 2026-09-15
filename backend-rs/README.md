@@ -22,6 +22,8 @@ Listens on `http://0.0.0.0:8787`.
 | GET    | `/v1/dictionary?word=` | dictionaryapi.dev → `DictResult`             |
 | GET    | `/v1/thesaurus?word=`  | datamuse → `ThesResult`                      |
 | POST   | `/v1/paraphrase`  | `{text}` → `{text}` (undetectable.ai; passthrough without a key) |
+| GET    | `/v1/scrape?url=` | upstream page scrape → `Source`                   |
+| POST   | `/v1/sources/search` | `{topic, outlines?, keyword?, targetCount?}` → `Source[]` (OpenRouter + scrape; 503 without `OPENROUTER_API_KEY`) |
 | GET    | `/v1/me`          | Firebase-authed whoami                             |
 
 JSON shapes match the Flutter `DictResult` / `ThesResult` models, so the client
