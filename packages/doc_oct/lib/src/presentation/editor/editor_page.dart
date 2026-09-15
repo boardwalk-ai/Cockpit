@@ -2,9 +2,12 @@ import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../../application/sources.dart';
+import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
 import '../widgets/doc_scaffold.dart';
 import 'doc_model.dart';
+import 'editor_toolbar.dart';
 import 'format_spec.dart';
 import 'paged_document.dart';
 
@@ -42,6 +45,10 @@ class _EditorPageState extends State<EditorPage> {
     _keywords,
     ..._fields.values,
   ];
+
+  // Researched sources feeding the references page. Seam: replaced by our
+  // backend (frontend never calls the scraper/AI directly). Mock for now.
+  final List<Source> _sources = mockSources;
 
   // The body prose — flutter_quill (EditableText underneath → works on web).
   final QuillController _body = QuillController.basic();
@@ -97,7 +104,7 @@ class _EditorPageState extends State<EditorPage> {
       abstractText: _abstract,
       keywords: _keywords,
       baseStyle: const TextStyle(
-        fontFamily: 'Times New Roman',
+        fontFamily: 'packages/doc_oct/Tinos',
         fontFamilyFallback: ['Georgia', 'serif'],
         fontSize: 16,
         height: 2.0,
@@ -107,7 +114,13 @@ class _EditorPageState extends State<EditorPage> {
       cursorColor: scheme.primary,
     );
     final spec = FormatSpec.of(_style);
-    final pages = spec.buildPages(context, fields, body: _bodyEditor());
+    final pages = spec.buildPages(
+      context,
+      fields,
+      body: _bodyEditor(),
+      sources: _sources,
+      style: _style,
+    );
     final lastName = fields.authorLastName;
 
     // Auto fit-to-height so a short viewport isn't stuck at a giant 1:1 page;
@@ -189,7 +202,7 @@ class _EditorPageState extends State<EditorPage> {
         customStyles: DefaultStyles(
           paragraph: DefaultTextBlockStyle(
             const TextStyle(
-              fontFamily: 'Times New Roman',
+              fontFamily: 'packages/doc_oct/Tinos',
               fontFamilyFallback: ['Georgia', 'serif'],
               fontSize: 16,
               height: 2.0,
@@ -202,7 +215,7 @@ class _EditorPageState extends State<EditorPage> {
           ),
           placeHolder: DefaultTextBlockStyle(
             const TextStyle(
-              fontFamily: 'Times New Roman',
+              fontFamily: 'packages/doc_oct/Tinos',
               fontFamilyFallback: ['Georgia', 'serif'],
               fontSize: 16,
               height: 2.0,
@@ -296,32 +309,16 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
-  // ── Formatting toolbar (visual for now, except the working zoom) ─────────
+  // ── Formatting toolbar (quill-wired) + zoom cluster ──────────────────────
   Widget _formatToolbar(ColorScheme scheme, double zoom) {
-    Widget ico(IconData i) => _tapIcon(i, scheme.onSurfaceVariant, () {}, size: 17);
     Widget zoomBtn(IconData i, VoidCallback onTap) =>
         _tapIcon(i, scheme.onSurfaceVariant, onTap, size: 16);
-    Widget sep() => Container(
-          width: 1,
-          height: 16,
-          margin: const EdgeInsets.symmetric(horizontal: CockpitSpacing.xs),
-          color: scheme.onSurface.withValues(alpha: 0.08),
-        );
-    Widget label(String t) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.sm),
-          child: Text(t,
-              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12.5)),
-        );
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(
-          horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xxs),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.xs),
       child: Row(
         children: [
-          ico(Icons.undo_rounded),
-          ico(Icons.redo_rounded),
-          sep(),
+          Expanded(child: EditorToolbar(controller: _body)),
+          const SizedBox(width: CockpitSpacing.sm),
           zoomBtn(Icons.remove_rounded, () => _setZoom(zoom - 0.1)),
           GestureDetector(
             onTap: () => setState(() => _zoomOverride = null), // reset to fit
@@ -333,25 +330,6 @@ class _EditorPageState extends State<EditorPage> {
             ),
           ),
           zoomBtn(Icons.add_rounded, () => _setZoom(zoom + 0.1)),
-          sep(),
-          label('Times New Roman'),
-          sep(),
-          ico(Icons.format_bold_rounded),
-          ico(Icons.format_italic_rounded),
-          ico(Icons.format_underlined_rounded),
-          sep(),
-          ico(Icons.format_align_left_rounded),
-          ico(Icons.format_align_center_rounded),
-          ico(Icons.format_align_right_rounded),
-          ico(Icons.format_align_justify_rounded),
-          sep(),
-          ico(Icons.format_list_bulleted_rounded),
-          ico(Icons.format_list_numbered_rounded),
-          sep(),
-          ico(Icons.format_indent_decrease_rounded),
-          ico(Icons.format_indent_increase_rounded),
-          sep(),
-          ico(Icons.format_clear_rounded),
         ],
       ),
     );

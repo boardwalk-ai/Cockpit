@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/citation_templates.dart';
+import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
 import 'doc_model.dart';
 
@@ -124,9 +126,14 @@ abstract class FormatSpec {
 
   /// [body] is the shared prose editor; each style places it where its body
   /// begins (MLA: after the title on page 1; APA: on its own page after the
-  /// abstract).
-  List<DocPage> buildPages(BuildContext context, EditorFields f,
-      {required Widget body});
+  /// abstract). [sources] feed the references page, formatted per [style].
+  List<DocPage> buildPages(
+    BuildContext context,
+    EditorFields f, {
+    required Widget body,
+    required List<Source> sources,
+    required FormatStyle style,
+  });
 }
 
 /// Shared paper metrics + a couple of helpers.
@@ -134,12 +141,51 @@ extension _Paper on FormatSpec {
   Widget runningHeadPlaceholder(BuildContext context, String text) => Text(
         text,
         style: TextStyle(
-          fontFamily: 'Times New Roman',
+          fontFamily: 'packages/doc_oct/Tinos',
           fontFamilyFallback: const ['Georgia', 'serif'],
           fontSize: 13,
           color: const Color(0xFF9AA0AA),
         ),
       );
+
+  /// The references/works-cited/bibliography page, formatted per [style]:
+  /// heading (bold for APA, plain for MLA), entries via [CitationTemplates],
+  /// alphabetized (or numbered for IEEE), double-spaced.
+  Widget bibliographyPage(EditorFields f, List<Source> sources, FormatStyle style) {
+    final meta = _bibMeta(style);
+    final entries = [...sources];
+    if (!meta.numbered) {
+      entries.sort((a, b) => (a.author ?? a.title)
+          .toLowerCase()
+          .compareTo((b.author ?? b.title).toLowerCase()));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          meta.heading,
+          textAlign: TextAlign.center,
+          style: f.baseStyle
+              .copyWith(fontWeight: meta.bold ? FontWeight.bold : FontWeight.normal),
+        ),
+        for (var i = 0; i < entries.length; i++)
+          Text(
+            CitationTemplates.reference(style, entries[i], i + 1),
+            style: f.baseStyle,
+          ),
+      ],
+    );
+  }
+
+  ({String heading, bool bold, bool numbered}) _bibMeta(FormatStyle s) =>
+      switch (s) {
+        FormatStyle.mla => (heading: 'Works Cited', bold: false, numbered: false),
+        FormatStyle.apa => (heading: 'References', bold: true, numbered: false),
+        FormatStyle.chicago =>
+          (heading: 'Bibliography', bold: true, numbered: false),
+        FormatStyle.ieee => (heading: 'References', bold: true, numbered: true),
+        FormatStyle.harvard => (heading: 'References', bold: true, numbered: false),
+      };
 }
 
 /// APA 7 (student paper): a centred title page, then an Abstract page.
@@ -147,8 +193,15 @@ class ApaSpec extends FormatSpec {
   const ApaSpec();
 
   @override
-  List<DocPage> buildPages(BuildContext context, EditorFields f,
-      {required Widget body}) {
+  List<DocPage> buildPages(
+    BuildContext context,
+    EditorFields f, {
+    required Widget body,
+    required List<Source> sources,
+    required FormatStyle style,
+  }) {
+    final titleText =
+        f.title.text.trim().isEmpty ? 'Untitled Paper' : f.title.text.trim();
     return [
       // ── Title page ──
       DocPage(
@@ -207,8 +260,26 @@ class ApaSpec extends FormatSpec {
           ],
         ),
       ),
-      // ── Body page ──
-      DocPage(runningHead: const SizedBox.shrink(), content: body),
+      // ── Body page (APA repeats the title, bold + centered) ──
+      DocPage(
+        runningHead: const SizedBox.shrink(),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              titleText,
+              textAlign: TextAlign.center,
+              style: f.baseStyle.copyWith(fontWeight: FontWeight.bold),
+            ),
+            body,
+          ],
+        ),
+      ),
+      // ── References ──
+      DocPage(
+        runningHead: const SizedBox.shrink(),
+        content: bibliographyPage(f, sources, style),
+      ),
     ];
   }
 }
@@ -219,8 +290,13 @@ class MlaSpec extends FormatSpec {
   const MlaSpec();
 
   @override
-  List<DocPage> buildPages(BuildContext context, EditorFields f,
-      {required Widget body}) {
+  List<DocPage> buildPages(
+    BuildContext context,
+    EditorFields f, {
+    required Widget body,
+    required List<Source> sources,
+    required FormatStyle style,
+  }) {
     return [
       DocPage(
         runningHead: null, // MLA head is the page-number line (author + n)
@@ -237,6 +313,11 @@ class MlaSpec extends FormatSpec {
             body,
           ],
         ),
+      ),
+      // ── Works Cited ──
+      DocPage(
+        runningHead: null,
+        content: bibliographyPage(f, sources, style),
       ),
     ];
   }

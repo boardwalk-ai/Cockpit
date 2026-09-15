@@ -95,16 +95,22 @@ void main() {
       expect(find.text('STYLE'), findsOneWidget);
       expect(find.text('Finish'), findsOneWidget);
       expect(find.text('Format'), findsOneWidget);
-      // APA title page shows the centred title block placeholders.
-      expect(find.text('Untitled Paper'), findsOneWidget);
+      // APA title page shows the centred title block placeholders (the title
+      // also repeats on the body page, so it can appear more than once).
+      expect(find.text('Untitled Paper'), findsWidgets);
       expect(find.text('Institution Name'), findsOneWidget);
+      // References page renders formatted entries from the sources.
+      expect(find.text('References'), findsOneWidget);
       // Type into the student-name field, then restyle to MLA.
       await t.enterText(find.widgetWithText(TextField, 'Student Name'), 'Ada Lovelace');
       await t.pumpAndSettle();
       await t.tap(find.text('MLA'));
       await t.pumpAndSettle();
-      // Content survives the restyle (no loss); MLA drops the abstract slot.
+      // Content survives the restyle (no loss); MLA drops the abstract slot
+      // and re-headers the bibliography as "Works Cited".
       expect(find.text('Ada Lovelace'), findsOneWidget);
+      expect(find.text('Works Cited'), findsOneWidget);
+      expect(find.text('References'), findsNothing);
       expect(find.byType(ThemeSwitcher), findsOneWidget);
       expect(t.takeException(), isNull);
     });

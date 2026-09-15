@@ -22,3 +22,47 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  # Metric-compatible free fonts (Apache 2.0) bundled so font switching renders
+  # on Flutter web (CanvasKit ignores system fonts) and matches the PDF later:
+  # Tinos≈Times New Roman, Arimo≈Arial, Gelasio≈Georgia, Cousine≈Courier New.
+  fonts:
+    - family: Tinos
+      fonts:
+        - asset: fonts/Tinos-Regular.ttf
+        - asset: fonts/Tinos-Italic.ttf
+          style: italic
+        - asset: fonts/Tinos-Bold.ttf
+          weight: 700
+        - asset: fonts/Tinos-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: Arimo
+      fonts:
+        - asset: fonts/Arimo-Regular.ttf
+        - asset: fonts/Arimo-Italic.ttf
+          style: italic
+        - asset: fonts/Arimo-Bold.ttf
+          weight: 700
+        - asset: fonts/Arimo-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: Gelasio
+      fonts:
+        - asset: fonts/Gelasio-Regular.ttf
+        - asset: fonts/Gelasio-Italic.ttf
+          style: italic
+        - asset: fonts/Gelasio-Bold.ttf
+          weight: 700
+        - asset: fonts/Gelasio-BoldItalic.ttf
+          weight: 700
+          style: italic
+    - family: Cousine
+      fonts:
+        - asset: fonts/Cousine-Regular.ttf
+        - asset: fonts/Cousine-Italic.ttf
+          style: italic
+        - asset: fonts/Cousine-Bold.ttf
+          weight: 700
+        - asset: fonts/Cousine-BoldItalic.ttf
+          weight: 700
+          style: italic

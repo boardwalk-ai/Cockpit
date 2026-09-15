@@ -7,10 +7,15 @@
 library;
 
 export 'src/application/providers.dart';
+export 'src/application/sources.dart';
+export 'src/domain/citation_templates.dart';
+export 'src/domain/doc_dates.dart';
 export 'src/domain/saved_project.dart';
+export 'src/domain/source.dart';
 export 'src/presentation/doc_oct_app.dart';
 export 'src/presentation/editor/doc_model.dart';
 export 'src/presentation/editor/editor_page.dart';
+export 'src/presentation/editor/editor_toolbar.dart';
 export 'src/presentation/editor/format_spec.dart';
 export 'src/presentation/editor/paged_document.dart';
 export 'src/presentation/loading/doc_oct_loading_page.dart';
