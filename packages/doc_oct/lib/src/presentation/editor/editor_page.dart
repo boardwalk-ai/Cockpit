@@ -7,9 +7,11 @@ import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
 import '../widgets/doc_scaffold.dart';
 import 'doc_model.dart';
+import 'editor_panels.dart';
 import 'editor_toolbar.dart';
 import 'format_spec.dart';
 import 'paged_document.dart';
+import 'tools_panel.dart';
 
 /// The central editor — Doc Oct's web editor, restyled borderless. The paper is
 /// the one light element (a real page); the chrome is flat charcoal. The style
@@ -30,6 +32,12 @@ class _EditorPageState extends State<EditorPage> {
 
   /// null = auto fit-to-height; otherwise a manual zoom the user set with ±.
   double? _zoomOverride;
+
+  // Side panels (Outline · Tools) — default widths, drag-resizable, collapsible.
+  bool _leftOpen = true;
+  bool _rightOpen = true;
+  double _leftWidth = 340;
+  double _rightWidth = 320;
 
   final _docTitle = TextEditingController(text: 'Untitled document');
   final _title = TextEditingController();
@@ -131,15 +139,14 @@ class _EditorPageState extends State<EditorPage> {
     final fitZoom = ((viewportH - 210) / PagedDocument.pageWidth * 8.5 / 11)
         .clamp(0.5, 1.0);
     final zoom = _zoomOverride ?? fitZoom;
+    final panelMax = (MediaQuery.sizeOf(context).width / 2 - 40).clamp(240, 720);
 
-    return DocScaffold(
-      child: SafeArea(
-        child: Column(
-          children: [
-            _docBar(theme, scheme),
-            _styleRow(theme, scheme),
-            _formatToolbar(scheme, zoom),
-            Expanded(
+    final center = Column(
+      children: [
+        _docBar(theme, scheme),
+        _styleRow(theme, scheme),
+        _formatToolbar(scheme, zoom),
+        Expanded(
               child: ColoredBox(
                 color: scheme.surface,
                 // flutter_quill needs its localization delegate in-tree.
@@ -177,7 +184,37 @@ class _EditorPageState extends State<EditorPage> {
                 ),
               ),
             ),
-            _statusBar(theme, scheme),
+        _statusBar(theme, scheme),
+      ],
+    );
+
+    return DocScaffold(
+      child: SafeArea(
+        child: Row(
+          children: [
+            SidePanel(
+              side: PanelSide.left,
+              open: _leftOpen,
+              width: _leftWidth,
+              defaultWidth: 340,
+              maxWidth: panelMax.toDouble(),
+              title: 'Outline',
+              onToggle: () => setState(() => _leftOpen = !_leftOpen),
+              onResize: (w) => setState(() => _leftWidth = w),
+              child: const OutlinePanel(),
+            ),
+            Expanded(child: center),
+            SidePanel(
+              side: PanelSide.right,
+              open: _rightOpen,
+              width: _rightWidth,
+              defaultWidth: 320,
+              maxWidth: panelMax.toDouble(),
+              title: 'Tools',
+              onToggle: () => setState(() => _rightOpen = !_rightOpen),
+              onResize: (w) => setState(() => _rightWidth = w),
+              child: const ToolsPanel(),
+            ),
           ],
         ),
       ),
@@ -277,22 +314,31 @@ class _EditorPageState extends State<EditorPage> {
           CockpitSpacing.md, CockpitSpacing.xs),
       child: Row(
         children: [
-          Text('STYLE',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-                letterSpacing: 1.6,
-                fontWeight: FontWeight.w700,
-              )),
-          const SizedBox(width: CockpitSpacing.md),
-          for (final s in FormatStyle.values) ...[
-            _StylePill(
-              style: s,
-              selected: _style == s,
-              onTap: () => setState(() => _style = s),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  Text('STYLE',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        letterSpacing: 1.6,
+                        fontWeight: FontWeight.w700,
+                      )),
+                  const SizedBox(width: CockpitSpacing.md),
+                  for (final s in FormatStyle.values) ...[
+                    _StylePill(
+                      style: s,
+                      selected: _style == s,
+                      onTap: () => setState(() => _style = s),
+                    ),
+                    const SizedBox(width: CockpitSpacing.xs),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(width: CockpitSpacing.xs),
-          ],
-          const Spacer(),
+          ),
+          const SizedBox(width: CockpitSpacing.sm),
           _RedPill(icon: Icons.refresh_rounded, label: 'Format', onTap: () {}),
         ],
       ),

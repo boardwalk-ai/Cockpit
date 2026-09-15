@@ -104,7 +104,9 @@ void main() {
       // Type into the student-name field, then restyle to MLA.
       await t.enterText(find.widgetWithText(TextField, 'Student Name'), 'Ada Lovelace');
       await t.pumpAndSettle();
-      await t.tap(find.text('MLA'));
+      // Style-row pill is first in the tree (the Tools tab repeats the labels).
+      await t.ensureVisible(find.text('MLA').first);
+      await t.tap(find.text('MLA').first);
       await t.pumpAndSettle();
       // Content survives the restyle (no loss); MLA drops the abstract slot
       // and re-headers the bibliography as "Works Cited".
@@ -118,7 +120,8 @@ void main() {
         ('IEEE', 'References'),
         ('Harvard', 'Reference List'),
       ]) {
-        await t.tap(find.text(pill));
+        await t.ensureVisible(find.text(pill).first);
+        await t.tap(find.text(pill).first);
         await t.pumpAndSettle();
         expect(find.text(heading), findsOneWidget);
         expect(find.text('Ada Lovelace'), findsOneWidget);
