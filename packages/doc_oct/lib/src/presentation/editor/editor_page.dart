@@ -98,26 +98,28 @@ class _EditorPageState extends State<EditorPage> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
+    final spec = FormatSpec.of(_style);
+    final profile = spec.profile;
+    final paperStyle = TextStyle(
+      fontFamily: 'packages/doc_oct/Tinos',
+      fontFamilyFallback: const ['Georgia', 'serif'],
+      fontSize: profile.fontSize,
+      height: profile.lineHeight,
+      color: const Color(0xFF1A1A1A),
+    );
     final fields = EditorFields(
       title: _title,
       fields: _fields,
       abstractText: _abstract,
       keywords: _keywords,
-      baseStyle: const TextStyle(
-        fontFamily: 'packages/doc_oct/Tinos',
-        fontFamilyFallback: ['Georgia', 'serif'],
-        fontSize: 16,
-        height: 2.0,
-        color: Color(0xFF1A1A1A),
-      ),
+      baseStyle: paperStyle,
       hintColor: const Color(0xFFB4B8BE),
       cursorColor: scheme.primary,
     );
-    final spec = FormatSpec.of(_style);
     final pages = spec.buildPages(
       context,
       fields,
-      body: _bodyEditor(),
+      body: _bodyEditor(paperStyle),
       sources: _sources,
       style: _style,
     );
@@ -186,9 +188,9 @@ class _EditorPageState extends State<EditorPage> {
       setState(() => _zoomOverride = v.clamp(0.4, 2.0));
 
   /// The body prose editor — non-scrollable so it grows the page as you type
-  /// (the page column scrolls). Paper serif styling; the real per-page overflow
-  /// pagination lands next.
-  Widget _bodyEditor() {
+  /// (the page column scrolls). Uses the active style's paper metrics (font
+  /// size + line spacing).
+  Widget _bodyEditor(TextStyle paperStyle) {
     return QuillEditor(
       controller: _body,
       focusNode: _bodyFocus,
@@ -201,26 +203,14 @@ class _EditorPageState extends State<EditorPage> {
         padding: EdgeInsets.zero,
         customStyles: DefaultStyles(
           paragraph: DefaultTextBlockStyle(
-            const TextStyle(
-              fontFamily: 'packages/doc_oct/Tinos',
-              fontFamilyFallback: ['Georgia', 'serif'],
-              fontSize: 16,
-              height: 2.0,
-              color: Color(0xFF1A1A1A),
-            ),
+            paperStyle,
             const HorizontalSpacing(0, 0),
             const VerticalSpacing(0, 0),
             const VerticalSpacing(0, 0),
             null,
           ),
           placeHolder: DefaultTextBlockStyle(
-            const TextStyle(
-              fontFamily: 'packages/doc_oct/Tinos',
-              fontFamilyFallback: ['Georgia', 'serif'],
-              fontSize: 16,
-              height: 2.0,
-              color: Color(0xFFB4B8BE),
-            ),
+            paperStyle.copyWith(color: const Color(0xFFB4B8BE)),
             const HorizontalSpacing(0, 0),
             const VerticalSpacing(0, 0),
             const VerticalSpacing(0, 0),

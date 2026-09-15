@@ -17,6 +17,7 @@ export 'src/presentation/editor/doc_model.dart';
 export 'src/presentation/editor/editor_page.dart';
 export 'src/presentation/editor/editor_toolbar.dart';
 export 'src/presentation/editor/format_spec.dart';
+export 'src/presentation/editor/indented_text.dart';
 export 'src/presentation/editor/paged_document.dart';
 export 'src/presentation/loading/doc_oct_loading_page.dart';
 export 'src/presentation/projects/saved_projects_page.dart';

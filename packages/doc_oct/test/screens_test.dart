@@ -111,6 +111,18 @@ void main() {
       expect(find.text('Ada Lovelace'), findsOneWidget);
       expect(find.text('Works Cited'), findsOneWidget);
       expect(find.text('References'), findsNothing);
+
+      // Every style projects its own bibliography heading, content intact.
+      for (final (pill, heading) in const [
+        ('Chicago', 'Bibliography'),
+        ('IEEE', 'References'),
+        ('Harvard', 'Reference List'),
+      ]) {
+        await t.tap(find.text(pill));
+        await t.pumpAndSettle();
+        expect(find.text(heading), findsOneWidget);
+        expect(find.text('Ada Lovelace'), findsOneWidget);
+      }
       expect(find.byType(ThemeSwitcher), findsOneWidget);
       expect(t.takeException(), isNull);
     });

@@ -4,6 +4,24 @@ import '../../domain/citation_templates.dart';
 import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
 import 'doc_model.dart';
+import 'indented_text.dart';
+
+/// Per-style paper metrics (ported from the web formatter `profile`s). Drives
+/// the paper font size, line spacing and the body first-line indent.
+class FormatProfile {
+  const FormatProfile({
+    this.fontSize = 16, // 12pt @96dpi
+    this.lineHeight = 2,
+    this.firstLineIndent = 48, // 0.5"
+  });
+
+  final double fontSize;
+  final double lineHeight;
+  final double firstLineIndent;
+
+  /// One line's height in px — used for vertical spacers on the title pages.
+  double get linePx => fontSize * lineHeight;
+}
 
 /// Bound, editable content the [FormatSpec] projects into pages. The controllers
 /// ARE the document (the truth); a style change re-projects the same
@@ -104,11 +122,19 @@ class _EditableLine extends StatelessWidget {
 /// A single laid-out page: its flowing content (running head + number are drawn
 /// by the pager from [runningHead]).
 class DocPage {
-  const DocPage({required this.content, this.runningHead});
+  const DocPage({
+    required this.content,
+    this.runningHead,
+    this.showPageNumber = true,
+  });
   final Widget content;
 
-  /// Left side of the running-head line (right side is always the page number).
+  /// Left side of the running-head line (right side is the page number).
   final Widget? runningHead;
+
+  /// Whether the page-number/running-head line shows (off for e.g. a Chicago
+  /// title page, or IEEE which numbers no pages).
+  final bool showPageNumber;
 }
 
 /// Projects the semantic fields into paginated pages for one citation style.
@@ -119,10 +145,13 @@ abstract class FormatSpec {
   factory FormatSpec.of(FormatStyle style) => switch (style) {
         FormatStyle.apa => const ApaSpec(),
         FormatStyle.mla => const MlaSpec(),
-        // Chicago/IEEE/Harvard fall back to the MLA-shaped layout for now
-        // (their own specs land as we build each out).
-        _ => const MlaSpec(),
+        FormatStyle.chicago => const ChicagoSpec(),
+        FormatStyle.ieee => const IeeeSpec(),
+        FormatStyle.harvard => const HarvardSpec(),
       };
+
+  /// Paper metrics (font size, line height, first-line indent) for this style.
+  FormatProfile get profile => const FormatProfile();
 
   /// [body] is the shared prose editor; each style places it where its body
   /// begins (MLA: after the title on page 1; APA: on its own page after the
@@ -159,6 +188,8 @@ extension _Paper on FormatSpec {
           .toLowerCase()
           .compareTo((b.author ?? b.title).toLowerCase()));
     }
+    // Hanging indent (0.5") for author-date styles; none when numbered (IEEE).
+    final hang = meta.numbered ? 0.0 : 48.0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -169,23 +200,39 @@ extension _Paper on FormatSpec {
               .copyWith(fontWeight: meta.bold ? FontWeight.bold : FontWeight.normal),
         ),
         for (var i = 0; i < entries.length; i++)
-          Text(
-            CitationTemplates.reference(style, entries[i], i + 1),
-            style: f.baseStyle,
+          Padding(
+            padding: EdgeInsets.only(bottom: meta.entryGap),
+            child: IndentedText(
+              CitationTemplates.reference(style, entries[i], i + 1),
+              style: f.baseStyle,
+              restIndent: hang,
+            ),
           ),
       ],
     );
   }
 
-  ({String heading, bool bold, bool numbered}) _bibMeta(FormatStyle s) =>
+  ({String heading, bool bold, bool numbered, double entryGap}) _bibMeta(
+          FormatStyle s) =>
       switch (s) {
-        FormatStyle.mla => (heading: 'Works Cited', bold: false, numbered: false),
-        FormatStyle.apa => (heading: 'References', bold: true, numbered: false),
+        FormatStyle.mla =>
+          (heading: 'Works Cited', bold: false, numbered: false, entryGap: 0),
+        FormatStyle.apa =>
+          (heading: 'References', bold: true, numbered: false, entryGap: 0),
         FormatStyle.chicago =>
-          (heading: 'Bibliography', bold: true, numbered: false),
-        FormatStyle.ieee => (heading: 'References', bold: true, numbered: true),
-        FormatStyle.harvard => (heading: 'References', bold: true, numbered: false),
+          (heading: 'Bibliography', bold: true, numbered: false, entryGap: 16),
+        FormatStyle.ieee =>
+          (heading: 'References', bold: true, numbered: true, entryGap: 12),
+        FormatStyle.harvard => (
+            heading: 'Reference List',
+            bold: true,
+            numbered: false,
+            entryGap: 16
+          ),
       };
+
+  /// A vertical spacer of [lines] blank lines at the profile's line height.
+  Widget spacer(int lines) => SizedBox(height: lines * profile.linePx);
 }
 
 /// APA 7 (student paper): a centred title page, then an Abstract page.
@@ -317,6 +364,148 @@ class MlaSpec extends FormatSpec {
       // ── Works Cited ──
       DocPage(
         runningHead: null,
+        content: bibliographyPage(f, sources, style),
+      ),
+    ];
+  }
+}
+
+/// Chicago / Turabian 9: a title page (title ~⅓ down, block ~⅔ down, no page
+/// number), body, then a bold "Bibliography" (hanging, alphabetized).
+class ChicagoSpec extends FormatSpec {
+  const ChicagoSpec();
+
+  @override
+  List<DocPage> buildPages(
+    BuildContext context,
+    EditorFields f, {
+    required Widget body,
+    required List<Source> sources,
+    required FormatStyle style,
+  }) {
+    return [
+      DocPage(
+        showPageNumber: false,
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            spacer(6),
+            f.editable(f.title, hint: 'Untitled Paper', align: TextAlign.center),
+            spacer(5),
+            f.field(DocFieldKind.studentName),
+            f.field(DocFieldKind.courseName),
+            f.field(DocFieldKind.instructorName),
+            f.field(DocFieldKind.date),
+          ],
+        ),
+      ),
+      DocPage(runningHead: const SizedBox.shrink(), content: body),
+      DocPage(
+        runningHead: const SizedBox.shrink(),
+        content: bibliographyPage(f, sources, style),
+      ),
+    ];
+  }
+}
+
+/// IEEE: a centred title + author block, ungapped body (no first-line indent,
+/// 10pt, single-ish spacing, no page numbers), then numbered "References".
+class IeeeSpec extends FormatSpec {
+  const IeeeSpec();
+
+  @override
+  FormatProfile get profile =>
+      const FormatProfile(fontSize: 13.3, lineHeight: 1.15, firstLineIndent: 0);
+
+  @override
+  List<DocPage> buildPages(
+    BuildContext context,
+    EditorFields f, {
+    required Widget body,
+    required List<Source> sources,
+    required FormatStyle style,
+  }) {
+    return [
+      DocPage(
+        showPageNumber: false,
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            f.editable(f.title,
+                hint: 'Untitled Paper',
+                align: TextAlign.center,
+                style: f.baseStyle.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            f.field(DocFieldKind.studentName),
+            f.field(DocFieldKind.institutionName),
+            f.field(DocFieldKind.date),
+            const SizedBox(height: 12),
+            body,
+          ],
+        ),
+      ),
+      DocPage(
+        showPageNumber: false,
+        content: bibliographyPage(f, sources, style),
+      ),
+    ];
+  }
+}
+
+/// Harvard: a centred title page, a body that repeats the title, then an
+/// alphabetized "Reference List" (hanging indent). 1.5 line spacing.
+class HarvardSpec extends FormatSpec {
+  const HarvardSpec();
+
+  @override
+  FormatProfile get profile =>
+      const FormatProfile(fontSize: 16, lineHeight: 1.5, firstLineIndent: 48);
+
+  @override
+  List<DocPage> buildPages(
+    BuildContext context,
+    EditorFields f, {
+    required Widget body,
+    required List<Source> sources,
+    required FormatStyle style,
+  }) {
+    final titleText =
+        f.title.text.trim().isEmpty ? 'Untitled Paper' : f.title.text.trim();
+    return [
+      DocPage(
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            spacer(5),
+            f.editable(f.title,
+                hint: 'Untitled Paper',
+                align: TextAlign.center,
+                style: f.baseStyle.copyWith(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            f.field(DocFieldKind.studentName),
+            f.field(DocFieldKind.institutionName),
+            f.field(DocFieldKind.courseName),
+            f.field(DocFieldKind.instructorName),
+            f.field(DocFieldKind.date),
+          ],
+        ),
+      ),
+      DocPage(
+        runningHead: const SizedBox.shrink(),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              titleText,
+              textAlign: TextAlign.center,
+              style: f.baseStyle.copyWith(fontWeight: FontWeight.bold),
+            ),
+            body,
+          ],
+        ),
+      ),
+      DocPage(
+        runningHead: const SizedBox.shrink(),
         content: bibliographyPage(f, sources, style),
       ),
     ];

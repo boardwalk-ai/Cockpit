@@ -65,7 +65,8 @@ class PagedDocument extends StatelessWidget {
                       Expanded(
                           child:
                               pages[i].runningHead ?? const SizedBox.shrink()),
-                      Text(pageLabel(i + 1), style: _headStyle),
+                      if (pages[i].showPageNumber)
+                        Text(pageLabel(i + 1), style: _headStyle),
                     ],
                   ),
                   const SizedBox(height: 24),
