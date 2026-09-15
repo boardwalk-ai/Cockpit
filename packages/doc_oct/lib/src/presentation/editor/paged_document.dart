@@ -23,15 +23,18 @@ class PagedDocument extends StatelessWidget {
   /// or "Lastname 1" (MLA).
   final String Function(int n) pageLabel;
 
-  /// US Letter @96dpi.
+  /// US Letter @96dpi, 1" margins all round. The running head sits in the top
+  /// half-inch; body text starts a full inch down.
   static const double pageWidth = 816;
   static const double _h = 1056;
-  static const double _margin = 96;
+  static const double _margin = 96; // 1"
+  static const double _headBand = 48; // 0.5" — running-head zone (top margin)
 
-  // Where page breaks fall in the (continuous) body content: the first break
-  // near the first page's bottom margin, then one per full page thereafter.
-  static const double _firstBreak = 916;
-  static const double _pageStep = 960;
+  // The printable content box is one inch off every edge → 864px tall. Content
+  // flows continuously, so page breaks fall one content-box apart.
+  static const double _contentHeight = _h - _margin * 2; // 864
+  static const double _firstBreak = _contentHeight;
+  static const double _pageStep = _contentHeight;
 
   final _headStyle = const TextStyle(
     fontFamily: 'packages/doc_oct/Tinos',
@@ -52,24 +55,28 @@ class PagedDocument extends StatelessWidget {
             child: Container(
               constraints: const BoxConstraints(minHeight: _h),
               color: Colors.white,
-              padding: const EdgeInsets.symmetric(
-                horizontal: _margin,
-                vertical: 48,
-              ),
+              // 1" left/right/bottom; the top inch is the ½" head band + the
+              // content start, so the body sits a full inch down.
+              padding: const EdgeInsets.fromLTRB(
+                  _margin, _headBand, _margin, _margin),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Running head: left furniture + right page number.
-                  Row(
-                    children: [
-                      Expanded(
-                          child:
-                              pages[i].runningHead ?? const SizedBox.shrink()),
-                      if (pages[i].showPageNumber)
-                        Text(pageLabel(i + 1), style: _headStyle),
-                    ],
+                  // Running head (page number) — pinned in the top-margin band
+                  // so body content begins exactly 1" from the page top.
+                  SizedBox(
+                    height: _margin - _headBand, // 0.5"
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                            child: pages[i].runningHead ??
+                                const SizedBox.shrink()),
+                        if (pages[i].showPageNumber)
+                          Text(pageLabel(i + 1), style: _headStyle),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 24),
                   // Page-break separators overlay the content where it spills
                   // past a page — one editor underneath, so the caret and word
                   // count stay correct; the markers are purely visual.
