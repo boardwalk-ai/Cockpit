@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../application/assist_service.dart';
 import '../../application/backend_config.dart';
 import '../../domain/outline.dart';
+import '../widgets/reveal.dart';
 
 /// The left-panel Outline — generate a structured plan (Introduction / Body /
 /// Conclusion cards with bullets) and drop any section into the essay. Mirrors
@@ -91,10 +92,13 @@ class _OutlinePanelState extends State<OutlinePanel> {
                 CockpitSpacing.md, 0, CockpitSpacing.md, CockpitSpacing.md),
             children: [
               for (var i = 0; i < _outlines!.length; i++)
-                _OutlineCard(
-                  outline: _outlines![i],
-                  onInsert: () => _insert(_outlines![i]),
-                  onRemove: () => _remove(i),
+                Reveal(
+                  delay: Duration(milliseconds: 60 * i),
+                  child: _OutlineCard(
+                    outline: _outlines![i],
+                    onInsert: () => _insert(_outlines![i]),
+                    onRemove: () => _remove(i),
+                  ),
                 ),
             ],
           ),

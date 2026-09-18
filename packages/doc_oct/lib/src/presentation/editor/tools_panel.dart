@@ -9,6 +9,7 @@ import '../../domain/lookup_result.dart';
 import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
 import '../widgets/doc_widgets.dart';
+import '../widgets/reveal.dart';
 import 'source_modal.dart';
 
 /// The right-panel Tools — Citations · Source · Paraphraser · Dictionary ·
@@ -380,7 +381,10 @@ class _ToolsPanelState extends State<ToolsPanel> {
                           CockpitSpacing.md, CockpitSpacing.md),
                       children: [
                         for (var i = 0; i < _sources!.length; i++)
-                          _sourceCard(context, _sources![i], i),
+                          Reveal(
+                            delay: Duration(milliseconds: 50 * i),
+                            child: _sourceCard(context, _sources![i], i),
+                          ),
                       ],
                     ),
             ),

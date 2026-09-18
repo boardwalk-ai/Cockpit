@@ -8,6 +8,7 @@ import '../../theme/doc_tokens.dart';
 import '../widgets/doc_scaffold.dart';
 import '../widgets/doc_top_bar.dart';
 import '../widgets/doc_widgets.dart';
+import '../widgets/reveal.dart';
 
 /// The logged-in home — the web's "Your Doc Oct workspace". Start a new
 /// document from a template, or reopen a recent one. Restyled borderless: no
@@ -91,12 +92,16 @@ class WorkspacePage extends ConsumerWidget {
                             spacing: CockpitSpacing.lg,
                             runSpacing: CockpitSpacing.lg,
                             children: [
-                              for (final (style, label, sub) in _templates)
-                                _TemplateCard(
-                                  style: style,
-                                  label: label,
-                                  sub: sub,
-                                  onTap: () => onNewDocument?.call(style),
+                              for (final (i, (style, label, sub))
+                                  in _templates.indexed)
+                                Reveal(
+                                  delay: Duration(milliseconds: 60 * i),
+                                  child: _TemplateCard(
+                                    style: style,
+                                    label: label,
+                                    sub: sub,
+                                    onTap: () => onNewDocument?.call(style),
+                                  ),
                                 ),
                             ],
                           ),
@@ -128,10 +133,13 @@ class WorkspacePage extends ConsumerWidget {
                               spacing: CockpitSpacing.lg,
                               runSpacing: CockpitSpacing.lg,
                               children: [
-                                for (final d in docs)
-                                  _RecentCard(
-                                    project: d,
-                                    onTap: () => onOpenDocument?.call(d),
+                                for (final (i, d) in docs.indexed)
+                                  Reveal(
+                                    delay: Duration(milliseconds: 40 * i),
+                                    child: _RecentCard(
+                                      project: d,
+                                      onTap: () => onOpenDocument?.call(d),
+                                    ),
                                   ),
                               ],
                             ),

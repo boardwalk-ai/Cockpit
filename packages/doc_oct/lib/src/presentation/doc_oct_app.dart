@@ -56,10 +56,43 @@ class _DocOctFlowState extends State<DocOctFlow> {
   String _topic = '';
   FormatStyle _style = FormatStyle.mla;
 
-  void _go(_Screen s) => setState(() => _screen = s);
+  /// Direction of the last navigation — drives which way the pages slide.
+  bool _forward = true;
+
+  void _go(_Screen s) => setState(() {
+        _forward = s.index >= _screen.index;
+        _screen = s;
+      });
 
   @override
   Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 420),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: _transition,
+      layoutBuilder: (current, previous) => Stack(
+        children: [...previous, if (current != null) current],
+      ),
+      child: KeyedSubtree(key: ValueKey(_screen), child: _current()),
+    );
+  }
+
+  /// A direction-aware cross-fade + horizontal slide. Incoming pages enter from
+  /// the forward side; the outgoing page fades and drifts the opposite way.
+  Widget _transition(Widget child, Animation<double> animation) {
+    final incoming = child.key == ValueKey(_screen);
+    final dir = _forward ? 1.0 : -1.0;
+    final begin = incoming ? Offset(0.05 * dir, 0) : Offset(-0.05 * dir, 0);
+    final slide = Tween<Offset>(begin: begin, end: Offset.zero)
+        .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+    return FadeTransition(
+      opacity: animation,
+      child: SlideTransition(position: slide, child: child),
+    );
+  }
+
+  Widget _current() {
     switch (_screen) {
       case _Screen.loading:
         return DocOctLoadingPage(onDone: () => _go(_Screen.welcome));
@@ -80,6 +113,7 @@ class _DocOctFlowState extends State<DocOctFlow> {
             setState(() {
               _topic = topic;
               _style = style;
+              _forward = true;
               _screen = topic.isEmpty ? _Screen.editor : _Screen.analysis;
             });
           },
@@ -98,6 +132,7 @@ class _DocOctFlowState extends State<DocOctFlow> {
           onNewDocument: (style) {
             setState(() {
               _style = style ?? FormatStyle.mla;
+              _forward = true;
               _screen = _Screen.editor;
             });
           },
