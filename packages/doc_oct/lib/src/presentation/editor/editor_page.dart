@@ -2,6 +2,7 @@ import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../../application/pdf_export_app.dart';
 import '../../application/sources.dart';
 import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
@@ -62,6 +63,9 @@ class _EditorPageState extends State<EditorPage> {
   final QuillController _body = QuillController.basic();
   final FocusNode _bodyFocus = FocusNode();
   final ScrollController _bodyScroll = ScrollController();
+
+  // True while a PDF export is in flight (disables the Finish button).
+  bool _exporting = false;
 
   @override
   void initState() {
@@ -258,6 +262,36 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
+  // ── Finish: export the current document to PDF in the active style ────────
+  Future<void> _exportPdf() async {
+    setState(() => _exporting = true);
+    try {
+      final input = DocPdf.inputFrom(
+        style: _style,
+        title: _title.text,
+        studentName: _fields[DocFieldKind.studentName]!.text,
+        institution: _fields[DocFieldKind.institutionName]!.text,
+        course: _fields[DocFieldKind.courseName]!.text,
+        instructor: _fields[DocFieldKind.instructorName]!.text,
+        date: _fields[DocFieldKind.date]!.text,
+        abstractText: _abstract.text,
+        keywords: _keywords.text,
+        bodyText: _bodyText,
+        sources: _sources,
+      );
+      await DocPdf.exportAndShare(
+          input: input, style: _style, docName: _docTitle.text);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('PDF export failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   // ── Document bar: menu · title · Finish ──────────────────────────────────
   Widget _docBar(ThemeData theme, ColorScheme scheme) {
     return Padding(
@@ -283,8 +317,8 @@ class _EditorPageState extends State<EditorPage> {
           const Spacer(),
           _RedPill(
             icon: Icons.download_rounded,
-            label: 'Finish',
-            onTap: () {},
+            label: _exporting ? 'Exporting…' : 'Finish',
+            onTap: _exporting ? null : _exportPdf,
           ),
         ],
       ),
@@ -432,7 +466,7 @@ class _RedPill extends StatelessWidget {
       {required this.icon, required this.label, required this.onTap});
   final IconData icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

@@ -16,6 +16,8 @@ dependencies:
   cockpit_ui:
     path: ../cockpit_ui
   flutter_quill: ^11.5.1
+  pdf: ^3.11.1
+  printing: ^5.13.3
 dev_dependencies:
   flutter_test:
     sdk: flutter
