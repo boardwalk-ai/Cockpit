@@ -11,6 +11,12 @@ const mockSources = <Source>[
     author: 'Jumper, John',
     publishedYear: '2021',
     publisher: 'Nature',
+    fullContent:
+        'AlphaFold predicts protein structures with atomic accuracy even when '
+        'no similar structure is known. The network combines a novel attention '
+        'architecture with an iterative refinement of the predicted structure, '
+        'reaching a median accuracy competitive with experimental methods across '
+        'the majority of targets in the CASP14 assessment.',
   ),
   Source(
     url: 'https://www.pnas.org/doi/10.1073/pnas.1517384113',
@@ -18,6 +24,12 @@ const mockSources = <Source>[
     author: 'Vosoughi, Soroush',
     publishedYear: '2018',
     publisher: 'PNAS',
+    fullContent:
+        'A study of roughly 126,000 stories tweeted by about three million '
+        'people found that false news spread significantly farther, faster, and '
+        'more broadly than the truth in every category of information. Falsehood '
+        'diffused faster than the truth, and the effects were more pronounced for '
+        'false political news than for any other category.',
   ),
   Source(
     url: 'https://doi.org/10.1017/CBO9780511815355',
@@ -25,5 +37,11 @@ const mockSources = <Source>[
     author: 'Leffler, Melvyn P.',
     publishedYear: '2010',
     publisher: 'Cambridge University Press',
+    fullContent:
+        'The Cold War dominated international relations for more than four '
+        'decades, shaping alliances, economies, and cultures across the globe. '
+        'Its origins lay in the ideological rivalry between the United States and '
+        'the Soviet Union, but its course was driven as much by miscalculation '
+        'and mutual fear as by deliberate strategy.',
   ),
 ];

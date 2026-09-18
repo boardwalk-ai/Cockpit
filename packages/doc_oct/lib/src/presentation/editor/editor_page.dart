@@ -55,9 +55,10 @@ class _EditorPageState extends State<EditorPage> {
     ..._fields.values,
   ];
 
-  // Researched sources feeding the references page. Seam: replaced by our
-  // backend (frontend never calls the scraper/AI directly). Mock for now.
-  final List<Source> _sources = mockSources;
+  // Researched sources feeding the references page. Updated by the Tools panel's
+  // Source search (via onSourcesFound); the in-text citation index follows this
+  // order. Seam: results come from our backend. Mock until a search runs.
+  List<Source> _sources = mockSources;
 
   // The body prose — flutter_quill (EditableText underneath → works on web).
   final QuillController _body = QuillController.basic();
@@ -217,7 +218,12 @@ class _EditorPageState extends State<EditorPage> {
               title: 'Tools',
               onToggle: () => setState(() => _rightOpen = !_rightOpen),
               onResize: (w) => setState(() => _rightWidth = w),
-              child: ToolsPanel(currentStyle: _style),
+              child: ToolsPanel(
+                currentStyle: _style,
+                sources: _sources,
+                onSourcesFound: (list) => setState(() => _sources = list),
+                onInsertText: _insertIntoBody,
+              ),
             ),
           ],
         ),
@@ -259,6 +265,27 @@ class _EditorPageState extends State<EditorPage> {
           ),
         ),
       ),
+    );
+  }
+
+  // ── Insert text (a quote and/or in-text citation) at the body cursor ──────
+  void _insertIntoBody(String text) {
+    final docLen = _body.document.length; // includes the trailing '\n'
+    final sel = _body.selection;
+    final base = sel.isValid ? sel.baseOffset : docLen - 1;
+    final index = base.clamp(0, docLen - 1);
+    final len = (sel.isValid && !sel.isCollapsed)
+        ? (sel.extentOffset - sel.baseOffset).abs()
+        : 0;
+    _body.replaceText(
+      index,
+      len,
+      text,
+      TextSelection.collapsed(offset: index + text.length),
+    );
+    _bodyFocus.requestFocus();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Inserted ✓'), duration: Duration(seconds: 1)),
     );
   }
 

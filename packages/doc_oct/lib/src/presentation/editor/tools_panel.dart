@@ -9,16 +9,34 @@ import '../../domain/lookup_result.dart';
 import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
 import '../widgets/doc_widgets.dart';
+import 'source_modal.dart';
 
 /// The right-panel Tools — Citations · Source · Paraphraser · Dictionary ·
 /// Thesaurus, mirroring the web editor (each with its own sub-tabs). Citations
 /// are deterministic (on-device via [CitationTemplates]); the rest read a
 /// [ToolsService] whose live results arrive from our backend (sample for now).
 class ToolsPanel extends StatefulWidget {
-  const ToolsPanel({super.key, this.currentStyle = FormatStyle.mla});
+  const ToolsPanel({
+    super.key,
+    this.currentStyle = FormatStyle.mla,
+    this.sources = const [],
+    this.onSourcesFound,
+    this.onInsertText,
+  });
 
   /// The essay's active citation style — flags the "current" format pill.
   final FormatStyle currentStyle;
+
+  /// The document's current sources (so the in-text citation index matches the
+  /// references order). Search results replace this via [onSourcesFound].
+  final List<Source> sources;
+
+  /// Called when a source search returns — the editor adopts the results as the
+  /// document's sources (references + in-text index follow them).
+  final void Function(List<Source>)? onSourcesFound;
+
+  /// Inserts [text] (a quote and/or an in-text citation) at the body cursor.
+  final void Function(String text)? onInsertText;
 
   @override
   State<ToolsPanel> createState() => _ToolsPanelState();
@@ -361,7 +379,8 @@ class _ToolsPanelState extends State<ToolsPanel> {
                       padding: const EdgeInsets.fromLTRB(CockpitSpacing.md, 0,
                           CockpitSpacing.md, CockpitSpacing.md),
                       children: [
-                        for (final s in _sources!) _sourceCard(context, s),
+                        for (var i = 0; i < _sources!.length; i++)
+                          _sourceCard(context, _sources![i], i),
                       ],
                     ),
             ),
@@ -374,7 +393,10 @@ class _ToolsPanelState extends State<ToolsPanel> {
       BuildContext context, ThemeData theme, ColorScheme scheme) {
     void search() => _run(() async {
           final r = await _tools.searchSources(_sourceKeyword.text);
-          if (mounted) setState(() => _sources = r);
+          if (mounted) {
+            setState(() => _sources = r);
+            widget.onSourcesFound?.call(r);
+          }
         });
     switch (_sourceSub) {
       case 0: // Auto Search
@@ -462,7 +484,7 @@ class _ToolsPanelState extends State<ToolsPanel> {
     );
   }
 
-  Widget _sourceCard(BuildContext context, Source s) {
+  Widget _sourceCard(BuildContext context, Source s, int index) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final meta = [
@@ -474,35 +496,69 @@ class _ToolsPanelState extends State<ToolsPanel> {
     return Padding(
       padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
       child: DocSurface(
-        padding: const EdgeInsets.all(CockpitSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(s.title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w600)),
-            if (meta.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(meta,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant)),
-            ],
-            if (domain.isNotEmpty) ...[
-              const SizedBox(height: 2),
-              Text(domain,
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: scheme.onSurfaceVariant)),
-            ],
-            const SizedBox(height: CockpitSpacing.sm),
-            Row(children: [
-              _miniAction('Quote', () {}),
-              const SizedBox(width: CockpitSpacing.xs),
-              _miniAction('Cite', () {}),
-            ]),
-          ],
+        padding: EdgeInsets.zero,
+        child: InkWell(
+          onTap: () => _openSourceModal(s, index),
+          borderRadius: BorderRadius.circular(CockpitRadii.md),
+          child: Padding(
+            padding: const EdgeInsets.all(CockpitSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w600)),
+                if (meta.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(meta,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: scheme.onSurfaceVariant)),
+                ],
+                if (domain.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(domain,
+                      style: theme.textTheme.labelSmall
+                          ?.copyWith(color: scheme.onSurfaceVariant)),
+                ],
+                const SizedBox(height: CockpitSpacing.sm),
+                Row(children: [
+                  _miniAction('Quote', () => _openSourceModal(s, index)),
+                  const SizedBox(width: CockpitSpacing.xs),
+                  _miniAction('Cite', () => _insertCitation(s, index)),
+                ]),
+              ],
+            ),
+          ),
         ),
+      ),
+    );
+  }
+
+  /// The in-text mark for source [index] (0-based) in the active style, e.g.
+  /// MLA `(Smith)`, APA `(Smith, 2020)`, IEEE `[3]`.
+  String _inTextFor(Source s, int index) =>
+      CitationTemplates.inText(widget.currentStyle, s, index + 1);
+
+  /// "Cite": drop just the in-text citation at the cursor.
+  void _insertCitation(Source s, int index) =>
+      widget.onInsertText?.call(_inTextFor(s, index));
+
+  /// Opens the source modal — read the content, optionally humanize it, select a
+  /// passage, and insert it as a quote + in-text citation at the cursor.
+  Future<void> _openSourceModal(Source s, int index) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => SourceModal(
+        source: s,
+        inText: _inTextFor(s, index),
+        humanize: (text) => _tools.paraphrase(text),
+        canHumanize: !_tools.isMock,
+        onInsert: (text) {
+          widget.onInsertText?.call(text);
+          Navigator.of(dialogCtx).pop();
+        },
       ),
     );
   }
