@@ -2,6 +2,7 @@ import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../application/backend_config.dart';
 import '../../application/tools_service.dart';
 import '../../domain/citation_templates.dart';
 import '../../domain/lookup_result.dart';
@@ -26,7 +27,7 @@ class ToolsPanel extends StatefulWidget {
 enum _Tab { citations, source, paraphraser, dictionary, thesaurus }
 
 class _ToolsPanelState extends State<ToolsPanel> {
-  final ToolsService _tools = const MockToolsService(); // seam → backend
+  final ToolsService _tools = createToolsService(); // mock, or backend via --dart-define
 
   _Tab _tab = _Tab.citations;
 
