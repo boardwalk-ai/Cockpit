@@ -1,5 +1,6 @@
-//! Saved documents — the `essays` table, scoped to the authed user (Firebase
-//! UID → `users.id`). Matches the Flutter saved-project flow.
+//! Saved documents — the `documents` table (the canonical saved-project store,
+//! shared with the web app), scoped to the authed user (Firebase UID →
+//! `users.id`). `state` (JSONB) holds the full serialized editor document.
 
 use axum::extract::{Path, State};
 use axum::Json;
@@ -60,9 +61,9 @@ pub async fn list(
     let uid = user_id(&st, &user).await?;
     let rows = sqlx::query(
         "SELECT id::text AS id, title, COALESCE(word_count,0) AS word_count, \
-                citation_style, updated_at::text AS updated_at, \
-                left(COALESCE(content,''), 200) AS snippet \
-         FROM essays WHERE user_id = $1::uuid ORDER BY updated_at DESC NULLS LAST \
+                format_style AS citation_style, updated_at::text AS updated_at, \
+                COALESCE(preview,'') AS snippet \
+         FROM documents WHERE user_id = $1::uuid ORDER BY updated_at DESC NULLS LAST \
          LIMIT 100",
     )
     .bind(&uid)
@@ -92,17 +93,17 @@ pub async fn get_one(
 ) -> Result<Json<Essay>, ApiError> {
     let uid = user_id(&st, &user).await?;
     let row = sqlx::query(
-        "SELECT id::text AS id, title, COALESCE(content,'') AS content, \
-                COALESCE(word_count,0) AS word_count, citation_style, \
+        "SELECT id::text AS id, title, COALESCE(state::text,'') AS content, \
+                COALESCE(word_count,0) AS word_count, format_style AS citation_style, \
                 updated_at::text AS updated_at \
-         FROM essays WHERE id = $1::uuid AND user_id = $2::uuid",
+         FROM documents WHERE id = $1::uuid AND user_id = $2::uuid",
     )
     .bind(&id)
     .bind(&uid)
     .fetch_optional(&st.db)
     .await
     .map_err(db_err)?
-    .ok_or_else(|| ApiError::not_found("essay not found"))?;
+    .ok_or_else(|| ApiError::not_found("document not found"))?;
 
     Ok(Json(Essay {
         id: row.get("id"),
@@ -129,36 +130,38 @@ pub async fn save(
 
     let row = match body.id {
         Some(id) => sqlx::query(
-            "UPDATE essays SET title=$1, content=$2, word_count=$3, \
-                    citation_style=$4, updated_at=now() \
+            "UPDATE documents SET title=$1, format_style=$2, word_count=$3, \
+                    preview=left(COALESCE($4::jsonb->>'body',''),200), \
+                    state=$4::jsonb, updated_at=now() \
              WHERE id=$5::uuid AND user_id=$6::uuid \
-             RETURNING id::text AS id, title, COALESCE(content,'') AS content, \
-                    COALESCE(word_count,0) AS word_count, citation_style, \
+             RETURNING id::text AS id, title, COALESCE(state::text,'') AS content, \
+                    COALESCE(word_count,0) AS word_count, format_style AS citation_style, \
                     updated_at::text AS updated_at",
         )
         .bind(&title)
-        .bind(&body.content)
-        .bind(body.word_count)
         .bind(&body.citation_style)
+        .bind(body.word_count)
+        .bind(&body.content)
         .bind(&id)
         .bind(&uid)
         .fetch_optional(&st.db)
         .await
         .map_err(db_err)?
-        .ok_or_else(|| ApiError::not_found("essay not found"))?,
+        .ok_or_else(|| ApiError::not_found("document not found"))?,
         None => sqlx::query(
-            "INSERT INTO essays (id, user_id, title, content, word_count, \
-                    citation_style, created_at, updated_at) \
-             VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, $5, now(), now()) \
-             RETURNING id::text AS id, title, COALESCE(content,'') AS content, \
-                    COALESCE(word_count,0) AS word_count, citation_style, \
+            "INSERT INTO documents (id, user_id, title, format_style, word_count, \
+                    preview, state, created_at, updated_at) \
+             VALUES (gen_random_uuid(), $1::uuid, $2, $3, $4, \
+                    left(COALESCE($5::jsonb->>'body',''),200), $5::jsonb, now(), now()) \
+             RETURNING id::text AS id, title, COALESCE(state::text,'') AS content, \
+                    COALESCE(word_count,0) AS word_count, format_style AS citation_style, \
                     updated_at::text AS updated_at",
         )
         .bind(&uid)
         .bind(&title)
-        .bind(&body.content)
-        .bind(body.word_count)
         .bind(&body.citation_style)
+        .bind(body.word_count)
+        .bind(&body.content)
         .fetch_one(&st.db)
         .await
         .map_err(db_err)?,
@@ -181,7 +184,7 @@ pub async fn remove(
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let uid = user_id(&st, &user).await?;
-    let res = sqlx::query("DELETE FROM essays WHERE id=$1::uuid AND user_id=$2::uuid")
+    let res = sqlx::query("DELETE FROM documents WHERE id=$1::uuid AND user_id=$2::uuid")
         .bind(&id)
         .bind(&uid)
         .execute(&st.db)
