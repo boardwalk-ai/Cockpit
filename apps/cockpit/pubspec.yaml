@@ -34,8 +34,13 @@ dependencies:
     path: ../../packages/cockpit_ui
   cockpit_module:
     path: ../../packages/cockpit_module
+  guided_generation:
+    path: ../../packages/guided_generation
+  writing_chamber:
+    path: ../../packages/writing_chamber
   study_studio:
     path: ../../packages/study_studio
+  flutter_quill: ^11.5.1
   octo_notes:
     path: ../../packages/octo_notes
 

@@ -81,6 +81,7 @@ secrets.dart
 Server Access.md
 **/*Server Access*.md
 Backend/.env
+Backend/guided_generation/go_api/data/
 # Local-only project reference (credentials inside)
 info.md
 .deploy-ssh-password

@@ -1,8 +1,10 @@
 import 'package:cockpit_core/cockpit_core.dart';
 import 'package:cockpit_module/cockpit_module.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:guided_generation/guided_generation.dart';
 import 'package:octo_notes/octo_notes.dart';
 import 'package:study_studio/study_studio.dart';
+import 'package:writing_chamber/writing_chamber.dart';
 
 /// The set of modules currently mounted in the super-app, after applying
 /// feature flags. This is the single place that knows which modules exist —
@@ -15,8 +17,10 @@ import 'package:study_studio/study_studio.dart';
 /// Compile-time kill switch for OctoNotes. OctoNotes is still WIP and must not
 /// be exposed in production yet, so prod builds pass
 /// `--dart-define=OCTONOTES_ENABLED=false`. Local dev leaves it on.
-const _octoNotesBuildEnabled =
-    bool.fromEnvironment('OCTONOTES_ENABLED', defaultValue: true);
+const _octoNotesBuildEnabled = bool.fromEnvironment(
+  'OCTONOTES_ENABLED',
+  defaultValue: true,
+);
 
 final activeModulesProvider = Provider<List<CockpitModule>>((ref) {
   final flags = ref.watch(featureFlagsProvider);
@@ -24,5 +28,7 @@ final activeModulesProvider = Provider<List<CockpitModule>>((ref) {
     if (_octoNotesBuildEnabled && flags.octoNotesEnabled)
       const OctoNotesModule(),
     if (flags.studyStudioEnabled) const StudyStudioModule(),
+    const GuidedGenerationModule(),
+    const WritingChamberModule(),
   ];
 });
