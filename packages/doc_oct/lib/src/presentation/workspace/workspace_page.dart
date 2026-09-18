@@ -2,8 +2,8 @@ import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../application/providers.dart';
-import '../../domain/saved_project.dart';
+import '../../application/auth_providers.dart';
+import '../../application/essays_service.dart';
 import '../../theme/doc_tokens.dart';
 import '../widgets/doc_scaffold.dart';
 import '../widgets/doc_top_bar.dart';
@@ -18,13 +18,13 @@ class WorkspacePage extends ConsumerWidget {
     super.key,
     this.onNewDocument,
     this.onOpenDocument,
-    this.onSignOut,
   });
 
   /// A template was chosen (null = Blank).
   final void Function(FormatStyle? style)? onNewDocument;
-  final void Function(SavedProject project)? onOpenDocument;
-  final VoidCallback? onSignOut;
+
+  /// A saved document was opened (by id).
+  final void Function(String id)? onOpenDocument;
 
   static const _docLimit = 10;
 
@@ -41,13 +41,13 @@ class WorkspacePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final docs = ref.watch(savedProjectsProvider);
+    final docs = ref.watch(myDocumentsProvider).valueOrNull ?? const [];
 
     return DocScaffold(
       child: SafeArea(
         child: Column(
           children: [
-            DocOctTopBar(credits: 1240, onAvatarTap: onSignOut),
+            const DocOctTopBar(),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.symmetric(
@@ -137,8 +137,8 @@ class WorkspacePage extends ConsumerWidget {
                                   Reveal(
                                     delay: Duration(milliseconds: 40 * i),
                                     child: _RecentCard(
-                                      project: d,
-                                      onTap: () => onOpenDocument?.call(d),
+                                      item: d,
+                                      onTap: () => onOpenDocument?.call(d.id),
                                     ),
                                   ),
                               ],
@@ -271,21 +271,19 @@ class _TemplateCard extends StatelessWidget {
 }
 
 class _RecentCard extends StatelessWidget {
-  const _RecentCard({required this.project, required this.onTap});
-  final SavedProject project;
+  const _RecentCard({required this.item, required this.onTap});
+  final EssayListItem item;
   final VoidCallback onTap;
-
-  static const _months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final d = project.updatedAt;
-    final meta = '${project.style.short} · ${_months[d.month - 1]} ${d.day}';
+    final style = (item.citationStyle ?? '').toUpperCase();
+    final meta = [
+      if (style.isNotEmpty) style,
+      '${item.wordCount} words',
+    ].join(' · ');
     return SizedBox(
       width: 224,
       child: InkWell(
@@ -311,9 +309,9 @@ class _RecentCard extends StatelessWidget {
                     const SizedBox(height: 8),
                     Expanded(
                       child: Text(
-                        project.snippet.isEmpty
+                        item.snippet.isEmpty
                             ? 'Empty document'
-                            : project.snippet,
+                            : item.snippet,
                         maxLines: 9,
                         overflow: TextOverflow.fade,
                         style: const TextStyle(
@@ -329,7 +327,7 @@ class _RecentCard extends StatelessWidget {
             ),
             const SizedBox(height: CockpitSpacing.sm),
             Text(
-              project.title,
+              item.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: theme.textTheme.labelLarge

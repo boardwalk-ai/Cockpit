@@ -12,14 +12,10 @@ class WizardWelcomePage extends StatelessWidget {
     super.key,
     this.onSpecifyTopic,
     this.onStartWriting,
-    this.onSignIn,
   });
 
   final VoidCallback? onSpecifyTopic;
   final VoidCallback? onStartWriting;
-
-  /// Tapping the avatar — jumps to the signed-in workspace (preview).
-  final VoidCallback? onSignIn;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +26,7 @@ class WizardWelcomePage extends StatelessWidget {
       child: SafeArea(
         child: Column(
           children: [
-            DocOctTopBar(onAvatarTap: onSignIn),
+            const DocOctTopBar(),
             Expanded(
               child: WizardShell(
                 step: 1,

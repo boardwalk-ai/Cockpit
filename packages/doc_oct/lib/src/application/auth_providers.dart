@@ -27,3 +27,16 @@ final meProvider = FutureProvider<Me?>((ref) async {
   if (svc == null) return null;
   return svc.me();
 });
+
+/// The saved-documents service (or null when no backend is configured).
+final essaysServiceProvider =
+    Provider<EssaysService?>((ref) => createEssaysService());
+
+/// The signed-in user's saved documents (newest first). Empty when signed out;
+/// refetches on sign in/out.
+final myDocumentsProvider = FutureProvider<List<EssayListItem>>((ref) async {
+  final user = ref.watch(authUserProvider).valueOrNull;
+  final svc = ref.watch(essaysServiceProvider);
+  if (user == null || svc == null) return const [];
+  return svc.list();
+});

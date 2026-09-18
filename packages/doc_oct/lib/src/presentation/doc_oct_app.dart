@@ -60,31 +60,60 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
   /// Direction of the last navigation — drives which way the pages slide.
   bool _forward = true;
 
+  /// When opening a saved document: its id + serialized state (else null = new).
+  String? _openDocId;
+  String? _openDocJson;
+
   void _go(_Screen s) => setState(() {
         _forward = s.index >= _screen.index;
         _screen = s;
       });
 
-  Future<void> _signIn() async {
+  bool get _signedIn => ref.read(authUserProvider).valueOrNull != null;
+
+  void _newDocument(FormatStyle? style) => setState(() {
+        _style = style ?? FormatStyle.mla;
+        _openDocId = null;
+        _openDocJson = null;
+        _forward = true;
+        _screen = _Screen.editor;
+      });
+
+  Future<void> _openDocument(String id) async {
+    final svc = ref.read(essaysServiceProvider);
+    if (svc == null) return;
     try {
-      await ref.read(docAuthProvider).signIn();
-      if (mounted) _go(_Screen.workspace);
+      final doc = await svc.get(id);
+      if (!mounted) return;
+      setState(() {
+        _openDocId = doc.id;
+        _openDocJson = doc.content;
+        _forward = true;
+        _screen = _Screen.editor;
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign-in failed: $e')),
+          SnackBar(content: Text('Couldn\'t open document: $e')),
         );
       }
     }
   }
 
-  void _signOut() {
-    ref.read(docAuthProvider).signOut();
-    _go(_Screen.welcome);
-  }
-
   @override
   Widget build(BuildContext context) {
+    // Reactive navigation on auth changes: sign in → workspace, sign out →
+    // welcome, and restore a persisted session on first load.
+    ref.listen(authUserProvider, (prev, next) {
+      final signedIn = next.valueOrNull != null;
+      if (signedIn &&
+          (_screen == _Screen.welcome || _screen == _Screen.loading)) {
+        _go(_Screen.workspace);
+      } else if (!signedIn && _screen == _Screen.workspace) {
+        _go(_Screen.welcome);
+      }
+    });
+
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 420),
       switchInCurve: Curves.easeOutCubic,
@@ -114,13 +143,14 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
   Widget _current() {
     switch (_screen) {
       case _Screen.loading:
-        return DocOctLoadingPage(onDone: () => _go(_Screen.welcome));
+        return DocOctLoadingPage(
+            onDone: () =>
+                _go(_signedIn ? _Screen.workspace : _Screen.welcome));
 
       case _Screen.welcome:
         return WizardWelcomePage(
           onSpecifyTopic: () => _go(_Screen.setup),
-          onStartWriting: () => _go(_Screen.editor),
-          onSignIn: _signIn,
+          onStartWriting: () => _newDocument(_style),
         );
 
       case _Screen.setup:
@@ -148,21 +178,20 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
 
       case _Screen.workspace:
         return WorkspacePage(
-          onNewDocument: (style) {
-            setState(() {
-              _style = style ?? FormatStyle.mla;
-              _forward = true;
-              _screen = _Screen.editor;
-            });
-          },
-          onOpenDocument: (_) => _go(_Screen.editor),
-          onSignOut: _signOut,
+          onNewDocument: _newDocument,
+          onOpenDocument: _openDocument,
         );
 
       case _Screen.editor:
         return EditorPage(
+          key: ValueKey(_openDocId ?? 'new'),
           initialStyle: _style,
-          onBack: () => _go(_Screen.welcome),
+          initialDocId: _openDocId,
+          initialDocJson: _openDocJson,
+          onBack: () {
+            ref.invalidate(myDocumentsProvider); // pick up a new save
+            _go(_signedIn ? _Screen.workspace : _Screen.welcome);
+          },
         );
     }
   }
