@@ -1,0 +1,9 @@
+{
+  "DOC_OCT_API": "https://octopilotai.app/api",
+  "FIREBASE_API_KEY": "AIzaSyBcq3ylnbryHAENyn4KkqjuouIl4EBvOkc",
+  "FIREBASE_AUTH_DOMAIN": "octopilot-ai-7b29e.firebaseapp.com",
+  "FIREBASE_PROJECT_ID": "octopilot-ai-7b29e",
+  "FIREBASE_STORAGE_BUCKET": "octopilot-ai-7b29e.firebasestorage.app",
+  "FIREBASE_MESSAGING_SENDER_ID": "712429690306",
+  "FIREBASE_APP_ID": "1:712429690306:web:fcc508befb950e84b8ca5b"
+}

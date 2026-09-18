@@ -120,16 +120,24 @@ class MockAssistService implements AssistService {
 
 /// Real backend-backed assistant (backend-rs `/v1/octobot/chat`, `/v1/outline`).
 class HttpAssistService implements AssistService {
-  HttpAssistService(this.baseUrl, {http.Client? client})
+  HttpAssistService(this.baseUrl, {http.Client? client, this.token})
       : _client = client ?? http.Client();
 
   final String baseUrl;
   final http.Client _client;
+  final Future<String?> Function()? token;
 
   @override
   bool get isMock => false;
 
   Uri _u(String p) => Uri.parse('$baseUrl$p');
+
+  Future<Map<String, String>> _headers() async {
+    final h = <String, String>{'Content-Type': 'application/json'};
+    final t = await token?.call();
+    if (t != null && t.isNotEmpty) h['Authorization'] = 'Bearer $t';
+    return h;
+  }
 
   @override
   Future<String> chat({
@@ -141,7 +149,7 @@ class HttpAssistService implements AssistService {
   }) async {
     final r = await _client.post(
       _u('/v1/octobot/chat'),
-      headers: const {'Content-Type': 'application/json'},
+      headers: await _headers(),
       body: jsonEncode({
         'message': message,
         'history': history.map((t) => t.toJson()).toList(),
@@ -164,7 +172,7 @@ class HttpAssistService implements AssistService {
   }) async {
     final r = await _client.post(
       _u('/v1/outline'),
-      headers: const {'Content-Type': 'application/json'},
+      headers: await _headers(),
       body: jsonEncode({'topic': topic, 'assignment': assignment}),
     );
     if (r.statusCode >= 400) throw Exception(_err(r));

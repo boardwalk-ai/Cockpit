@@ -2,6 +2,7 @@ import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../application/auth_providers.dart';
 import '../theme/doc_tokens.dart';
 import 'editor/editor_page.dart';
 import 'loading/doc_oct_loading_page.dart';
@@ -44,14 +45,14 @@ class DocOctRoot extends StatelessWidget {
 /// the signed-in workspace (via the avatar) → an editor placeholder.
 enum _Screen { loading, welcome, setup, analysis, workspace, editor }
 
-class DocOctFlow extends StatefulWidget {
+class DocOctFlow extends ConsumerStatefulWidget {
   const DocOctFlow({super.key});
 
   @override
-  State<DocOctFlow> createState() => _DocOctFlowState();
+  ConsumerState<DocOctFlow> createState() => _DocOctFlowState();
 }
 
-class _DocOctFlowState extends State<DocOctFlow> {
+class _DocOctFlowState extends ConsumerState<DocOctFlow> {
   _Screen _screen = _Screen.loading;
   String _topic = '';
   FormatStyle _style = FormatStyle.mla;
@@ -63,6 +64,24 @@ class _DocOctFlowState extends State<DocOctFlow> {
         _forward = s.index >= _screen.index;
         _screen = s;
       });
+
+  Future<void> _signIn() async {
+    try {
+      await ref.read(docAuthProvider).signIn();
+      if (mounted) _go(_Screen.workspace);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sign-in failed: $e')),
+        );
+      }
+    }
+  }
+
+  void _signOut() {
+    ref.read(docAuthProvider).signOut();
+    _go(_Screen.welcome);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +120,7 @@ class _DocOctFlowState extends State<DocOctFlow> {
         return WizardWelcomePage(
           onSpecifyTopic: () => _go(_Screen.setup),
           onStartWriting: () => _go(_Screen.editor),
-          onSignIn: () => _go(_Screen.workspace),
+          onSignIn: _signIn,
         );
 
       case _Screen.setup:
@@ -137,7 +156,7 @@ class _DocOctFlowState extends State<DocOctFlow> {
             });
           },
           onOpenDocument: (_) => _go(_Screen.editor),
-          onSignOut: () => _go(_Screen.welcome),
+          onSignOut: _signOut,
         );
 
       case _Screen.editor:

@@ -13,18 +13,29 @@ import 'tools_service.dart';
 /// Base URL comes from `--dart-define=DOC_OCT_API=...`; when it is empty the app
 /// falls back to [MockToolsService] (see [toolsService]).
 class HttpToolsService implements ToolsService {
-  HttpToolsService(this.baseUrl, {http.Client? client})
+  HttpToolsService(this.baseUrl, {http.Client? client, this.token})
       : _client = client ?? http.Client();
 
-  /// e.g. `http://localhost:8787` in dev or `https://api.octopilotai.app` live.
+  /// e.g. `http://localhost:8787` in dev or `https://octopilotai.app/api` live.
   final String baseUrl;
   final http.Client _client;
+
+  /// Supplies the Firebase ID token for authed requests (may be null).
+  final Future<String?> Function()? token;
 
   @override
   bool get isMock => false;
 
   Uri _u(String path, [Map<String, String>? q]) =>
       Uri.parse('$baseUrl$path').replace(queryParameters: q);
+
+  /// Request headers, adding `Authorization: Bearer …` when a token is available.
+  Future<Map<String, String>> _headers([Map<String, String>? extra]) async {
+    final h = <String, String>{if (extra != null) ...extra};
+    final t = await token?.call();
+    if (t != null && t.isNotEmpty) h['Authorization'] = 'Bearer $t';
+    return h;
+  }
 
   Map<String, dynamic> _decodeObject(http.Response r) {
     if (r.statusCode >= 400) {
@@ -43,13 +54,15 @@ class HttpToolsService implements ToolsService {
 
   @override
   Future<DictResult> dictionary(String word) async {
-    final r = await _client.get(_u('/v1/dictionary', {'word': word.trim()}));
+    final r = await _client.get(_u('/v1/dictionary', {'word': word.trim()}),
+        headers: await _headers());
     return DictResult.fromJson(_decodeObject(r));
   }
 
   @override
   Future<ThesResult> thesaurus(String word) async {
-    final r = await _client.get(_u('/v1/thesaurus', {'word': word.trim()}));
+    final r = await _client.get(_u('/v1/thesaurus', {'word': word.trim()}),
+        headers: await _headers());
     return ThesResult.fromJson(_decodeObject(r));
   }
 
@@ -57,7 +70,7 @@ class HttpToolsService implements ToolsService {
   Future<String> paraphrase(String text) async {
     final r = await _client.post(
       _u('/v1/paraphrase'),
-      headers: const {'Content-Type': 'application/json'},
+      headers: await _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({'text': text}),
     );
     return (_decodeObject(r)['text'] ?? '') as String;
@@ -67,7 +80,7 @@ class HttpToolsService implements ToolsService {
   Future<List<Source>> searchSources(String query) async {
     final r = await _client.post(
       _u('/v1/sources/search'),
-      headers: const {'Content-Type': 'application/json'},
+      headers: await _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({'topic': query.trim()}),
     );
     if (r.statusCode >= 400) throw ToolsException(_errorMessage(r));
@@ -80,7 +93,8 @@ class HttpToolsService implements ToolsService {
   /// Scrapes a single page into a [Source] (backend `/v1/scrape`). Used by the
   /// Auto mode and the source modal.
   Future<Source> scrape(String url) async {
-    final r = await _client.get(_u('/v1/scrape', {'url': url.trim()}));
+    final r = await _client.get(_u('/v1/scrape', {'url': url.trim()}),
+        headers: await _headers());
     return Source.fromJson(_decodeObject(r));
   }
 }

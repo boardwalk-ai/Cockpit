@@ -6,6 +6,11 @@
 /// wizard (welcome → setup → analysis) + workspace; the editor is Phase 2.
 library;
 
+export 'src/application/auth.dart';
+export 'src/application/auth_providers.dart';
+export 'src/application/backend_config.dart'
+    show setAuthTokenSource, hasBackend, kDocOctApiBase;
+export 'src/application/essays_service.dart';
 export 'src/application/providers.dart';
 export 'src/application/sources.dart';
 export 'src/application/tools_service.dart';

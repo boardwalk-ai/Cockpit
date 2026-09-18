@@ -1,11 +1,15 @@
+import 'dart:convert';
+
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
+import '../../application/backend_config.dart';
 import '../../application/pdf_export_app.dart';
 import '../../application/sources.dart';
 import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
+import '../widgets/auth_chip.dart';
 import '../widgets/doc_scaffold.dart';
 import 'doc_model.dart';
 import 'editor_panels.dart';
@@ -21,10 +25,21 @@ import 'tools_panel.dart';
 /// pills re-project the *same* semantic fields, so switching APA↔MLA reflows
 /// without touching content.
 class EditorPage extends StatefulWidget {
-  const EditorPage({super.key, this.initialStyle = FormatStyle.apa, this.onBack});
+  const EditorPage({
+    super.key,
+    this.initialStyle = FormatStyle.apa,
+    this.onBack,
+    this.initialDocId,
+    this.initialDocJson,
+  });
 
   final FormatStyle initialStyle;
   final VoidCallback? onBack;
+
+  /// When opening a saved document: its id (so Save updates in place) and its
+  /// serialized state (restored into the editor on load).
+  final String? initialDocId;
+  final String? initialDocJson;
 
   @override
   State<EditorPage> createState() => _EditorPageState();
@@ -70,9 +85,15 @@ class _EditorPageState extends State<EditorPage> {
   // True while a PDF export is in flight (disables the Finish button).
   bool _exporting = false;
 
+  // Saving: the backing essay id (null until first save) + in-flight flag.
+  String? _savedId;
+  bool _saving = false;
+
   @override
   void initState() {
     super.initState();
+    _savedId = widget.initialDocId;
+    if (widget.initialDocJson != null) _restore(widget.initialDocJson!);
     for (final c in _all) {
       c.addListener(_onChanged);
     }
@@ -284,6 +305,98 @@ class _EditorPageState extends State<EditorPage> {
     );
   }
 
+  // ── Saving: serialize the whole document to the essays store ──────────────
+  int get _computedWordCount {
+    final t = _bodyText.trim();
+    if (t.isEmpty) return 0;
+    return t.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).length;
+  }
+
+  String _docStateJson() => jsonEncode({
+        'v': 1,
+        'style': _style.name,
+        'docTitle': _docTitle.text,
+        'title': _title.text,
+        'abstract': _abstract.text,
+        'keywords': _keywords.text,
+        'fields': {for (final e in _fields.entries) e.key.name: e.value.text},
+        'body': _bodyText,
+        'sources': _sources
+            .map((s) => {
+                  'url': s.url,
+                  'title': s.title,
+                  'author': s.author,
+                  'publishedYear': s.publishedYear,
+                  'publisher': s.publisher,
+                  'fullContent': s.fullContent,
+                })
+            .toList(),
+      });
+
+  void _restore(String json) {
+    try {
+      final m = jsonDecode(json) as Map<String, dynamic>;
+      _style = FormatStyle.values.firstWhere((s) => s.name == m['style'],
+          orElse: () => _style);
+      _docTitle.text = (m['docTitle'] ?? _docTitle.text) as String;
+      _title.text = (m['title'] ?? '') as String;
+      _abstract.text = (m['abstract'] ?? '') as String;
+      _keywords.text = (m['keywords'] ?? '') as String;
+      final f = m['fields'] as Map<String, dynamic>?;
+      if (f != null) {
+        for (final k in DocFieldKind.values) {
+          final v = f[k.name];
+          if (v is String) _fields[k]!.text = v;
+        }
+      }
+      final body = (m['body'] ?? '') as String;
+      if (body.isNotEmpty) _body.document.insert(0, body);
+      final srcs = m['sources'] as List?;
+      if (srcs != null && srcs.isNotEmpty) {
+        _sources =
+            srcs.map((s) => Source.fromJson(s as Map<String, dynamic>)).toList();
+      }
+    } catch (_) {
+      // Corrupt/older payload — start from a blank doc rather than crashing.
+    }
+  }
+
+  Future<void> _save() async {
+    final svc = createEssaysService();
+    if (svc == null) {
+      _toast('Saving needs the backend.');
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final saved = await svc.save(
+        id: _savedId,
+        title: _docTitle.text.trim().isEmpty
+            ? 'Untitled document'
+            : _docTitle.text.trim(),
+        content: _docStateJson(),
+        wordCount: _computedWordCount,
+        citationStyle: _style.name,
+      );
+      _savedId = saved.id;
+      _toast('Saved ✓');
+    } catch (e) {
+      final s = e.toString();
+      _toast(s.contains('no account') || s.contains('401')
+          ? 'Sign in to save your document.'
+          : 'Save failed: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  void _toast(String m) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(m), duration: const Duration(seconds: 2)),
+    );
+  }
+
   // ── Insert text (a quote and/or in-text citation) at the body cursor ──────
   void _insertIntoBody(String text) {
     final docLen = _body.document.length; // includes the trailing '\n'
@@ -347,8 +460,7 @@ class _EditorPageState extends State<EditorPage> {
                 widget.onBack!),
           Icon(Icons.notes_rounded, size: 18, color: scheme.primary),
           const SizedBox(width: CockpitSpacing.sm),
-          SizedBox(
-            width: 240,
+          Expanded(
             child: TextField(
               controller: _docTitle,
               style: theme.textTheme.titleSmall
@@ -357,7 +469,27 @@ class _EditorPageState extends State<EditorPage> {
               decoration: const InputDecoration.collapsed(hintText: 'Document'),
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: CockpitSpacing.sm),
+          const AuthChip(),
+          const SizedBox(width: CockpitSpacing.sm),
+          OutlinedButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(
+                    width: 13,
+                    height: 13,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.bookmark_border_rounded, size: 15),
+            label: Text(_saving ? 'Saving…' : 'Save'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: scheme.onSurfaceVariant,
+              side: BorderSide(color: scheme.outlineVariant),
+              visualDensity: VisualDensity.compact,
+              textStyle:
+                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(width: CockpitSpacing.sm),
           _RedPill(
             icon: Icons.download_rounded,
             label: _exporting ? 'Exporting…' : 'Finish',
