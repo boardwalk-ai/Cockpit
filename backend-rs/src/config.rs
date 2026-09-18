@@ -13,6 +13,8 @@ pub struct Config {
     pub openrouter_model: String,
     /// Upstream page scraper (the octopilot backend).
     pub upstream_scraper: String,
+    /// Shared Postgres (keys, models, users/credits, essays live here).
+    pub database_url: String,
     pub port: u16,
 }
 
@@ -27,6 +29,9 @@ impl Config {
                 .unwrap_or_else(|_| "openai/gpt-4o-mini".to_string()),
             upstream_scraper: std::env::var("UPSTREAM_SCRAPER")
                 .unwrap_or_else(|_| "https://api.octopilotai.com/api/scrape".to_string()),
+            database_url: std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+                "postgres://octopilot:OctoPilot2025@localhost:5432/octopilot".to_string()
+            }),
             port: std::env::var("PORT")
                 .ok()
                 .and_then(|s| s.parse().ok())

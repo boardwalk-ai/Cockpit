@@ -218,8 +218,15 @@ pub async fn paraphrase(
     if text.is_empty() {
         return Ok(Json(ParaphraseResult { text }));
     }
-    let Some(key) = st.config.humanizer_api_key.clone() else {
-        // No key configured (dev) — passthrough so the endpoint still works.
+    // Key comes from the shared DB (system_settings.undetectable_api_key), with
+    // the env var as an override; passthrough when neither is set.
+    let key = match st.config.humanizer_api_key.clone() {
+        Some(k) => Some(k),
+        None => crate::db::setting(&st.db, "undetectable_api_key")
+            .await
+            .filter(|s| !s.trim().is_empty()),
+    };
+    let Some(key) = key else {
         return Ok(Json(ParaphraseResult { text }));
     };
     let out = humanize_undetectable(&st, &key, &text).await?;

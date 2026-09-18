@@ -10,6 +10,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::db;
 use crate::error::ApiError;
 use crate::openrouter::{call_json, parse_json_loose, ChatMessage};
 use crate::AppState;
@@ -79,12 +80,8 @@ pub async fn search(
     State(st): State<AppState>,
     Json(body): Json<SearchBody>,
 ) -> Result<Json<Vec<GoodSource>>, ApiError> {
-    let Some(api_key) = st.config.openrouter_api_key.clone() else {
-        return Err(ApiError::new(
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            "source search needs OPENROUTER_API_KEY",
-        ));
-    };
+    let api_key = db::openrouter_key(&st.db).await?;
+    let model = db::model(&st.db, "primary_model", &st.config.openrouter_model).await;
     let topic = match &body.keyword {
         Some(k) if !k.trim().is_empty() => k.trim().to_string(),
         _ => body.topic.trim().to_string(),
@@ -112,7 +109,7 @@ pub async fn search(
         });
 
         let candidates =
-            match fetch_candidates(&st, &api_key, &topic, &body.outlines, request_count, refinement)
+            match fetch_candidates(&st, &api_key, &model, &topic, &body.outlines, request_count, refinement)
                 .await
             {
                 Ok(c) => c,
@@ -165,6 +162,7 @@ pub async fn search(
 async fn fetch_candidates(
     st: &AppState,
     api_key: &str,
+    model: &str,
     topic: &str,
     outlines: &[OutlineInput],
     count: usize,
@@ -193,7 +191,7 @@ async fn fetch_candidates(
     let raw = call_json(
         &st.http,
         api_key,
-        &st.config.openrouter_model,
+        model,
         vec![
             ChatMessage { role: "system", content: ALVIN_PROMPT.to_string() },
             ChatMessage { role: "user", content: user },
