@@ -11,6 +11,8 @@ import 'doc_model.dart';
 import 'editor_panels.dart';
 import 'editor_toolbar.dart';
 import 'format_spec.dart';
+import 'octobot_panel.dart';
+import 'outline_panel.dart';
 import 'paged_document.dart';
 import 'tools_panel.dart';
 
@@ -195,7 +197,9 @@ class _EditorPageState extends State<EditorPage> {
 
     return DocScaffold(
       child: SafeArea(
-        child: Row(
+        child: Stack(
+          children: [
+            Row(
           children: [
             SidePanel(
               side: PanelSide.left,
@@ -206,7 +210,12 @@ class _EditorPageState extends State<EditorPage> {
               title: 'Outline',
               onToggle: () => setState(() => _leftOpen = !_leftOpen),
               onResize: (w) => setState(() => _leftWidth = w),
-              child: const OutlinePanel(),
+              child: OutlinePanel(
+                topic: _title.text.trim().isEmpty
+                    ? _docTitle.text
+                    : _title.text,
+                onInsertText: _insertIntoBody,
+              ),
             ),
             Expanded(child: center),
             SidePanel(
@@ -224,6 +233,13 @@ class _EditorPageState extends State<EditorPage> {
                 onSourcesFound: (list) => setState(() => _sources = list),
                 onInsertText: _insertIntoBody,
               ),
+            ),
+          ],
+            ),
+            Positioned(
+              left: 16,
+              bottom: 16,
+              child: OctoBotLauncher(essayContext: () => _bodyText),
             ),
           ],
         ),

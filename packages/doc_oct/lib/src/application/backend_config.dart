@@ -1,3 +1,4 @@
+import 'assist_service.dart';
 import 'http_tools_service.dart';
 import 'tools_service.dart';
 
@@ -16,3 +17,7 @@ bool get hasBackend => kDocOctApiBase.isNotEmpty;
 /// The active Tools data source — real HTTP backend when configured, else mock.
 ToolsService createToolsService() =>
     hasBackend ? HttpToolsService(kDocOctApiBase) : const MockToolsService();
+
+/// The active assistant (OctoBot chat + outline) — backend when configured.
+AssistService createAssistService() =>
+    hasBackend ? HttpAssistService(kDocOctApiBase) : const MockAssistService();

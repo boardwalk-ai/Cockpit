@@ -207,37 +207,4 @@ class _ResizeHandleState extends State<_ResizeHandle> {
 }
 
 /// Left panel body — the Outline, empty until the wizard/analysis fills it.
-class OutlinePanel extends StatelessWidget {
-  const OutlinePanel({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(CockpitSpacing.xl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.segment_rounded,
-                size: 26, color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
-            const SizedBox(height: CockpitSpacing.md),
-            Text('Nothing here yet',
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
-            const SizedBox(height: CockpitSpacing.xs),
-            Text(
-              'Analyze your assignment and generate an outline in the setup '
-              'wizard — both show up here as you write.',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant.withValues(alpha: 0.7)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
