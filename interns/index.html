@@ -243,17 +243,115 @@
   <!-- WEEK SWITCHER -->
   <section class="wrap weeks">
     <span class="lbl">Weeks</span>
-    <a class="wk active" href="#week05">Assignment 05 · 05 Sep <em>Current</em></a>
+    <a class="wk active" href="#week06">Assignment 06 · 22 Sep <em>Current</em></a>
+    <a class="wk" href="#week05">Assignment 05 · 05 Sep</a>
     <a class="wk" href="#week04">Assignment 04 · 01 Sep</a>
     <a class="wk" href="#week03">Assignment 03 · 22 Aug</a>
     <a class="wk" href="#week02">Assignment 02 · 12 Aug</a>
     <a class="wk" href="#week01">Assignment 01 · 01 Aug</a>
   </section>
 
-  <!-- ===================== ASSIGNMENT 05 · 05 SEP 2026 (CURRENT) ===================== -->
+  <!-- ===================== ASSIGNMENT 06 · 22 SEP 2026 (CURRENT) ===================== -->
+  <section class="week wrap" id="week06">
+    <div class="week-head">
+      <span class="week-tag">Assignment 06 · Current</span>
+      <h1 class="week-title">22 September 2026</h1>
+      <p class="week-note">Two new fronts. Sean opens <strong style="color:var(--text)">OctoSlides</strong> — presentation slide generation and the agent that drives it, in two modes. Amirjon &amp; Chris bring <strong style="color:var(--text)">Study Studio to mobile</strong> — an independent, purpose-built layout for every page behind <strong style="color:var(--text)">isMobilePlatform</strong>.</p>
+      <div class="week-stats">
+        <span class="s"><b>2</b> tasks</span>
+        <span class="s"><b>1</b> shared collab</span>
+        <span class="s"><b>Slides</b> · Mobile</span>
+      </div>
+    </div>
+
+    <!-- submission / focus / check-ins -->
+    <div class="brief">
+      <div class="brief-item"><span class="bi-k">Submission</span><span class="bi-v">Fork-based PR · Cockpit repo</span></div>
+      <div class="brief-item"><span class="bi-k">Focus</span><span class="bi-v r">New modules · Slides + Mobile</span></div>
+      <div class="brief-item"><span class="bi-k">Check-ins</span><span class="bi-v">Daily · via WhatsApp</span></div>
+    </div>
+
+    <div class="grid">
+      <nav class="index">
+        <a href="#octoslides6" data-target="octoslides6"><span class="n">01</span> Sean · OctoSlides</a>
+        <a href="#mobile6" data-target="mobile6"><span class="n">02</span> Amirjon + Chris</a>
+      </nav>
+
+      <div class="cards">
+
+        <!-- 1 OCTOSLIDES · SEAN -->
+        <article class="card" id="octoslides6">
+          <div class="card-num">01</div>
+          <div class="card-top">
+            <div class="avatar">S</div>
+            <div class="who"><div class="name">Sean</div><div class="role">Generation &amp; Agent · OctoSlides</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>No deadline</span>
+          </div>
+          <h3>OctoSlides — Slide Generation &amp; Agent</h3>
+          <p class="lede">Build the brain behind <strong style="color:#fff">OctoSlides</strong> — step-by-step presentation slide generation and the <strong style="color:#fff">agent</strong> that orchestrates it. Two generation modes; a frontend we'll hand you to build against.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Setup</span><p>We'll provide the <strong>OctoSlides frontend repository</strong> for you to work on. Build your generation &amp; agent layer against it.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>The <strong>step-by-step slide-generation pipeline</strong> and the <strong>agent behaviour</strong> that plans and produces a deck — supporting <strong>two generation modes</strong>.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Figure out the <strong>step-by-step slide-generation flow</strong> and the <strong>agent behaviour</strong> that drives it (outline → slides → content).</span></li>
+                <li><span class="cbx"></span><span>Implement <strong>Mode 1 — Generation from template</strong>: build a deck from a chosen presentation template.</span></li>
+                <li><span class="cbx"></span><span>Implement <strong>Mode 2 — HTML → PPTX</strong>: turn HTML content into a downloadable <strong>.pptx</strong> deck.</span></li>
+                <li><span class="cbx"></span><span>Integrate with the <strong>provided frontend</strong> — real generation, no mock decks.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>OctoSlides generates a full deck <strong>step by step</strong> through the agent, in <strong>both modes</strong> — template generation and HTML → PPTX — wired to the provided frontend.</p></div>
+          <div class="meta-row">
+            <span class="pill">Module <b>OctoSlides</b></span>
+            <span class="pill">Scope <b>slide generation + agent</b></span>
+            <span class="pill">Timeline <b>no deadline</b></span>
+            <span class="pill">Branch <b>your own · fork PR</b></span>
+          </div>
+        </article>
+
+        <!-- 2 STUDY STUDIO MOBILE · AMIRJON + CHRIS -->
+        <article class="card" id="mobile6">
+          <div class="card-num">02</div>
+          <div class="card-top">
+            <div class="avatar">AC</div>
+            <div class="who"><div class="name">Amirjon + Chris</div><div class="role">Collaboration · Study Studio Mobile</div></div>
+            <span class="chip time"><svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 10.6 3.5 2-.9 1.5L11 13.6V7h2Z"/></svg>~1 week</span>
+          </div>
+          <h3>Study Studio — Mobile Version</h3>
+          <p class="lede">Make <strong style="color:#fff">Study Studio</strong> feel native on a phone. Revise every page and draw an <strong style="color:#fff">independent mobile layout</strong> — gated on <strong style="color:#fff">isMobilePlatform</strong>. A shared collaboration.</p>
+          <div class="detail">
+            <div class="block"><span class="block-label">Collaboration</span><p>Amirjon &amp; Chris work as <strong>one team on a shared branch</strong> — divide the pages between you, agree on shared mobile patterns, and integrate into one consistent mobile experience.</p></div>
+            <div class="block"><span class="block-label">Reference</span><p>The Study Studio source lives in the Cockpit repo <strong><a href="https://github.com/boardwalk-ai/Cockpit" target="_blank" rel="noopener">github.com/boardwalk-ai/Cockpit</a></strong> (<strong>packages/study_studio</strong>). The existing desktop layouts are your reference.</p></div>
+            <div class="block"><span class="block-label">What you'll build</span><p>A <strong>purpose-built mobile layout for every Study Studio page</strong> — not a squeezed desktop — switched on <strong>isMobilePlatform</strong>, with the desktop layout left intact for wide screens.</p></div>
+            <div class="block"><span class="block-label">Scope</span>
+              <ul class="checklist">
+                <li><span class="cbx"></span><span>Go through <strong>every Study Studio page</strong> and design an <strong>independent mobile layout</strong> for each.</span></li>
+                <li><span class="cbx"></span><span>Gate the mobile layout on <strong>isMobilePlatform</strong> — the desktop layout stays for wide screens.</span></li>
+                <li><span class="cbx"></span><span>Keep behaviour identical; only the layout &amp; UX adapt to the phone form factor.</span></li>
+                <li><span class="cbx"></span><span>Reusable mobile patterns · touch-friendly targets · <strong>no horizontal overflow</strong>.</span></li>
+                <li><span class="cbx"></span><span>Cooperate on a <strong>shared branch</strong>; submit via <strong>fork PR on the Cockpit repo</strong>.</span></li>
+              </ul>
+            </div>
+          </div>
+          <div class="done"><span class="lab">Done when</span><p>Every Study Studio page has a purpose-built mobile layout under <strong>isMobilePlatform</strong>, the phone experience feels native, and the desktop layout is unchanged.</p></div>
+          <div class="meta-row">
+            <span class="pill">Stack <b>Flutter · Dart</b></span>
+            <span class="pill">Scope <b>mobile layouts</b></span>
+            <span class="pill">Team <b>Amirjon + Chris</b></span>
+            <span class="pill">Branch <b>shared · fork PR</b></span>
+          </div>
+        </article>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ASSIGNMENT 05 · 05 SEP 2026 (PAST) ===================== -->
   <section class="week wrap" id="week05">
     <div class="week-head">
-      <span class="week-tag">Assignment 05 · Current</span>
+      <span class="past-tag">Past · Archived</span>
+      <span class="week-tag">Assignment 05</span>
       <h1 class="week-title">05 September 2026</h1>
       <p class="week-note"><strong style="color:var(--text)">Full rewrites</strong>, whole product surfaces, in the Cockpit stack. Sean, Amirjon &amp; Chris team up on the <strong style="color:var(--text)">Writing Chamber</strong>; Anagha takes <strong style="color:var(--text)">HumanizerHub</strong> — each rebuilt end to end in <strong style="color:var(--text)">Flutter + Go + Python</strong> from the official OctopilotWeb code.</p>
       <div class="week-stats">
@@ -348,9 +446,10 @@
     </div>
   </section>
 
-  <!-- ===================== ASSIGNMENT 04 · 01 SEP 2026 ===================== -->
+  <!-- ===================== ASSIGNMENT 04 · 01 SEP 2026 (PAST) ===================== -->
   <section class="week wrap" id="week04">
     <div class="week-head">
+      <span class="past-tag">Past · Archived</span>
       <span class="week-tag">Assignment 04</span>
       <h1 class="week-title">01 September 2026</h1>
       <p class="week-note">Time to <strong style="color:var(--text)">make it real</strong>. Sean takes <strong style="color:var(--text)">GhostWriter</strong> end to end; Amirjon &amp; Chris build the <strong style="color:var(--text)">full Guided-Generation editor</strong>. Then all three team up on the shared piece — one set of <strong style="color:var(--text)">citation formatters</strong> (APA / MLA / Chicago / IEEE / Harvard) in Dart that must work 100% inside <strong style="color:var(--text)">both</strong> editors. Anagha turns the streaming crawl live.</p>
