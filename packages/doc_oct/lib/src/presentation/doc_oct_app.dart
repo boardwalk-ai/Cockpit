@@ -102,14 +102,17 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
 
   @override
   Widget build(BuildContext context) {
-    // Reactive navigation on auth changes: sign in → workspace, sign out →
-    // welcome, and restore a persisted session on first load.
+    // Navigate only on real sign-in/out *transitions* (not steady state), so a
+    // periodic token refresh — or visiting the welcome page while signed in —
+    // never bounces the user around. First resolution (loading → signed-in)
+    // restores a persisted session straight to the workspace.
     ref.listen(authUserProvider, (prev, next) {
-      final signedIn = next.valueOrNull != null;
-      if (signedIn &&
-          (_screen == _Screen.welcome || _screen == _Screen.loading)) {
+      final was = prev?.valueOrNull != null;
+      final now = next.valueOrNull != null;
+      if (was == now) return;
+      if (now && (_screen == _Screen.welcome || _screen == _Screen.loading)) {
         _go(_Screen.workspace);
-      } else if (!signedIn && _screen == _Screen.workspace) {
+      } else if (!now && _screen != _Screen.welcome) {
         _go(_Screen.welcome);
       }
     });
@@ -178,7 +181,10 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
 
       case _Screen.workspace:
         return WorkspacePage(
-          onNewDocument: _newDocument,
+          // Blank (no preset format) starts the new-document wizard; a format
+          // template jumps straight into the editor. Either way, still signed in.
+          onNewDocument: (style) =>
+              style == null ? _go(_Screen.welcome) : _newDocument(style),
           onOpenDocument: _openDocument,
         );
 
