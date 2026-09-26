@@ -13,7 +13,7 @@ services:
       POSTGRES_PASSWORD: ${OCTONOTES_DB_ADMIN_PASSWORD:?set in db.env}
     command: ["postgres", "-c", "shared_buffers=512MB", "-c", "max_connections=100"]
     ports:
-      - "127.0.0.1:5435:5432"
+      - "127.0.0.1:5438:5432"
     volumes:
       - octonotes-pg:/var/lib/postgresql/data
     healthcheck:
