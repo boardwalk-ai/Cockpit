@@ -3,6 +3,7 @@
 //! identity + OctoCredits from the shared octopilot DB, and Postgres helpers.
 
 pub mod auth;
+pub mod credits;
 pub mod db;
 pub mod error;
 pub mod identity;

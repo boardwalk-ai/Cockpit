@@ -311,11 +311,47 @@ pub async fn from_source(State(st): State<AppState>, caller: Caller, Path(sessio
                 transcript_anchor: Some(json!({ "segmentId": seg.id, "time": time, "speaker": seg.speaker, "excerpt": seg.display_text })),
                 source_ref: Some(json!({ "material": "Transcript", "location": format!("{} · {time}", title_case(&seg.speaker)) })),
                 ai_sources: None,
+                indent: 0,
             })
             .await?;
             (block, "segment", seg_id.to_string())
         }
-        // FROM-SOURCE-PHASE3
+        "slide" => {
+            let (material, page) = crate::routes::materials::parse_page_ref(&req.source_id)?;
+            let (title, text, filename) = crate::routes::materials::page_text(&mut tx, &caller, session_id, material, page).await?;
+            let block = blocks::insert_server_block(&mut tx, &caller, NewServerBlock {
+                session_id,
+                after: req.after_block_id,
+                kind: "slideRef".into(),
+                text: if text.trim().is_empty() { title.clone() } else { text },
+                origin: "fromSlide".into(),
+                audio_ts_ms: None,
+                transcript_anchor: None,
+                source_ref: Some(json!({ "material": filename, "location": format!("Slide {page}"), "materialId": material, "page": page, "title": title })),
+                ai_sources: None,
+                indent: 0,
+            })
+            .await?;
+            (block, "slide", format!("{material}:{page}"))
+        }
+        "ink" => {
+            let rec_id = Uuid::parse_str(&req.source_id).map_err(|_| ApiError::bad_request("sourceId must be a recognition id"))?;
+            let (text, page_id, ordinal) = crate::routes::ink_ai::recognition_text(&mut tx, &caller, session_id, rec_id).await?;
+            let block = blocks::insert_server_block(&mut tx, &caller, NewServerBlock {
+                session_id,
+                after: req.after_block_id,
+                kind: "paragraph".into(),
+                text,
+                origin: "fromInk".into(),
+                audio_ts_ms: None,
+                transcript_anchor: None,
+                source_ref: Some(json!({ "material": "Magic Pencil", "location": format!("Page {}", ordinal + 1), "pageId": page_id })),
+                ai_sources: None,
+                indent: 0,
+            })
+            .await?;
+            (block, "inkPage", page_id.to_string())
+        }
         other => return Err(ApiError::bad_request(format!("unknown source kind '{other}'"))),
     };
     sqlx::query("INSERT INTO links (session_id, user_id, from_kind, from_id, to_kind, to_id) VALUES ($1,$2,'block',$3,$4,$5) ON CONFLICT DO NOTHING")

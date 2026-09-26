@@ -23,6 +23,13 @@ use crate::routes::*;
         recordings::audio, recordings::list, recordings::add_marker, recordings::list_markers,
         transcript::list, transcript::correct, transcript::restore, transcript::toggle, transcript::from_source,
         live::session_devices, live::join, live::set_role, live::leave, live::finish,
+        crate::pricing::list,
+        ai::suggest, ai::apply, ai::dismiss, ai::command, ai::insert_run, ai::history, ai::pending_suggestions, ai::relevant, ai::summarize,
+        materials::upload, materials::upload_url, materials::uploaded, materials::from_studio, materials::list, materials::pages,
+        materials::page_image, materials::link, materials::set_active, materials::delete,
+        research::run, research::apply, research::save, research::list,
+        organize::preview, organize::apply, organize::undo, organize::dismiss,
+        ink_ai::recognize, ink_ai::review,
         // PHASE-PATHS
     ),
     tags(

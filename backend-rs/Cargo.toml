@@ -23,6 +23,11 @@ utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 futures = "0.3"
 async-stream = "0.3"
 async-trait = "0.1"
+pgvector = { version = "0.4", features = ["sqlx"] }
+pdf-extract = "0.9"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+quick-xml = "0.37"
+tiny-skia = "0.11"
 hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"

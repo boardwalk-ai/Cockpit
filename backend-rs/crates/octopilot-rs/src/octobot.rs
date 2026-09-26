@@ -57,7 +57,7 @@ pub async fn chat(
     let essay_block = if essay.is_empty() {
         "(The student hasn't written anything substantial yet.)".to_string()
     } else {
-        format!("The student's essay so far:\n\"\"\"\n{}\n\"\"\"", &essay.chars().take(8000).collect::<String>())
+        format!("The student's essay so far:\n\"\"\"\n{}\n\"\"\"", essay.chars().take(8000).collect::<String>())
     };
     let mode_directive = if body.mode == "criticism" {
         "The user is in CRITICISM mode: focus your reply on critiquing the essay \

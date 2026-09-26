@@ -63,6 +63,9 @@ fn handler(kind: &str) -> Option<Handler> {
         "transcript.faithful" => |st, job| Box::pin(crate::asr::job_faithful(st, job)),
         "recording.assemble" => |st, job| Box::pin(crate::routes::recordings::job_assemble(st, job)),
         "system.outbox" => |st, job| Box::pin(crate::outbox::job_publish(st, job)),
+        "material.process" => |st, job| Box::pin(crate::routes::materials::job_process(st, job)),
+        "embed.session" => |st, job| Box::pin(crate::retrieval::job_embed_session(st, job)),
+        "system.meter" => |st, job| Box::pin(crate::pricing::job_meter(st, job)),
         // PHASE-HANDLERS
         _ => return None,
     })
@@ -150,6 +153,7 @@ async fn scheduler(st: AppState) {
         let _ = enqueue(&st.notes, None, "system.purge", json!({}), Some(&format!("purge:{day}"))).await;
         let minute = chrono::Utc::now().format("%Y-%m-%dT%H:%M").to_string();
         let _ = enqueue(&st.notes, None, "system.outbox", json!({}), Some(&format!("outbox:{minute}"))).await;
+        let _ = enqueue(&st.notes, None, "system.meter", json!({}), Some(&format!("meter:{minute}"))).await;
     }
 }
 

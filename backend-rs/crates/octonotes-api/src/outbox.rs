@@ -22,10 +22,12 @@ pub async fn record(conn: &mut PgConnection, user_id: Uuid, kind: &str, subject_
     Ok(())
 }
 
+type EventRow = (i64, Uuid, String, Option<Uuid>, Value, chrono::DateTime<chrono::Utc>);
+
 /// Publishes unpublished events in order.
 pub async fn job_publish(st: AppState, _job: Job) -> JobResult {
     let mut tx = st.notes.begin().await.map_err(|e| e.to_string())?;
-    let rows: Vec<(i64, Uuid, String, Option<Uuid>, Value, chrono::DateTime<chrono::Utc>)> = sqlx::query_as(
+    let rows: Vec<EventRow> = sqlx::query_as(
         "SELECT id, user_id, kind, subject_id, payload, occurred_at FROM domain_events \
          WHERE published_at IS NULL ORDER BY id LIMIT 500 FOR UPDATE SKIP LOCKED",
     )

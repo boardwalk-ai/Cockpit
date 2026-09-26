@@ -1,4 +1,7 @@
 pub mod access;
+pub mod ai;
+pub mod pricing;
+pub mod retrieval;
 pub mod asr;
 pub mod outbox;
 pub mod config;
@@ -50,6 +53,10 @@ pub struct AppState {
     pub user_ids: UserIdCache,
     pub hub: Hub,
     pub storage: Storage,
+    /// The central OctoCredits balance (shared protocol, octo-common).
+    pub credits: octo_common::credits::Credits,
+    pub rate: ai::RateLimiter,
+    pub prices: pricing::PriceCache,
 }
 
 impl HasFirebase for AppState {
@@ -105,7 +112,11 @@ impl AppState {
             None => Storage::fs(&config.storage_dir, &config.public_base_url, config.storage_signing_key.as_bytes().to_vec()),
         };
 
+        let credits = octo_common::credits::Credits::new(octopilot.clone(), config.credits_ledger_type.clone(), config.credits_enabled);
         Ok(Self {
+            credits,
+            rate: ai::RateLimiter::default(),
+            prices: pricing::PriceCache::default(),
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             http,
             config: Arc::new(config),
@@ -166,6 +177,35 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/sessions/:id/join", post(live::join))
         .route("/v1/sessions/:id/leave", post(live::leave))
         .route("/v1/sessions/:id/finish", post(live::finish))
+        // AI, materials, research, organization, handwriting (Phase 3)
+        .route("/v1/me/pricing", get(crate::pricing::list))
+        .route("/v1/sessions/:id/ai/suggest", post(routes::ai::suggest))
+        .route("/v1/sessions/:id/ai/suggestions", get(routes::ai::pending_suggestions))
+        .route("/v1/ai/suggestions/:id/apply", post(routes::ai::apply))
+        .route("/v1/ai/suggestions/:id/dismiss", post(routes::ai::dismiss))
+        .route("/v1/sessions/:id/ai/command", post(routes::ai::command))
+        .route("/v1/ai/runs/:id/insert", post(routes::ai::insert_run))
+        .route("/v1/sessions/:id/ai/history", get(routes::ai::history))
+        .route("/v1/sessions/:id/relevant", get(routes::ai::relevant))
+        .route("/v1/sessions/:id/summarize", post(routes::ai::summarize))
+        .route("/v1/sessions/:id/materials", get(materials::list).post(materials::upload))
+        .route("/v1/sessions/:id/materials/upload-url", post(materials::upload_url))
+        .route("/v1/sessions/:id/materials/from-studio", post(materials::from_studio))
+        .route("/v1/materials/:id", axum::routing::delete(materials::delete))
+        .route("/v1/materials/:id/uploaded", post(materials::uploaded))
+        .route("/v1/materials/:id/pages", get(materials::pages))
+        .route("/v1/materials/:id/pages/:n/image", get(materials::page_image))
+        .route("/v1/materials/:id/pages/:n/link", post(materials::link))
+        .route("/v1/materials/:id/pages/:n/active", post(materials::set_active))
+        .route("/v1/sessions/:id/research", get(research::list).post(research::run))
+        .route("/v1/research/:id/apply", post(research::apply))
+        .route("/v1/research/:id/save", post(research::save))
+        .route("/v1/sessions/:id/organize/preview", post(organize::preview))
+        .route("/v1/organize/:id/apply", post(organize::apply))
+        .route("/v1/organize/:id/undo", post(organize::undo))
+        .route("/v1/organize/:id/dismiss", post(organize::dismiss))
+        .route("/v1/ink/pages/:id/recognize", post(ink_ai::recognize))
+        .route("/v1/ink/recognitions/:id", patch(ink_ai::review))
         // PHASE-ROUTES
         .layer(DefaultBodyLimit::max(52 * 1024 * 1024))
         .layer(cors(&state.config))

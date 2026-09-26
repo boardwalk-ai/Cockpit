@@ -9,4 +9,9 @@ pub mod system;
 pub mod live;
 pub mod recordings;
 pub mod transcript;
+pub mod ai;
+pub mod ink_ai;
+pub mod materials;
+pub mod organize;
+pub mod research;
 // PHASE-MODULES

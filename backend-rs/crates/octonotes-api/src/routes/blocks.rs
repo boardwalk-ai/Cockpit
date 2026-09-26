@@ -466,7 +466,7 @@ pub async fn insert_server_block(conn: &mut PgConnection, caller: &Caller, b: Ne
     let position = position_after(conn, b.session_id, b.after).await?;
     let rev = revs::bump(conn, b.session_id, revs::BLOCKS).await?;
     let block = sqlx::query_as::<_, Block>(&format!(
-        "INSERT INTO blocks (id, session_id, user_id, position, type, text, origin, audio_ts_ms, transcript_anchor,              source_ref, ai_sources, revision, layer_rev)          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,1,$12) RETURNING {BLOCK_COLUMNS}"
+        "INSERT INTO blocks (id, session_id, user_id, position, type, text, origin, audio_ts_ms, transcript_anchor,              source_ref, ai_sources, indent, revision, layer_rev)          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,1,$13) RETURNING {BLOCK_COLUMNS}"
     ))
     .bind(Uuid::new_v4())
     .bind(b.session_id)
@@ -479,6 +479,7 @@ pub async fn insert_server_block(conn: &mut PgConnection, caller: &Caller, b: Ne
     .bind(b.transcript_anchor)
     .bind(b.source_ref)
     .bind(b.ai_sources.unwrap_or_else(|| json!([])))
+    .bind(b.indent.clamp(0, 8))
     .bind(rev)
     .fetch_one(&mut *conn)
     .await?;
@@ -499,6 +500,7 @@ pub struct NewServerBlock {
     pub transcript_anchor: Option<Value>,
     pub source_ref: Option<Value>,
     pub ai_sources: Option<Value>,
+    pub indent: i32,
 }
 
 async fn position_after(conn: &mut PgConnection, session_id: Uuid, after: Option<Uuid>) -> Result<String, ApiError> {
