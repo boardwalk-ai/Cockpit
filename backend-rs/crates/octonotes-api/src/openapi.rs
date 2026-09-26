@@ -1,0 +1,34 @@
+//! The OpenAPI contract, generated from the handler annotations and DTO types
+//! (`GET /v1/openapi.json`). The Flutter DTOs follow this; it never follows
+//! the UI.
+
+use utoipa::OpenApi;
+
+use crate::routes::*;
+
+#[derive(OpenApi)]
+#[openapi(
+    info(title = "OctoNotes API", version = "1", description = "octonotes-api — see backend-rs/README.md"),
+    paths(
+        system::me,
+        home::home,
+        sessions::list, sessions::create, sessions::get, sessions::update, sessions::delete,
+        courses::list, courses::create, courses::update, courses::delete,
+        devices::list, devices::register,
+        deck::destinations,
+        blocks::list, blocks::ops, blocks::history, blocks::restore,
+        ink::list_pages, ink::create_page, ink::update_page, ink::delete_page,
+        ink::page_strokes, ink::session_strokes, ink::stroke_ops,
+        // PHASE-PATHS
+    ),
+    tags(
+        (name = "sessions", description = "Lecture/note sessions"),
+        (name = "blocks", description = "Typewriter blocks, block-level sync"),
+        (name = "ink", description = "Magic Pencil pages and strokes"),
+    )
+)]
+pub struct ApiDoc;
+
+pub fn spec() -> utoipa::openapi::OpenApi {
+    ApiDoc::openapi()
+}

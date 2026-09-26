@@ -1,11 +1,11 @@
 //! OctoNotes backend.
 //!
-//! Owns `notes_db` (sqlx migrations run at startup) and reads the two shared
-//! databases: the octopilot DB (identity + the central OctoCredits balance) and,
-//! from Phase 1, the Study Studio DB. Firebase ID tokens are verified with the
-//! shared `octo-common` auth, the same way octopilot-rs and the FastAPI do.
+//! Owns `notes_db` (sqlx migrations run at startup) and reads the shared
+//! databases: the octopilot DB (identity, the central OctoCredits balance,
+//! keys and models) and the Study Studio DBs. `ROLE=api|worker|all` picks which
+//! loops this process runs, so workers can be split out later.
 
-use octonotes_api::{app, config::Config, AppState};
+use octonotes_api::{app, config::Config, jobs, AppState};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -19,9 +19,18 @@ async fn main() {
 
     let config = Config::from_env();
     let port = config.port;
+    let (runs_api, runs_worker, workers) = (config.runs_api(), config.runs_worker(), config.workers);
     let state = AppState::connect(config).await.expect("start octonotes-api");
 
-    let listener = TcpListener::bind(("0.0.0.0", port)).await.expect("bind");
-    tracing::info!("octonotes-api listening on http://0.0.0.0:{port}");
-    axum::serve(listener, app(state)).await.expect("serve");
+    if runs_worker {
+        jobs::spawn(state.clone(), workers);
+        tracing::info!("started {workers} job workers");
+    }
+    if runs_api {
+        let listener = TcpListener::bind(("0.0.0.0", port)).await.expect("bind");
+        tracing::info!("octonotes-api listening on http://0.0.0.0:{port}");
+        axum::serve(listener, app(state)).await.expect("serve");
+    } else {
+        std::future::pending::<()>().await;
+    }
 }
