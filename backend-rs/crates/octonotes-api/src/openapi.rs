@@ -19,6 +19,10 @@ use crate::routes::*;
         blocks::list, blocks::ops, blocks::history, blocks::restore,
         ink::list_pages, ink::create_page, ink::update_page, ink::delete_page,
         ink::page_strokes, ink::session_strokes, ink::stroke_ops,
+        recordings::start, recordings::update, recordings::put_chunk, recordings::manifest, recordings::complete,
+        recordings::audio, recordings::list, recordings::add_marker, recordings::list_markers,
+        transcript::list, transcript::correct, transcript::restore, transcript::toggle, transcript::from_source,
+        live::session_devices, live::join, live::set_role, live::leave, live::finish,
         // PHASE-PATHS
     ),
     tags(

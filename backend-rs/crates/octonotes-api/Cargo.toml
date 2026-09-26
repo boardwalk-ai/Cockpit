@@ -6,7 +6,7 @@ description = "OctoNotes backend (axum): owns notes_db, reads the Study Studio a
 
 [dependencies]
 octo-common.workspace = true
-axum.workspace = true
+axum = { workspace = true, features = ["ws"] }
 tokio.workspace = true
 reqwest.workspace = true
 serde.workspace = true
@@ -20,6 +20,7 @@ chrono.workspace = true
 base64.workspace = true
 utoipa.workspace = true
 futures.workspace = true
+async-stream.workspace = true
 hmac.workspace = true
 sha2.workspace = true
 hex.workspace = true
@@ -28,4 +29,5 @@ redis.workspace = true
 tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
+tokio-tungstenite = "0.24"
 http-body-util = "0.1"

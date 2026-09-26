@@ -11,14 +11,20 @@ pub struct ApiError {
     pub status: StatusCode,
     pub message: String,
     pub code: Option<&'static str>,
+    /// Extra machine-readable context (e.g. which devices are still recording).
+    pub details: Option<serde_json::Value>,
 }
 
 impl ApiError {
     pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self { status, message: message.into(), code: None }
+        Self { status, message: message.into(), code: None, details: None }
     }
     pub fn with_code(mut self, code: &'static str) -> Self {
         self.code = Some(code);
+        self
+    }
+    pub fn with_details(mut self, details: serde_json::Value) -> Self {
+        self.details = Some(details);
         self
     }
     pub fn not_found(message: impl Into<String>) -> Self {
@@ -43,10 +49,13 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = match self.code {
-            Some(code) => json!({ "error": self.message, "code": code }),
-            None => json!({ "error": self.message }),
-        };
+        let mut body = json!({ "error": self.message });
+        if let Some(code) = self.code {
+            body["code"] = json!(code);
+        }
+        if let Some(details) = self.details {
+            body["details"] = details;
+        }
         (self.status, Json(body)).into_response()
     }
 }

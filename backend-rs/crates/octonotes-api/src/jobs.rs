@@ -59,6 +59,10 @@ pub async fn enqueue_tx(conn: &mut sqlx::PgConnection, user_id: Option<Uuid>, ki
 fn handler(kind: &str) -> Option<Handler> {
     Some(match kind {
         "system.purge" => |st, job| Box::pin(purge(st, job)),
+        "asr.chunk" => |st, job| Box::pin(crate::asr::job_chunk(st, job)),
+        "transcript.faithful" => |st, job| Box::pin(crate::asr::job_faithful(st, job)),
+        "recording.assemble" => |st, job| Box::pin(crate::routes::recordings::job_assemble(st, job)),
+        "system.outbox" => |st, job| Box::pin(crate::outbox::job_publish(st, job)),
         // PHASE-HANDLERS
         _ => return None,
     })

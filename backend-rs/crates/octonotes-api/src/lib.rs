@@ -1,4 +1,6 @@
 pub mod access;
+pub mod asr;
+pub mod outbox;
 pub mod config;
 pub mod ctx;
 pub mod idempotency;
@@ -145,6 +147,25 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/ink/pages/:id", patch(ink::update_page).delete(ink::delete_page))
         .route("/v1/ink/pages/:id/strokes", get(ink::page_strokes))
         .route("/v1/ink/pages/:id/ops", post(ink::stroke_ops))
+        // Recording + transcript + realtime (Phase 2)
+        .route("/v1/sessions/:id/recordings", get(recordings::list).post(recordings::start))
+        .route("/v1/recordings/:id", patch(recordings::update))
+        .route("/v1/recordings/:id/chunks/:seq", axum::routing::put(recordings::put_chunk))
+        .route("/v1/recordings/:id/manifest", get(recordings::manifest))
+        .route("/v1/recordings/:id/complete", post(recordings::complete))
+        .route("/v1/recordings/:id/audio", get(recordings::audio))
+        .route("/v1/sessions/:id/markers", get(recordings::list_markers).post(recordings::add_marker))
+        .route("/v1/sessions/:id/transcript", get(transcript::list))
+        .route("/v1/sessions/:id/transcription", post(transcript::toggle))
+        .route("/v1/transcript/segments/:id", patch(transcript::correct))
+        .route("/v1/transcript/segments/:id/restore", post(transcript::restore))
+        .route("/v1/sessions/:id/blocks/from-source", post(transcript::from_source))
+        .route("/v1/sessions/:id/live", get(live::ws))
+        .route("/v1/sessions/:id/devices", get(live::session_devices))
+        .route("/v1/sessions/:id/devices/:device_id", patch(live::set_role))
+        .route("/v1/sessions/:id/join", post(live::join))
+        .route("/v1/sessions/:id/leave", post(live::leave))
+        .route("/v1/sessions/:id/finish", post(live::finish))
         // PHASE-ROUTES
         .layer(DefaultBodyLimit::max(52 * 1024 * 1024))
         .layer(cors(&state.config))

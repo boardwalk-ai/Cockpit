@@ -25,14 +25,15 @@ services:
     ports:
       - "127.0.0.1:6380:6379"
 
-  # Audio chunks, materials, exports (from Phase 2).
-  octonotes-minio:
-    image: minio/minio:latest
-    container_name: octonotes-minio
-    command: server /data
+  # S3-compatible object store for audio, materials, exports. MinIO's images
+  # are no longer on Docker Hub, so dev uses RustFS (same S3 API); production
+  # keeps the server's existing MinIO.
+  octonotes-s3:
+    image: rustfs/rustfs:latest
+    container_name: octonotes-s3
     environment:
-      MINIO_ROOT_USER: octonotes
-      MINIO_ROOT_PASSWORD: octonotes-dev-secret
+      RUSTFS_ACCESS_KEY: octonotes
+      RUSTFS_SECRET_KEY: octonotes-dev-secret
     ports:
       - "127.0.0.1:9010:9000"
     volumes:

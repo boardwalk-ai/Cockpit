@@ -2,7 +2,7 @@
 //! notes_db (migrated) plus the dev stand-ins for the shared `users` and Study
 //! Studio tables, and the app served in-process (no network).
 //!
-//! `TEST_PG_URL` (default `postgres://postgres:postgres@127.0.0.1:5432`) must
+//! `TEST_PG_URL` (default: the dev compose Postgres, `postgres://octonotes:octonotes@127.0.0.1:5435`) must
 //! be a server where the user can CREATE DATABASE. Phase 3+ tests need the
 //! pgvector extension available there (the dev compose image has it).
 #![allow(dead_code)]
@@ -27,7 +27,7 @@ pub struct TestApp {
 }
 
 pub fn admin_url() -> String {
-    std::env::var("TEST_PG_URL").unwrap_or_else(|_| "postgres://postgres:postgres@127.0.0.1:5432".into())
+    std::env::var("TEST_PG_URL").unwrap_or_else(|_| "postgres://octonotes:octonotes@127.0.0.1:5435".into())
 }
 
 impl TestApp {
