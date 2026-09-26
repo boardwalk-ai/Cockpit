@@ -5,6 +5,7 @@
 /// OctoNotes the app's shared sign-in; everything else is internal.
 library;
 
-export 'src/application/account_providers.dart' show notesAuthProvider;
+export 'src/application/account_providers.dart' show notesAuthProvider, notesMeProvider;
 export 'src/data/auth/notes_auth.dart';
+export 'src/domain/account.dart' show NotesAccount;
 export 'src/octo_notes_module.dart';

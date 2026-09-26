@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../modules/registered_modules.dart';
+import '../widgets/account_button.dart';
 import '../widgets/responsive.dart';
 
 /// Cockpit Home — the super-app launcher. One tile per active module.
@@ -20,6 +21,7 @@ class CockpitHomePage extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Octopilot Cockpit'),
         actions: [
+          const AccountButton(),
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => context.go('/settings'),
