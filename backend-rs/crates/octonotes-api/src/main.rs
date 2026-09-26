@@ -24,6 +24,7 @@ async fn main() {
     }
 
     let port = config.port;
+    let bind = config.bind.clone();
     let (runs_api, runs_worker, workers) =
         (config.runs_api(), config.runs_worker(), config.workers);
     let state = AppState::connect(config)
@@ -35,8 +36,10 @@ async fn main() {
         tracing::info!("started {workers} job workers");
     }
     if runs_api {
-        let listener = TcpListener::bind(("0.0.0.0", port)).await.expect("bind");
-        tracing::info!("octonotes-api listening on http://0.0.0.0:{port}");
+        let listener = TcpListener::bind((bind.as_str(), port))
+            .await
+            .expect("bind");
+        tracing::info!("octonotes-api listening on http://{bind}:{port}");
         axum::serve(
             listener,
             app(state).into_make_service_with_connect_info::<std::net::SocketAddr>(),

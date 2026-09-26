@@ -21,6 +21,8 @@ pub struct Config {
     /// (Flutter web dev server). Turn off in production.
     pub cors_allow_localhost: bool,
     pub port: u16,
+    /// Listen address: `127.0.0.1` in production (nginx in front), `0.0.0.0` in dev.
+    pub bind: String,
     /// `api`, `worker` or `all` (default): which loops this process runs.
     pub role: String,
     pub workers: usize,
@@ -70,6 +72,7 @@ impl Config {
             cors_origins: list("CORS_ORIGINS"),
             cors_allow_localhost: flag("CORS_ALLOW_LOCALHOST", true),
             port,
+            bind: std::env::var("BIND").unwrap_or_else(|_| "0.0.0.0".into()),
             role: std::env::var("ROLE").unwrap_or_else(|_| "all".into()),
             workers: std::env::var("WORKERS")
                 .ok()
