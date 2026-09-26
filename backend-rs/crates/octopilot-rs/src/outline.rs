@@ -43,7 +43,11 @@ pub async fn outline(
     } else {
         format!(
             "\nThe outline must satisfy this assignment brief:\n{}\n",
-            body.assignment.trim().chars().take(2000).collect::<String>()
+            body.assignment
+                .trim()
+                .chars()
+                .take(2000)
+                .collect::<String>()
         )
     };
 
@@ -63,8 +67,14 @@ pub async fn outline(
         &key,
         &model,
         vec![
-            ChatMessage { role: "system", content: system },
-            ChatMessage { role: "user", content: user },
+            ChatMessage {
+                role: "system",
+                content: system,
+            },
+            ChatMessage {
+                role: "user",
+                content: user,
+            },
         ],
         0.4,
     )

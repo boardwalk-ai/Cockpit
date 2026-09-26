@@ -27,7 +27,8 @@ pub struct TestApp {
 }
 
 pub fn admin_url() -> String {
-    std::env::var("TEST_PG_URL").unwrap_or_else(|_| "postgres://octonotes:octonotes@127.0.0.1:5435".into())
+    std::env::var("TEST_PG_URL")
+        .unwrap_or_else(|_| "postgres://octonotes:octonotes@127.0.0.1:5435".into())
 }
 
 impl TestApp {
@@ -39,14 +40,22 @@ impl TestApp {
     pub async fn with(tweak: impl FnOnce(&mut Config)) -> Self {
         let admin = admin_url();
         let db = format!("octonotes_test_{}", Uuid::new_v4().simple());
-        let mut conn = PgConnection::connect(&format!("{admin}/postgres")).await.expect("connect admin db");
-        conn.execute(format!("CREATE DATABASE {db}").as_str()).await.expect("create test db");
+        let mut conn = PgConnection::connect(&format!("{admin}/postgres"))
+            .await
+            .expect("connect admin db");
+        conn.execute(format!("CREATE DATABASE {db}").as_str())
+            .await
+            .expect("create test db");
         conn.close().await.ok();
 
         let url = format!("{admin}/{db}");
         let mut c = PgConnection::connect(&url).await.expect("connect test db");
-        c.execute(include_str!("../../dev/octopilot_dev.sql")).await.expect("users stand-in");
-        c.execute(include_str!("../../dev/studio_dev.sql")).await.expect("studio stand-in");
+        c.execute(include_str!("../../dev/octopilot_dev.sql"))
+            .await
+            .expect("users stand-in");
+        c.execute(include_str!("../../dev/studio_dev.sql"))
+            .await
+            .expect("studio stand-in");
         c.execute(
             "INSERT INTO users (firebase_uid, email, name, plan, octo_credits) VALUES \
              ('alice', 'alice@test', 'Alice', 'Pro Monthly', 10000), \
@@ -71,32 +80,67 @@ impl TestApp {
         config.public_base_url = "http://test".into();
         tweak(&mut config);
         let state = AppState::connect(config).await.expect("app state");
-        TestApp { app: app(state.clone()), state, db, admin, storage_dir }
+        TestApp {
+            app: app(state.clone()),
+            state,
+            db,
+            admin,
+            storage_dir,
+        }
     }
 
-    pub async fn call(&self, method: Method, path: &str, user: &str, body: Option<Value>) -> (StatusCode, Value) {
+    pub async fn call(
+        &self,
+        method: Method,
+        path: &str,
+        user: &str,
+        body: Option<Value>,
+    ) -> (StatusCode, Value) {
         self.call_with(method, path, user, body, &[]).await
     }
 
-    pub async fn call_with(&self, method: Method, path: &str, user: &str, body: Option<Value>, headers: &[(&str, &str)]) -> (StatusCode, Value) {
-        let mut req = Request::builder().method(method).uri(path).header("x-user-id", user);
+    pub async fn call_with(
+        &self,
+        method: Method,
+        path: &str,
+        user: &str,
+        body: Option<Value>,
+        headers: &[(&str, &str)],
+    ) -> (StatusCode, Value) {
+        let mut req = Request::builder()
+            .method(method)
+            .uri(path)
+            .header("x-user-id", user);
         for (k, v) in headers {
             req = req.header(*k, *v);
         }
         let req = match body {
-            Some(b) => req.header("content-type", "application/json").body(Body::from(b.to_string())),
+            Some(b) => req
+                .header("content-type", "application/json")
+                .body(Body::from(b.to_string())),
             None => req.body(Body::empty()),
         }
         .expect("request");
         let res = self.app.clone().oneshot(req).await.expect("response");
         let status = res.status();
         let bytes = res.into_body().collect().await.expect("body").to_bytes();
-        let value = if bytes.is_empty() { Value::Null } else { serde_json::from_slice(&bytes).unwrap_or(Value::String(String::from_utf8_lossy(&bytes).into())) };
+        let value = if bytes.is_empty() {
+            Value::Null
+        } else {
+            serde_json::from_slice(&bytes)
+                .unwrap_or(Value::String(String::from_utf8_lossy(&bytes).into()))
+        };
         (status, value)
     }
 
     /// Sends raw bytes (audio chunk uploads).
-    pub async fn put_bytes(&self, path: &str, user: &str, bytes: Vec<u8>, content_type: &str) -> (StatusCode, Value) {
+    pub async fn put_bytes(
+        &self,
+        path: &str,
+        user: &str,
+        bytes: Vec<u8>,
+        content_type: &str,
+    ) -> (StatusCode, Value) {
         let req = Request::builder()
             .method(Method::PUT)
             .uri(path)
@@ -107,7 +151,10 @@ impl TestApp {
         let res = self.app.clone().oneshot(req).await.expect("response");
         let status = res.status();
         let bytes = res.into_body().collect().await.expect("body").to_bytes();
-        (status, serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+        (
+            status,
+            serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+        )
     }
 
     pub async fn get(&self, path: &str, user: &str) -> (StatusCode, Value) {
@@ -125,7 +172,13 @@ impl TestApp {
 
     /// Creates a session for `user` and returns its id.
     pub async fn session(&self, user: &str) -> String {
-        let (s, v) = self.post("/v1/sessions", user, serde_json::json!({ "title": "Cellular Respiration" })).await;
+        let (s, v) = self
+            .post(
+                "/v1/sessions",
+                user,
+                serde_json::json!({ "title": "Cellular Respiration" }),
+            )
+            .await;
         assert_eq!(s, StatusCode::CREATED, "{v}");
         v["id"].as_str().expect("id").to_string()
     }
@@ -146,7 +199,9 @@ impl TestApp {
         drop(self.app);
         drop(self.state);
         if let Ok(mut conn) = PgConnection::connect(&format!("{}/postgres", self.admin)).await {
-            let _ = conn.execute(format!("DROP DATABASE IF EXISTS {} WITH (FORCE)", self.db).as_str()).await;
+            let _ = conn
+                .execute(format!("DROP DATABASE IF EXISTS {} WITH (FORCE)", self.db).as_str())
+                .await;
         }
         let _ = std::fs::remove_dir_all(&self.storage_dir);
     }

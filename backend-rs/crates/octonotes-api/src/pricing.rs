@@ -49,21 +49,33 @@ impl PriceCache {
 }
 
 pub async fn price(st: &AppState, action: &str) -> i32 {
-    let default = DEFAULTS.iter().find(|(a, _, _)| *a == action).map(|d| d.1).unwrap_or(0);
+    let default = DEFAULTS
+        .iter()
+        .find(|(a, _, _)| *a == action)
+        .map(|d| d.1)
+        .unwrap_or(0);
     {
         let guard = st.prices.inner.lock().expect("price cache");
-        if guard.1.is_some_and(|t| t.elapsed() < Duration::from_secs(60)) {
+        if guard
+            .1
+            .is_some_and(|t| t.elapsed() < Duration::from_secs(60))
+        {
             return guard.0.get(action).copied().unwrap_or(default);
         }
     }
     let mut map = HashMap::new();
     if let Some(pool) = &st.octopilot {
-        let rows: Vec<(String, Option<String>)> = sqlx::query_as("SELECT key, value FROM system_settings WHERE key LIKE 'octonotes_price_%'")
-            .fetch_all(pool)
-            .await
-            .unwrap_or_default();
+        let rows: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT key, value FROM system_settings WHERE key LIKE 'octonotes_price_%'",
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap_or_default();
         for (k, v) in rows {
-            if let Some(n) = v.and_then(|v| v.trim().parse::<i32>().ok()).filter(|n| *n >= 0) {
+            if let Some(n) = v
+                .and_then(|v| v.trim().parse::<i32>().ok())
+                .filter(|n| *n >= 0)
+            {
                 map.insert(k.trim_start_matches("octonotes_price_").to_string(), n);
             }
         }
@@ -82,20 +94,47 @@ pub struct PriceItem {
 }
 
 #[utoipa::path(get, path = "/v1/me/pricing", tag = "account", responses((status = 200, body = Vec<PriceItem>)))]
-pub async fn list(State(st): State<AppState>, _caller: crate::ctx::Caller) -> Result<Json<Vec<PriceItem>>, ApiError> {
+pub async fn list(
+    State(st): State<AppState>,
+    _caller: crate::ctx::Caller,
+) -> Result<Json<Vec<PriceItem>>, ApiError> {
     let mut out = Vec::new();
     for (action, _, unit) in DEFAULTS {
-        out.push(PriceItem { action: action.to_string(), credits: price(&st, action).await, unit: unit.to_string() });
+        out.push(PriceItem {
+            action: action.to_string(),
+            credits: price(&st, action).await,
+            unit: unit.to_string(),
+        });
     }
     Ok(Json(out))
 }
 
 /// Charges and tells every open app the new balance.
-pub async fn charge(st: &AppState, user_id: Uuid, amount: i32, source_ref: &str, reason: &str) -> Result<i32, ApiError> {
-    let out = st.credits.charge(user_id, amount, source_ref, reason, json!({ "app": "octonotes" })).await?;
+pub async fn charge(
+    st: &AppState,
+    user_id: Uuid,
+    amount: i32,
+    source_ref: &str,
+    reason: &str,
+) -> Result<i32, ApiError> {
+    let out = st
+        .credits
+        .charge(
+            user_id,
+            amount,
+            source_ref,
+            reason,
+            json!({ "app": "octonotes" }),
+        )
+        .await?;
     if out.charged {
         if let Some(b) = out.balance {
-            st.hub.user(user_id, Event::new("credits.updated", json!({ "octoCredits": b }), None)).await;
+            st.hub
+                .user(
+                    user_id,
+                    Event::new("credits.updated", json!({ "octoCredits": b }), None),
+                )
+                .await;
         }
         Ok(amount)
     } else {
@@ -132,7 +171,15 @@ pub async fn job_meter(st: AppState, _job: Job) -> JobResult {
         }
         let last_id = rows.last().map(|r| r.0).unwrap_or(0);
         let reference = format!("octonotes:asr:{user}:{last_id}");
-        match charge(&st, user, credits, &reference, "OctoNotes live transcription").await {
+        match charge(
+            &st,
+            user,
+            credits,
+            &reference,
+            "OctoNotes live transcription",
+        )
+        .await
+        {
             Ok(_) => {}
             Err(e) if e.code == Some("insufficient_credits") => {
                 // Out of credits: turn live transcription off for their live sessions.
@@ -140,7 +187,16 @@ pub async fn job_meter(st: AppState, _job: Job) -> JobResult {
                     .bind(user)
                     .execute(&st.notes)
                     .await;
-                st.hub.user(user, Event::new("transcription.state", json!({ "on": false, "reason": "insufficient_credits" }), None)).await;
+                st.hub
+                    .user(
+                        user,
+                        Event::new(
+                            "transcription.state",
+                            json!({ "on": false, "reason": "insufficient_credits" }),
+                            None,
+                        ),
+                    )
+                    .await;
                 continue;
             }
             Err(e) => return Err(e.message),

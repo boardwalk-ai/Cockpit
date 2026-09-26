@@ -31,7 +31,12 @@ pub fn hash(body: &impl Serialize) -> String {
 
 /// The stored response for this key, if any. Errors with 422 when the key was
 /// used for a different request body.
-pub async fn replay(pool: &PgPool, user_id: Uuid, key: &str, request_hash: &str) -> Result<Option<(StatusCode, Value)>, ApiError> {
+pub async fn replay(
+    pool: &PgPool,
+    user_id: Uuid,
+    key: &str,
+    request_hash: &str,
+) -> Result<Option<(StatusCode, Value)>, ApiError> {
     let row: Option<(String, Option<i32>, Option<Value>)> = sqlx::query_as(
         "SELECT request_hash, status_code, response FROM idempotency_keys WHERE user_id = $1 AND key = $2",
     )
@@ -51,12 +56,22 @@ pub async fn replay(pool: &PgPool, user_id: Uuid, key: &str, request_hash: &str)
             resp,
         ))),
         // Reserved but not finished (a concurrent first attempt).
-        Some(_) => Err(ApiError::new(StatusCode::CONFLICT, "request with this Idempotency-Key is in progress")
-            .with_code("idempotency_in_progress")),
+        Some(_) => Err(ApiError::new(
+            StatusCode::CONFLICT,
+            "request with this Idempotency-Key is in progress",
+        )
+        .with_code("idempotency_in_progress")),
     }
 }
 
-pub async fn store(pool: &PgPool, user_id: Uuid, key: &str, request_hash: &str, status: StatusCode, response: &Value) -> Result<(), ApiError> {
+pub async fn store(
+    pool: &PgPool,
+    user_id: Uuid,
+    key: &str,
+    request_hash: &str,
+    status: StatusCode,
+    response: &Value,
+) -> Result<(), ApiError> {
     sqlx::query(
         "INSERT INTO idempotency_keys (user_id, key, request_hash, status_code, response) VALUES ($1, $2, $3, $4, $5) \
          ON CONFLICT (user_id, key) DO NOTHING",

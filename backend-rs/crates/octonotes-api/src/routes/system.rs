@@ -30,7 +30,11 @@ pub async fn ready(State(st): State<AppState>) -> (StatusCode, Json<Value>) {
         None => None,
     };
     let ok = notes && octopilot.unwrap_or(true) && studio.unwrap_or(true);
-    let status = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+    let status = if ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
     (
         status,
         Json(json!({

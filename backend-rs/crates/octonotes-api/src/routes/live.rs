@@ -21,12 +21,16 @@ use uuid::Uuid;
 
 use crate::ctx::Caller;
 use crate::realtime::Event;
+use crate::routes::devices;
 use crate::routes::recordings::join_device;
 use crate::routes::sessions::{self, Session};
-use crate::routes::devices;
 use crate::{access, AppState};
 
-pub async fn ws(State(st): State<AppState>, Path(session_id): Path<Uuid>, upgrade: WebSocketUpgrade) -> Response {
+pub async fn ws(
+    State(st): State<AppState>,
+    Path(session_id): Path<Uuid>,
+    upgrade: WebSocketUpgrade,
+) -> Response {
     upgrade.on_upgrade(move |socket| async move {
         if let Err(e) = run(st, session_id, socket).await {
             tracing::debug!(error = %e, "live socket closed");
@@ -47,12 +51,23 @@ struct AuthFrame {
 async fn authenticate(st: &AppState, frame: &AuthFrame) -> Result<Caller, ApiError> {
     let mut headers = axum::http::HeaderMap::new();
     if let Some(t) = &frame.token {
-        headers.insert("authorization", format!("Bearer {t}").parse().map_err(|_| ApiError::unauthorized("bad token"))?);
+        headers.insert(
+            "authorization",
+            format!("Bearer {t}")
+                .parse()
+                .map_err(|_| ApiError::unauthorized("bad token"))?,
+        );
     }
     if let Some(u) = &frame.user_id {
-        headers.insert("x-user-id", u.parse().map_err(|_| ApiError::unauthorized("bad user"))?);
+        headers.insert(
+            "x-user-id",
+            u.parse().map_err(|_| ApiError::unauthorized("bad user"))?,
+        );
     }
-    let (mut parts, _) = axum::http::Request::builder().body(()).expect("req").into_parts();
+    let (mut parts, _) = axum::http::Request::builder()
+        .body(())
+        .expect("req")
+        .into_parts();
     parts.headers = headers;
     <Caller as axum::extract::FromRequestParts<AppState>>::from_request_parts(&mut parts, st).await
 }
@@ -63,11 +78,19 @@ async fn send(socket: &mut WebSocket, v: Value) -> Result<(), axum::Error> {
 
 async fn run(st: AppState, session_id: Uuid, mut socket: WebSocket) -> Result<(), String> {
     // 1. Auth frame within 10 s.
-    let first = tokio::time::timeout(Duration::from_secs(10), socket.recv()).await.map_err(|_| "auth timeout")?;
-    let Some(Ok(Message::Text(text))) = first else { return Err("expected auth frame".into()) };
+    let first = tokio::time::timeout(Duration::from_secs(10), socket.recv())
+        .await
+        .map_err(|_| "auth timeout")?;
+    let Some(Ok(Message::Text(text))) = first else {
+        return Err("expected auth frame".into());
+    };
     let frame: AuthFrame = serde_json::from_str(&text).map_err(|_| "bad auth frame")?;
     if frame.kind != "auth" {
-        let _ = send(&mut socket, json!({ "type": "error", "data": { "code": "auth_required" } })).await;
+        let _ = send(
+            &mut socket,
+            json!({ "type": "error", "data": { "code": "auth_required" } }),
+        )
+        .await;
         return Err("first frame must be auth".into());
     }
     let caller = match authenticate(&st, &frame).await {
@@ -78,8 +101,15 @@ async fn run(st: AppState, session_id: Uuid, mut socket: WebSocket) -> Result<()
         }
     };
     let mut conn = st.notes.acquire().await.map_err(|e| e.to_string())?;
-    if access::session(&mut conn, &caller, session_id).await.is_err() {
-        let _ = send(&mut socket, json!({ "type": "error", "data": { "code": "not_found" } })).await;
+    if access::session(&mut conn, &caller, session_id)
+        .await
+        .is_err()
+    {
+        let _ = send(
+            &mut socket,
+            json!({ "type": "error", "data": { "code": "not_found" } }),
+        )
+        .await;
         return Err("session not found".into());
     }
     let device = match frame.device_id {
@@ -107,11 +137,28 @@ async fn run(st: AppState, session_id: Uuid, mut socket: WebSocket) -> Result<()
 
     let mut session_rx = st.hub.subscribe(&format!("session:{session_id}"));
     let mut user_rx = st.hub.subscribe(&format!("user:{}", caller.user_id));
-    send(&mut socket, json!({ "type": "ready", "data": { "sessionId": session_id, "revs": revs } })).await.map_err(|e| e.to_string())?;
+    send(
+        &mut socket,
+        json!({ "type": "ready", "data": { "sessionId": session_id, "revs": revs } }),
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     if let Some(d) = device {
-        st.hub.session(session_id, Event::new("device.presence", json!({ "deviceId": d, "online": true }), None)).await;
+        st.hub
+            .session(
+                session_id,
+                Event::new(
+                    "device.presence",
+                    json!({ "deviceId": d, "online": true }),
+                    None,
+                ),
+            )
+            .await;
     }
 
+    st.metrics
+        .websockets
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut heartbeat = tokio::time::interval(Duration::from_secs(30));
     let result = loop {
         tokio::select! {
@@ -150,15 +197,31 @@ async fn run(st: AppState, session_id: Uuid, mut socket: WebSocket) -> Result<()
             }
         }
     };
+    st.metrics
+        .websockets
+        .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     if let Some(d) = device {
-        st.hub.session(session_id, Event::new("device.presence", json!({ "deviceId": d, "online": false }), None)).await;
+        st.hub
+            .session(
+                session_id,
+                Event::new(
+                    "device.presence",
+                    json!({ "deviceId": d, "online": false }),
+                    None,
+                ),
+            )
+            .await;
     }
     result
 }
 
 #[utoipa::path(get, path = "/v1/sessions/{id}/devices", tag = "devices", params(("id" = Uuid, Path)),
     responses((status = 200, description = "Devices in the session with role, recording flag and last seen")))]
-pub async fn session_devices(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>) -> Result<Json<Value>, ApiError> {
+pub async fn session_devices(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<Value>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
     Ok(Json(devices_json(&mut conn, session_id).await?))
@@ -186,16 +249,32 @@ pub struct JoinSession {
 
 #[utoipa::path(post, path = "/v1/sessions/{id}/join", tag = "devices", params(("id" = Uuid, Path)),
     request_body = JoinSession, responses((status = 200)))]
-pub async fn join(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<JoinSession>) -> Result<Json<Value>, ApiError> {
+pub async fn join(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<JoinSession>,
+) -> Result<Json<Value>, ApiError> {
     let role = req.role.unwrap_or_else(|| "editor".into());
     if !["recorder", "editor", "viewer"].contains(&role.as_str()) {
-        return Err(ApiError::bad_request("role must be recorder, editor or viewer"));
+        return Err(ApiError::bad_request(
+            "role must be recorder, editor or viewer",
+        ));
     }
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
     devices::ensure_owned(&mut conn, &caller, req.device_id).await?;
     join_device(&mut conn, &caller, session_id, req.device_id, &role, false).await?;
-    st.hub.session(session_id, Event::new("device.presence", json!({ "deviceId": req.device_id, "online": true, "role": role }), None)).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "device.presence",
+                json!({ "deviceId": req.device_id, "online": true, "role": role }),
+                None,
+            ),
+        )
+        .await;
     Ok(Json(devices_json(&mut conn, session_id).await?))
 }
 
@@ -206,22 +285,40 @@ pub struct SetRole {
 
 #[utoipa::path(patch, path = "/v1/sessions/{id}/devices/{deviceId}", tag = "devices",
     params(("id" = Uuid, Path), ("deviceId" = Uuid, Path)), request_body = SetRole, responses((status = 200)))]
-pub async fn set_role(State(st): State<AppState>, caller: Caller, Path((session_id, device_id)): Path<(Uuid, Uuid)>, Json(req): Json<SetRole>) -> Result<Json<Value>, ApiError> {
+pub async fn set_role(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path((session_id, device_id)): Path<(Uuid, Uuid)>,
+    Json(req): Json<SetRole>,
+) -> Result<Json<Value>, ApiError> {
     if !["recorder", "editor", "viewer"].contains(&req.role.as_str()) {
-        return Err(ApiError::bad_request("role must be recorder, editor or viewer"));
+        return Err(ApiError::bad_request(
+            "role must be recorder, editor or viewer",
+        ));
     }
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
-    let res = sqlx::query("UPDATE session_devices SET role = $3 WHERE session_id = $1 AND device_id = $2")
-        .bind(session_id)
-        .bind(device_id)
-        .bind(&req.role)
-        .execute(&mut *conn)
-        .await?;
+    let res = sqlx::query(
+        "UPDATE session_devices SET role = $3 WHERE session_id = $1 AND device_id = $2",
+    )
+    .bind(session_id)
+    .bind(device_id)
+    .bind(&req.role)
+    .execute(&mut *conn)
+    .await?;
     if res.rows_affected() == 0 {
         return Err(ApiError::not_found("device not in this session"));
     }
-    st.hub.session(session_id, Event::new("device.presence", json!({ "deviceId": device_id, "role": req.role }), None)).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "device.presence",
+                json!({ "deviceId": device_id, "role": req.role }),
+                None,
+            ),
+        )
+        .await;
     Ok(Json(devices_json(&mut conn, session_id).await?))
 }
 
@@ -235,15 +332,31 @@ pub struct Leave {
 /// not stop the phone).
 #[utoipa::path(post, path = "/v1/sessions/{id}/leave", tag = "devices", params(("id" = Uuid, Path)),
     request_body = Leave, responses((status = 200)))]
-pub async fn leave(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<Leave>) -> Result<Json<Value>, ApiError> {
+pub async fn leave(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<Leave>,
+) -> Result<Json<Value>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
-    let recording: i64 = sqlx::query_scalar("SELECT count(*) FROM session_devices WHERE session_id = $1 AND is_recording")
-        .bind(session_id)
-        .fetch_one(&mut *conn)
-        .await?;
+    let recording: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM session_devices WHERE session_id = $1 AND is_recording",
+    )
+    .bind(session_id)
+    .fetch_one(&mut *conn)
+    .await?;
     if let Some(d) = req.device_id {
-        st.hub.session(session_id, Event::new("device.presence", json!({ "deviceId": d, "online": false }), None)).await;
+        st.hub
+            .session(
+                session_id,
+                Event::new(
+                    "device.presence",
+                    json!({ "deviceId": d, "online": false }),
+                    None,
+                ),
+            )
+            .await;
     }
     Ok(Json(json!({ "keepsRecording": recording > 0 })))
 }
@@ -259,7 +372,12 @@ pub struct Finish {
 
 #[utoipa::path(post, path = "/v1/sessions/{id}/finish", tag = "sessions", params(("id" = Uuid, Path)),
     request_body = Finish, responses((status = 200, body = Session), (status = 409, description = "another device is recording")))]
-pub async fn finish(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<Finish>) -> Result<Json<Value>, ApiError> {
+pub async fn finish(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<Finish>,
+) -> Result<Json<Value>, ApiError> {
     let mut tx = st.notes.begin().await?;
     access::writable_session(&mut tx, &caller, session_id).await?;
     let others: Value = sqlx::query_scalar(
@@ -274,13 +392,17 @@ pub async fn finish(State(st): State<AppState>, caller: Caller, Path(session_id)
     let someone_else_records = others.as_array().is_some_and(|a| !a.is_empty());
     match req.mode.as_deref() {
         None if someone_else_records => {
-            return Err(ApiError::new(StatusCode::CONFLICT, "another device is still recording")
-                .with_code("other_device_recording")
-                .with_details(json!({ "devices": others })));
+            return Err(
+                ApiError::new(StatusCode::CONFLICT, "another device is still recording")
+                    .with_code("other_device_recording")
+                    .with_details(json!({ "devices": others })),
+            );
         }
         Some("leaveKeepRecording") => {
             tx.commit().await?;
-            return Ok(Json(json!({ "finished": false, "keepsRecording": someone_else_records })));
+            return Ok(Json(
+                json!({ "finished": false, "keepsRecording": someone_else_records }),
+            ));
         }
         None | Some("finishAndStop") => {}
         Some(other) => return Err(ApiError::bad_request(format!("unknown mode '{other}'"))),
@@ -294,7 +416,10 @@ pub async fn finish(State(st): State<AppState>, caller: Caller, Path(session_id)
     .bind(session_id)
     .fetch_one(&mut *tx)
     .await?;
-    sqlx::query("UPDATE session_devices SET is_recording = false WHERE session_id = $1").bind(session_id).execute(&mut *tx).await?;
+    sqlx::query("UPDATE session_devices SET is_recording = false WHERE session_id = $1")
+        .bind(session_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query(
         "UPDATE sessions SET status = 'ended', ended_at = now(), \
              duration_ms = GREATEST(duration_ms, COALESCE((SELECT max(duration_ms) FROM recordings WHERE session_id = $1), 0)) \
@@ -303,12 +428,35 @@ pub async fn finish(State(st): State<AppState>, caller: Caller, Path(session_id)
     .bind(session_id)
     .execute(&mut *tx)
     .await?;
-    crate::outbox::record(&mut tx, caller.user_id, "session.finished", Some(session_id), json!({})).await?;
+    crate::outbox::record(
+        &mut tx,
+        caller.user_id,
+        "session.finished",
+        Some(session_id),
+        json!({}),
+    )
+    .await?;
     let session = sessions::owned(&mut tx, &caller, session_id).await?;
     tx.commit().await?;
     for r in open.as_array().into_iter().flatten() {
-        st.hub.session(session_id, Event::new("recording.state", json!({ "recordingId": r["recordingId"], "state": "stopped" }), None)).await;
+        st.hub
+            .session(
+                session_id,
+                Event::new(
+                    "recording.state",
+                    json!({ "recordingId": r["recordingId"], "state": "stopped" }),
+                    None,
+                ),
+            )
+            .await;
     }
-    st.hub.session(session_id, Event::new("session.finished", json!({ "sessionId": session_id }), None)).await;
-    Ok(Json(json!({ "finished": true, "session": session, "stoppedRecordings": open })))
+    st.hub
+        .session(
+            session_id,
+            Event::new("session.finished", json!({ "sessionId": session_id }), None),
+        )
+        .await;
+    Ok(Json(
+        json!({ "finished": true, "session": session, "stoppedRecordings": open }),
+    ))
 }

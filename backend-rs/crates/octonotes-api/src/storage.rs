@@ -35,17 +35,37 @@ pub struct S3Config {
 }
 
 impl Storage {
-    pub fn fs(root: impl Into<PathBuf>, public_base: impl Into<String>, signing_key: Vec<u8>) -> Self {
-        Storage::Fs(FsStore { root: root.into(), public_base: public_base.into(), signing_key })
+    pub fn fs(
+        root: impl Into<PathBuf>,
+        public_base: impl Into<String>,
+        signing_key: Vec<u8>,
+    ) -> Self {
+        Storage::Fs(FsStore {
+            root: root.into(),
+            public_base: public_base.into(),
+            signing_key,
+        })
     }
 
     pub async fn s3(c: S3Config) -> Result<Self, String> {
-        let region = Region::Custom { region: c.region, endpoint: c.endpoint };
-        let creds = Credentials::new(Some(&c.access_key), Some(&c.secret_key), None, None, None).map_err(|e| e.to_string())?;
-        let bucket = Bucket::new(&c.bucket, region.clone(), creds.clone()).map_err(|e| e.to_string())?.with_path_style();
+        let region = Region::Custom {
+            region: c.region,
+            endpoint: c.endpoint,
+        };
+        let creds = Credentials::new(Some(&c.access_key), Some(&c.secret_key), None, None, None)
+            .map_err(|e| e.to_string())?;
+        let bucket = Bucket::new(&c.bucket, region.clone(), creds.clone())
+            .map_err(|e| e.to_string())?
+            .with_path_style();
         // Create the bucket on first run (MinIO); "already exists" is fine.
         if !bucket.exists().await.unwrap_or(false) {
-            let _ = Bucket::create_with_path_style(&c.bucket, region, creds, s3::BucketConfiguration::default()).await;
+            let _ = Bucket::create_with_path_style(
+                &c.bucket,
+                region,
+                creds,
+                s3::BucketConfiguration::default(),
+            )
+            .await;
         }
         Ok(Storage::S3(bucket))
     }
@@ -56,9 +76,13 @@ impl Storage {
             Storage::Fs(fs) => {
                 let path = fs.path(key)?;
                 if let Some(dir) = path.parent() {
-                    tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
+                    tokio::fs::create_dir_all(dir)
+                        .await
+                        .map_err(|e| e.to_string())?;
                 }
-                tokio::fs::write(path, bytes).await.map_err(|e| e.to_string())
+                tokio::fs::write(path, bytes)
+                    .await
+                    .map_err(|e| e.to_string())
             }
             Storage::S3(b) => b
                 .put_object_with_content_type(key, bytes, content_type)
@@ -71,8 +95,14 @@ impl Storage {
     pub async fn get(&self, key: &str) -> Result<Vec<u8>, String> {
         check_key(key)?;
         match self {
-            Storage::Fs(fs) => tokio::fs::read(fs.path(key)?).await.map_err(|e| e.to_string()),
-            Storage::S3(b) => b.get_object(key).await.map(|r| r.to_vec()).map_err(|e| e.to_string()),
+            Storage::Fs(fs) => tokio::fs::read(fs.path(key)?)
+                .await
+                .map_err(|e| e.to_string()),
+            Storage::S3(b) => b
+                .get_object(key)
+                .await
+                .map(|r| r.to_vec())
+                .map_err(|e| e.to_string()),
         }
     }
 
@@ -95,7 +125,10 @@ impl Storage {
                 }
             }
             Storage::S3(b) => {
-                let pages = b.list(prefix.to_string(), None).await.map_err(|e| e.to_string())?;
+                let pages = b
+                    .list(prefix.to_string(), None)
+                    .await
+                    .map_err(|e| e.to_string())?;
                 for page in pages {
                     for obj in page.contents {
                         b.delete_object(&obj.key).await.map_err(|e| e.to_string())?;
@@ -113,9 +146,15 @@ impl Storage {
             Storage::Fs(fs) => {
                 let exp = now() + ttl_secs as u64;
                 let sig = fs.sign(key, exp);
-                Ok(format!("{}/v1/blobs/{key}?exp={exp}&sig={sig}", fs.public_base.trim_end_matches('/')))
+                Ok(format!(
+                    "{}/v1/blobs/{key}?exp={exp}&sig={sig}",
+                    fs.public_base.trim_end_matches('/')
+                ))
             }
-            Storage::S3(b) => b.presign_get(key, ttl_secs, None).await.map_err(|e| e.to_string()),
+            Storage::S3(b) => b
+                .presign_get(key, ttl_secs, None)
+                .await
+                .map_err(|e| e.to_string()),
         }
     }
 
@@ -125,7 +164,11 @@ impl Storage {
         check_key(key)?;
         match self {
             Storage::Fs(_) => Ok(None),
-            Storage::S3(b) => b.presign_put(key, ttl_secs, None, None).await.map(Some).map_err(|e| e.to_string()),
+            Storage::S3(b) => b
+                .presign_put(key, ttl_secs, None, None)
+                .await
+                .map(Some)
+                .map_err(|e| e.to_string()),
         }
     }
 
@@ -157,14 +200,20 @@ fn check_key(key: &str) -> Result<(), String> {
     if key.is_empty() || key.len() > 1024 || key.starts_with('/') || key.contains('\\') {
         return Err("invalid storage key".into());
     }
-    if Path::new(key).components().any(|c| !matches!(c, Component::Normal(_))) {
+    if Path::new(key)
+        .components()
+        .any(|c| !matches!(c, Component::Normal(_)))
+    {
         return Err("invalid storage key".into());
     }
     Ok(())
 }
 
 fn now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -188,6 +237,8 @@ mod tests {
         let sig = fs.sign("u/s/a", exp);
         assert!(st.verify_local("u/s/a", exp, &sig).is_some());
         assert!(st.verify_local("u/s/b", exp, &sig).is_none());
-        assert!(st.verify_local("u/s/a", now() - 1, &fs.sign("u/s/a", now() - 1)).is_none());
+        assert!(st
+            .verify_local("u/s/a", now() - 1, &fs.sign("u/s/a", now() - 1))
+            .is_none());
     }
 }

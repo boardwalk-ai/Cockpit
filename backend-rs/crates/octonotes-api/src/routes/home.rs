@@ -63,5 +63,11 @@ pub async fn home(State(st): State<AppState>, caller: Caller) -> Result<Json<Hom
     .fetch_one(&st.notes)
     .await?;
     let recommended = crate::routes::recommendations::home_items(&st, &caller).await?;
-    Ok(Json(Home { live, continue_, recent, processing, recommended }))
+    Ok(Json(Home {
+        live,
+        continue_,
+        recent,
+        processing,
+        recommended,
+    }))
 }

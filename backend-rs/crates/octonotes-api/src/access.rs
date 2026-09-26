@@ -8,7 +8,11 @@ use uuid::Uuid;
 use crate::ctx::Caller;
 
 /// The caller's live (not deleted) session, or 404.
-pub async fn session(conn: &mut PgConnection, caller: &Caller, session_id: Uuid) -> Result<SessionAccess, ApiError> {
+pub async fn session(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    session_id: Uuid,
+) -> Result<SessionAccess, ApiError> {
     sqlx::query_as::<_, SessionAccess>(
         "SELECT id, status FROM sessions WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
     )
@@ -27,7 +31,10 @@ pub async fn writable_session(
 ) -> Result<SessionAccess, ApiError> {
     let s = session(conn, caller, session_id).await?;
     if s.status == "archived" {
-        return Err(ApiError::new(axum::http::StatusCode::CONFLICT, "session is archived").with_code("session_archived"));
+        return Err(
+            ApiError::new(axum::http::StatusCode::CONFLICT, "session is archived")
+                .with_code("session_archived"),
+        );
     }
     Ok(s)
 }

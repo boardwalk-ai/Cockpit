@@ -108,14 +108,21 @@ pub async fn search(
             )
         });
 
-        let candidates =
-            match fetch_candidates(&st, &api_key, &model, &topic, &body.outlines, request_count, refinement)
-                .await
-            {
-                Ok(c) => c,
-                Err(e) if round == 0 => return Err(e), // first round failure is fatal
-                Err(_) => break,
-            };
+        let candidates = match fetch_candidates(
+            &st,
+            &api_key,
+            &model,
+            &topic,
+            &body.outlines,
+            request_count,
+            refinement,
+        )
+        .await
+        {
+            Ok(c) => c,
+            Err(e) if round == 0 => return Err(e), // first round failure is fatal
+            Err(_) => break,
+        };
 
         let fresh: Vec<Value> = candidates
             .into_iter()
@@ -179,9 +186,7 @@ async fn fetch_candidates(
         })
         .collect();
 
-    let mut user = format!(
-        "Number of links needed: {count}\nEssay Topic: {topic}\n"
-    );
+    let mut user = format!("Number of links needed: {count}\nEssay Topic: {topic}\n");
     if let Some(r) = refinement {
         user.push_str(&format!("Refinement: {r}\n"));
     }
@@ -193,8 +198,14 @@ async fn fetch_candidates(
         api_key,
         model,
         vec![
-            ChatMessage { role: "system", content: ALVIN_PROMPT.to_string() },
-            ChatMessage { role: "user", content: user },
+            ChatMessage {
+                role: "system",
+                content: ALVIN_PROMPT.to_string(),
+            },
+            ChatMessage {
+                role: "user",
+                content: user,
+            },
         ],
         0.25,
     )

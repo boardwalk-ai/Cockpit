@@ -13,7 +13,13 @@ fn blocks(content: &Value) -> Vec<(String, String, usize)> {
         .cloned()
         .unwrap_or_default()
         .into_iter()
-        .map(|b| (b["type"].as_str().unwrap_or("paragraph").to_string(), b["text"].as_str().unwrap_or("").to_string(), b["indent"].as_u64().unwrap_or(0) as usize))
+        .map(|b| {
+            (
+                b["type"].as_str().unwrap_or("paragraph").to_string(),
+                b["text"].as_str().unwrap_or("").to_string(),
+                b["indent"].as_u64().unwrap_or(0) as usize,
+            )
+        })
         .collect()
 }
 
@@ -75,13 +81,15 @@ pub fn text(title: &str, content: &Value) -> String {
 
 pub fn docx(title: &str, content: &Value) -> Result<Vec<u8>, String> {
     use docx_rs::{Docx, Paragraph, Run};
-    let mut doc = Docx::new().add_paragraph(Paragraph::new().add_run(Run::new().add_text(title).bold().size(40)));
+    let mut doc = Docx::new()
+        .add_paragraph(Paragraph::new().add_run(Run::new().add_text(title).bold().size(40)));
     for (kind, text, indent) in blocks(content) {
         let p = match kind.as_str() {
             "h1" => Paragraph::new().add_run(Run::new().add_text(&text).bold().size(32)),
             "h2" => Paragraph::new().add_run(Run::new().add_text(&text).bold().size(28)),
             "h3" => Paragraph::new().add_run(Run::new().add_text(&text).bold().size(24)),
-            "bulleted" | "numbered" | "checklist" => Paragraph::new().add_run(Run::new().add_text(format!("{}• {text}", "    ".repeat(indent)))),
+            "bulleted" | "numbered" | "checklist" => Paragraph::new()
+                .add_run(Run::new().add_text(format!("{}• {text}", "    ".repeat(indent)))),
             k => {
                 let mut p = Paragraph::new();
                 if let Some(l) = label(k) {
@@ -105,7 +113,12 @@ pub fn pdf(title: &str, content: &Value) -> Result<Vec<u8>, String> {
 
     let regular = FontData::new(FONT_REGULAR.to_vec(), None).map_err(|e| e.to_string())?;
     let bold = FontData::new(FONT_BOLD.to_vec(), None).map_err(|e| e.to_string())?;
-    let family = FontFamily { regular: regular.clone(), bold: bold.clone(), italic: regular, bold_italic: bold };
+    let family = FontFamily {
+        regular: regular.clone(),
+        bold: bold.clone(),
+        italic: regular,
+        bold_italic: bold,
+    };
     let mut doc = genpdf::Document::new(family);
     doc.set_title(title);
     let mut decorator = genpdf::SimplePageDecorator::new();
@@ -122,7 +135,9 @@ pub fn pdf(title: &str, content: &Value) -> Result<Vec<u8>, String> {
             "h1" => Paragraph::new(text).styled(Style::new().bold().with_font_size(17)),
             "h2" => Paragraph::new(text).styled(Style::new().bold().with_font_size(14)),
             "h3" => Paragraph::new(text).styled(Style::new().bold().with_font_size(12)),
-            "bulleted" | "checklist" => Paragraph::new(format!("{pad}•  {text}")).styled(Style::new()),
+            "bulleted" | "checklist" => {
+                Paragraph::new(format!("{pad}•  {text}")).styled(Style::new())
+            }
             "numbered" => Paragraph::new(format!("{pad}–  {text}")).styled(Style::new()),
             "divider" => Paragraph::new("—").styled(Style::new()),
             k => match label(k) {
@@ -159,7 +174,11 @@ mod tests {
     #[test]
     fn all_formats_render() {
         let md = markdown("Cellular Respiration", &sample());
-        assert!(md.contains("## Glycolysis") && md.contains("**Definition:**") && md.contains("  - Net 2 ATP"));
+        assert!(
+            md.contains("## Glycolysis")
+                && md.contains("**Definition:**")
+                && md.contains("  - Net 2 ATP")
+        );
         assert!(text("T", &sample()).contains("• Net 2 ATP"));
         assert_eq!(&docx("T", &sample()).unwrap()[..2], b"PK");
         let pdf = pdf("Cellular Respiration", &sample()).unwrap();

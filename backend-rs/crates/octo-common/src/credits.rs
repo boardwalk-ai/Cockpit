@@ -40,7 +40,11 @@ pub struct ChargeOutcome {
 
 impl Credits {
     pub fn new(pool: Option<PgPool>, ledger_type: impl Into<String>, enabled: bool) -> Self {
-        Self { pool, ledger_type: ledger_type.into(), enabled }
+        Self {
+            pool,
+            ledger_type: ledger_type.into(),
+            enabled,
+        }
     }
 
     /// Charging is live (shared DB configured and not disabled).
@@ -49,11 +53,15 @@ impl Credits {
     }
 
     pub async fn balance(&self, user_id: Uuid) -> Result<Option<i32>, ApiError> {
-        let Some(pool) = &self.pool else { return Ok(None) };
-        Ok(sqlx::query_scalar("SELECT COALESCE(octo_credits, 0) FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_optional(pool)
-            .await?)
+        let Some(pool) = &self.pool else {
+            return Ok(None);
+        };
+        Ok(
+            sqlx::query_scalar("SELECT COALESCE(octo_credits, 0) FROM users WHERE id = $1")
+                .bind(user_id)
+                .fetch_optional(pool)
+                .await?,
+        )
     }
 
     /// Fails with 402 before any paid work starts.
@@ -69,25 +77,47 @@ impl Credits {
     }
 
     /// Deducts `amount` once per `source_ref`.
-    pub async fn charge(&self, user_id: Uuid, amount: i32, source_ref: &str, reason: &str, metadata: Value) -> Result<ChargeOutcome, ApiError> {
+    pub async fn charge(
+        &self,
+        user_id: Uuid,
+        amount: i32,
+        source_ref: &str,
+        reason: &str,
+        metadata: Value,
+    ) -> Result<ChargeOutcome, ApiError> {
         let Some(pool) = &self.pool else {
-            return Ok(ChargeOutcome { charged: false, amount, balance: None });
+            return Ok(ChargeOutcome {
+                charged: false,
+                amount,
+                balance: None,
+            });
         };
         if !self.enabled || amount <= 0 {
-            return Ok(ChargeOutcome { charged: false, amount, balance: self.balance(user_id).await? });
+            return Ok(ChargeOutcome {
+                charged: false,
+                amount,
+                balance: self.balance(user_id).await?,
+            });
         }
         let mut tx = pool.begin().await?;
-        let balance: Option<i32> = sqlx::query_scalar("SELECT COALESCE(octo_credits, 0) FROM users WHERE id = $1 FOR UPDATE")
-            .bind(user_id)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let balance: Option<i32> = sqlx::query_scalar(
+            "SELECT COALESCE(octo_credits, 0) FROM users WHERE id = $1 FOR UPDATE",
+        )
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
         let balance = balance.ok_or_else(|| ApiError::not_found("no account"))?;
-        let exists: Option<Uuid> = sqlx::query_scalar("SELECT id FROM credit_ledger WHERE source_ref = $1")
-            .bind(source_ref)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let exists: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM credit_ledger WHERE source_ref = $1")
+                .bind(source_ref)
+                .fetch_optional(&mut *tx)
+                .await?;
         if exists.is_some() {
-            return Ok(ChargeOutcome { charged: false, amount, balance: Some(balance) });
+            return Ok(ChargeOutcome {
+                charged: false,
+                amount,
+                balance: Some(balance),
+            });
         }
         if balance < amount {
             return Err(insufficient(amount, balance));
@@ -110,29 +140,59 @@ impl Credits {
             .fetch_one(&mut *tx)
             .await?;
         tx.commit().await?;
-        Ok(ChargeOutcome { charged: true, amount, balance: Some(new_balance) })
+        Ok(ChargeOutcome {
+            charged: true,
+            amount,
+            balance: Some(new_balance),
+        })
     }
 
     /// Gives back a charge (failed build …). Once per original `source_ref`;
     /// a no-op if the original was never charged.
-    pub async fn refund(&self, user_id: Uuid, original_ref: &str, reason: &str) -> Result<ChargeOutcome, ApiError> {
-        let Some(pool) = &self.pool else { return Ok(ChargeOutcome { charged: false, amount: 0, balance: None }) };
+    pub async fn refund(
+        &self,
+        user_id: Uuid,
+        original_ref: &str,
+        reason: &str,
+    ) -> Result<ChargeOutcome, ApiError> {
+        let Some(pool) = &self.pool else {
+            return Ok(ChargeOutcome {
+                charged: false,
+                amount: 0,
+                balance: None,
+            });
+        };
         let mut tx = pool.begin().await?;
-        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE").bind(user_id).fetch_optional(&mut *tx).await?;
-        let original = sqlx::query("SELECT amount FROM credit_ledger WHERE source_ref = $1 AND user_id = $2")
-            .bind(original_ref)
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
             .bind(user_id)
             .fetch_optional(&mut *tx)
             .await?;
-        let Some(original) = original else { return Ok(ChargeOutcome { charged: false, amount: 0, balance: None }) };
+        let original =
+            sqlx::query("SELECT amount FROM credit_ledger WHERE source_ref = $1 AND user_id = $2")
+                .bind(original_ref)
+                .bind(user_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let Some(original) = original else {
+            return Ok(ChargeOutcome {
+                charged: false,
+                amount: 0,
+                balance: None,
+            });
+        };
         let amount = -original.get::<i32, _>("amount");
         let refund_ref = format!("{original_ref}:refund");
-        let done: Option<Uuid> = sqlx::query_scalar("SELECT id FROM credit_ledger WHERE source_ref = $1")
-            .bind(&refund_ref)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let done: Option<Uuid> =
+            sqlx::query_scalar("SELECT id FROM credit_ledger WHERE source_ref = $1")
+                .bind(&refund_ref)
+                .fetch_optional(&mut *tx)
+                .await?;
         if done.is_some() || amount <= 0 {
-            return Ok(ChargeOutcome { charged: false, amount, balance: None });
+            return Ok(ChargeOutcome {
+                charged: false,
+                amount,
+                balance: None,
+            });
         }
         sqlx::query(
             "INSERT INTO credit_ledger (user_id, credit_type, entry_type, amount, available_amount, source_ref, reason) \
@@ -151,12 +211,19 @@ impl Credits {
             .fetch_one(&mut *tx)
             .await?;
         tx.commit().await?;
-        Ok(ChargeOutcome { charged: true, amount, balance: Some(balance) })
+        Ok(ChargeOutcome {
+            charged: true,
+            amount,
+            balance: Some(balance),
+        })
     }
 }
 
 pub fn insufficient(needed: i32, balance: i32) -> ApiError {
-    ApiError::new(StatusCode::PAYMENT_REQUIRED, format!("This costs {needed} OctoCredits, but you have {balance}."))
-        .with_code("insufficient_credits")
-        .with_details(json!({ "needed": needed, "balance": balance }))
+    ApiError::new(
+        StatusCode::PAYMENT_REQUIRED,
+        format!("This costs {needed} OctoCredits, but you have {balance}."),
+    )
+    .with_code("insufficient_credits")
+    .with_details(json!({ "needed": needed, "balance": balance }))
 }

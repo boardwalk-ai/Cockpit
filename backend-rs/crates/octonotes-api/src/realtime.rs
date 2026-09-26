@@ -29,7 +29,12 @@ pub struct Event {
 
 impl Event {
     pub fn new(kind: &str, data: Value, rev: Option<i64>) -> Self {
-        Self { kind: kind.to_string(), data, rev, origin: String::new() }
+        Self {
+            kind: kind.to_string(),
+            data,
+            rev,
+            origin: String::new(),
+        }
     }
 }
 
@@ -136,8 +141,12 @@ impl Hub {
                 let mut stream = pubsub.on_message();
                 while let Some(msg) = stream.next().await {
                     let channel = msg.get_channel_name().to_string();
-                    let Ok(payload) = msg.get_payload::<String>() else { continue };
-                    let Ok(v) = serde_json::from_str::<Value>(&payload) else { continue };
+                    let Ok(payload) = msg.get_payload::<String>() else {
+                        continue;
+                    };
+                    let Ok(v) = serde_json::from_str::<Value>(&payload) else {
+                        continue;
+                    };
                     if v.get("origin").and_then(Value::as_str) == Some(hub.instance.as_str()) {
                         continue;
                     }

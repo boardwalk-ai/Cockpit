@@ -26,7 +26,10 @@ pub fn topics_of(content: &Value) -> Vec<Value> {
     for b in blocks {
         let kind = b["type"].as_str().unwrap_or("");
         if matches!(kind, "h1" | "h2") {
-            topics.push((b["text"].as_str().unwrap_or("Untitled").to_string(), vec![b]));
+            topics.push((
+                b["text"].as_str().unwrap_or("Untitled").to_string(),
+                vec![b],
+            ));
         } else {
             match topics.last_mut() {
                 Some(t) => t.1.push(b),
@@ -91,27 +94,52 @@ async fn match_existing(st: &AppState, user_id: Uuid, topics: &mut [Value]) {
 }
 
 pub async fn job_build(st: AppState, job: Job) -> JobResult {
-    let fid: Uuid = serde_json::from_value(job.payload["finalNotesId"].clone()).map_err(|e| e.to_string())?;
-    let row = sqlx::query("SELECT user_id, session_id, content FROM final_notes WHERE id = $1").bind(fid).fetch_optional(&st.notes).await.map_err(|e| e.to_string())?;
+    let fid: Uuid =
+        serde_json::from_value(job.payload["finalNotesId"].clone()).map_err(|e| e.to_string())?;
+    let row = sqlx::query("SELECT user_id, session_id, content FROM final_notes WHERE id = $1")
+        .bind(fid)
+        .fetch_optional(&st.notes)
+        .await
+        .map_err(|e| e.to_string())?;
     let Some(row) = row else { return Ok(()) };
     let (user, session): (Uuid, Uuid) = (row.get("user_id"), row.get("session_id"));
     let mut topics = topics_of(&row.get::<Value, _>("content"));
     match_existing(&st, user, &mut topics).await;
-    let selected: Vec<Value> = topics.iter().filter(|t| t["readiness"] == "ready").map(|t| t["id"].clone()).collect();
+    let selected: Vec<Value> = topics
+        .iter()
+        .filter(|t| t["readiness"] == "ready")
+        .map(|t| t["id"].clone())
+        .collect();
     sqlx::query("UPDATE recommendations SET status = 'ready', topics = $2, selection = $3 WHERE final_notes_id = $1")
         .bind(fid).bind(Value::Array(topics)).bind(json!({ "mode": "topics", "topicIds": selected })).execute(&st.notes).await.map_err(|e| e.to_string())?;
-    st.hub.session(session, Event::new("recommendations.ready", json!({ "finalNotesId": fid }), None)).await;
+    st.hub
+        .session(
+            session,
+            Event::new(
+                "recommendations.ready",
+                json!({ "finalNotesId": fid }),
+                None,
+            ),
+        )
+        .await;
     Ok(())
 }
 
 #[utoipa::path(get, path = "/v1/final-notes/{id}/recommendations", tag = "studyStudio", params(("id" = Uuid, Path)),
     responses((status = 200, description = "{status, topics[], selection, summary{topics, ready, needsReview}}")))]
-pub async fn get(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<Json<Value>, ApiError> {
+pub async fn get(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, ApiError> {
     final_notes::owned(&st, &caller, id).await?;
     let row = sqlx::query("SELECT status, topics, selection, manual_block_ids FROM recommendations WHERE final_notes_id = $1")
         .bind(id).fetch_optional(&st.notes).await?.ok_or_else(|| ApiError::not_found("recommendations not found"))?;
     let topics: Value = row.get("topics");
-    let ready = topics.as_array().map(|a| a.iter().filter(|t| t["readiness"] == "ready").count()).unwrap_or(0);
+    let ready = topics
+        .as_array()
+        .map(|a| a.iter().filter(|t| t["readiness"] == "ready").count())
+        .unwrap_or(0);
     let total = topics.as_array().map(|a| a.len()).unwrap_or(0);
     Ok(Json(json!({
         "status": row.get::<String, _>("status"), "topics": topics, "selection": row.get::<Value, _>("selection"),
@@ -133,8 +161,16 @@ pub struct Selection {
 
 #[utoipa::path(put, path = "/v1/final-notes/{id}/recommendations/selection", tag = "studyStudio", params(("id" = Uuid, Path)),
     request_body = Selection, responses((status = 204)))]
-pub async fn select(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>, Json(req): Json<Selection>) -> Result<StatusCode, ApiError> {
-    if !["topics", "manual"].contains(&req.mode.as_str()) || req.topic_ids.len() > 200 || req.manual_block_ids.len() > 5000 {
+pub async fn select(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+    Json(req): Json<Selection>,
+) -> Result<StatusCode, ApiError> {
+    if !["topics", "manual"].contains(&req.mode.as_str())
+        || req.topic_ids.len() > 200
+        || req.manual_block_ids.len() > 5000
+    {
         return Err(ApiError::bad_request("mode must be topics or manual"));
     }
     final_notes::owned(&st, &caller, id).await?;

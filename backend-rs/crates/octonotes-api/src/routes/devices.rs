@@ -35,7 +35,11 @@ pub struct RegisterDevice {
 
 #[utoipa::path(post, path = "/v1/devices", tag = "devices", request_body = RegisterDevice,
     responses((status = 200, body = Device)))]
-pub async fn register(State(st): State<AppState>, caller: Caller, Json(req): Json<RegisterDevice>) -> Result<Json<Device>, ApiError> {
+pub async fn register(
+    State(st): State<AppState>,
+    caller: Caller,
+    Json(req): Json<RegisterDevice>,
+) -> Result<Json<Device>, ApiError> {
     if !PLATFORMS.contains(&req.platform.as_str()) {
         return Err(ApiError::bad_request("unknown platform"));
     }
@@ -58,11 +62,15 @@ pub async fn register(State(st): State<AppState>, caller: Caller, Json(req): Jso
     .fetch_optional(&st.notes)
     .await?;
     // No row = the id belongs to another user's device.
-    row.map(Json).ok_or_else(|| ApiError::bad_request("device id already in use"))
+    row.map(Json)
+        .ok_or_else(|| ApiError::bad_request("device id already in use"))
 }
 
 #[utoipa::path(get, path = "/v1/devices", tag = "devices", responses((status = 200, body = Vec<Device>)))]
-pub async fn list(State(st): State<AppState>, caller: Caller) -> Result<Json<Vec<Device>>, ApiError> {
+pub async fn list(
+    State(st): State<AppState>,
+    caller: Caller,
+) -> Result<Json<Vec<Device>>, ApiError> {
     let rows = sqlx::query_as::<_, Device>(
         "SELECT id, name, platform, last_seen_at, created_at FROM devices WHERE user_id = $1 ORDER BY last_seen_at DESC NULLS LAST",
     )
@@ -73,11 +81,18 @@ pub async fn list(State(st): State<AppState>, caller: Caller) -> Result<Json<Vec
 }
 
 /// The caller's device, or 400 (used wherever a request names a device).
-pub async fn ensure_owned(conn: &mut sqlx::PgConnection, caller: &Caller, device_id: Uuid) -> Result<(), ApiError> {
-    let ok: Option<Uuid> = sqlx::query_scalar("SELECT id FROM devices WHERE id = $1 AND user_id = $2")
-        .bind(device_id)
-        .bind(caller.user_id)
-        .fetch_optional(conn)
-        .await?;
-    ok.map(|_| ()).ok_or_else(|| ApiError::bad_request("unknown deviceId — register it with POST /v1/devices"))
+pub async fn ensure_owned(
+    conn: &mut sqlx::PgConnection,
+    caller: &Caller,
+    device_id: Uuid,
+) -> Result<(), ApiError> {
+    let ok: Option<Uuid> =
+        sqlx::query_scalar("SELECT id FROM devices WHERE id = $1 AND user_id = $2")
+            .bind(device_id)
+            .bind(caller.user_id)
+            .fetch_optional(conn)
+            .await?;
+    ok.map(|_| ()).ok_or_else(|| {
+        ApiError::bad_request("unknown deviceId — register it with POST /v1/devices")
+    })
 }

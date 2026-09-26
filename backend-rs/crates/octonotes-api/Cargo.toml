@@ -37,4 +37,5 @@ tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]
 tokio-tungstenite = "0.24"
+reqwest = { workspace = true }
 http-body-util = "0.1"

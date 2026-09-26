@@ -67,7 +67,10 @@ pub fn sniff(bytes: &[u8], filename: &str) -> Option<(&'static str, &'static str
         return Some(("pdf", "application/pdf"));
     }
     if bytes.starts_with(b"PK\x03\x04") && lower.ends_with(".pptx") {
-        return Some(("pptx", "application/vnd.openxmlformats-officedocument.presentationml.presentation"));
+        return Some((
+            "pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ));
     }
     if bytes.starts_with(b"\x89PNG") {
         return Some(("image", "image/png"));
@@ -84,19 +87,37 @@ pub fn sniff(bytes: &[u8], filename: &str) -> Option<(&'static str, &'static str
 #[utoipa::path(post, path = "/v1/sessions/{id}/materials", tag = "materials", params(("id" = Uuid, Path)),
     request_body(content_type = "multipart/form-data", description = "`file` (PDF, PPTX, PNG/JPEG/WEBP) and optional `kind` = whiteboardPhoto | handout"),
     responses((status = 201, body = Material)))]
-pub async fn upload(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, mut form: Multipart) -> Result<(StatusCode, Json<Material>), ApiError> {
+pub async fn upload(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    mut form: Multipart,
+) -> Result<(StatusCode, Json<Material>), ApiError> {
+    st.upload_rate.check(caller.user_id, 120)?;
     {
         let mut conn = st.notes.acquire().await?;
         access::writable_session(&mut conn, &caller, session_id).await?;
     }
-    let (mut file, mut name, mut kind_override) = (None::<Vec<u8>>, String::from("material"), None::<String>);
-    while let Some(field) = form.next_field().await.map_err(|e| ApiError::bad_request(format!("bad form: {e}")))? {
+    let (mut file, mut name, mut kind_override) =
+        (None::<Vec<u8>>, String::from("material"), None::<String>);
+    while let Some(field) = form
+        .next_field()
+        .await
+        .map_err(|e| ApiError::bad_request(format!("bad form: {e}")))?
+    {
         match field.name() {
             Some("file") => {
                 name = field.file_name().unwrap_or("material").to_string();
-                let data = field.bytes().await.map_err(|e| ApiError::bad_request(format!("upload failed: {e}")))?;
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|e| ApiError::bad_request(format!("upload failed: {e}")))?;
                 if data.len() > MAX_UPLOAD {
-                    return Err(ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "files over 50 MB need the upload URL flow").with_code("too_large"));
+                    return Err(ApiError::new(
+                        StatusCode::PAYLOAD_TOO_LARGE,
+                        "files over 50 MB need the upload URL flow",
+                    )
+                    .with_code("too_large"));
                 }
                 file = Some(data.to_vec());
             }
@@ -105,7 +126,10 @@ pub async fn upload(State(st): State<AppState>, caller: Caller, Path(session_id)
         }
     }
     let bytes = file.ok_or_else(|| ApiError::bad_request("missing file field"))?;
-    let (mut kind, mime) = sniff(&bytes, &name).ok_or_else(|| ApiError::bad_request("unsupported file — use PDF, PPTX, PNG, JPEG or WEBP").with_code("unsupported_type"))?;
+    let (mut kind, mime) = sniff(&bytes, &name).ok_or_else(|| {
+        ApiError::bad_request("unsupported file — use PDF, PPTX, PNG, JPEG or WEBP")
+            .with_code("unsupported_type")
+    })?;
     if let Some(k) = kind_override.as_deref() {
         match (k, kind) {
             ("whiteboardPhoto", "image") => kind = "whiteboardPhoto",
@@ -113,11 +137,26 @@ pub async fn upload(State(st): State<AppState>, caller: Caller, Path(session_id)
             _ => {}
         }
     }
-    let safe_name: String = name.chars().filter(|c| !matches!(c, '/' | '\\' | '\0')).take(200).collect();
+    let safe_name: String = name
+        .chars()
+        .filter(|c| !matches!(c, '/' | '\\' | '\0'))
+        .take(200)
+        .collect();
     let id = Uuid::new_v4();
-    let ext = safe_name.rsplit('.').next().filter(|e| e.len() <= 5).unwrap_or("bin").to_lowercase();
-    let key = format!("{}/{session_id}/materials/{id}/original.{ext}", caller.user_id);
-    st.storage.put(&key, &bytes, mime).await.map_err(ApiError::unavailable)?;
+    let ext = safe_name
+        .rsplit('.')
+        .next()
+        .filter(|e| e.len() <= 5)
+        .unwrap_or("bin")
+        .to_lowercase();
+    let key = format!(
+        "{}/{session_id}/materials/{id}/original.{ext}",
+        caller.user_id
+    );
+    st.storage
+        .put(&key, &bytes, mime)
+        .await
+        .map_err(ApiError::unavailable)?;
     let m = sqlx::query_as::<_, Material>(&format!(
         "INSERT INTO materials (id, session_id, user_id, filename, type, mime, bytes, object_key, state) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'processing') RETURNING {COLUMNS}"
@@ -132,7 +171,14 @@ pub async fn upload(State(st): State<AppState>, caller: Caller, Path(session_id)
     .bind(&key)
     .fetch_one(&st.notes)
     .await?;
-    jobs::enqueue(&st.notes, Some(caller.user_id), "material.process", json!({ "materialId": id, "sessionId": session_id }), Some(&format!("material:{id}"))).await?;
+    jobs::enqueue(
+        &st.notes,
+        Some(caller.user_id),
+        "material.process",
+        json!({ "materialId": id, "sessionId": session_id }),
+        Some(&format!("material:{id}")),
+    )
+    .await?;
     Ok((StatusCode::CREATED, Json(m)))
 }
 
@@ -146,7 +192,12 @@ pub struct UploadUrlRequest {
 /// Large files (up to 500 MB) go straight to object storage.
 #[utoipa::path(post, path = "/v1/sessions/{id}/materials/upload-url", tag = "materials", params(("id" = Uuid, Path)),
     request_body = UploadUrlRequest, responses((status = 200, description = "{materialId, uploadUrl}"), (status = 409, description = "local storage: use multipart")))]
-pub async fn upload_url(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<UploadUrlRequest>) -> Result<Json<Value>, ApiError> {
+pub async fn upload_url(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<UploadUrlRequest>,
+) -> Result<Json<Value>, ApiError> {
     if !(1..=500 * 1024 * 1024).contains(&req.bytes) {
         return Err(ApiError::bad_request("bytes must be 1..500 MB"));
     }
@@ -155,27 +206,73 @@ pub async fn upload_url(State(st): State<AppState>, caller: Caller, Path(session
         access::writable_session(&mut conn, &caller, session_id).await?;
     }
     let id = Uuid::new_v4();
-    let ext = req.filename.rsplit('.').next().filter(|e| e.len() <= 5).unwrap_or("bin").to_lowercase();
-    let key = format!("{}/{session_id}/materials/{id}/original.{ext}", caller.user_id);
-    let url = st.storage.upload_url(&key, 3600).await.map_err(ApiError::unavailable)?
-        .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "direct upload not available; use multipart").with_code("use_multipart"))?;
+    let ext = req
+        .filename
+        .rsplit('.')
+        .next()
+        .filter(|e| e.len() <= 5)
+        .unwrap_or("bin")
+        .to_lowercase();
+    let key = format!(
+        "{}/{session_id}/materials/{id}/original.{ext}",
+        caller.user_id
+    );
+    let url = st
+        .storage
+        .upload_url(&key, 3600)
+        .await
+        .map_err(ApiError::unavailable)?
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::CONFLICT,
+                "direct upload not available; use multipart",
+            )
+            .with_code("use_multipart")
+        })?;
     sqlx::query("INSERT INTO materials (id, session_id, user_id, filename, type, mime, bytes, object_key, state) VALUES ($1,$2,$3,$4,'pdf','application/octet-stream',$5,$6,'uploading')")
         .bind(id).bind(session_id).bind(caller.user_id).bind(&req.filename).bind(req.bytes).bind(&key)
         .execute(&st.notes).await?;
-    Ok(Json(json!({ "materialId": id, "uploadUrl": url, "expiresIn": 3600 })))
+    Ok(Json(
+        json!({ "materialId": id, "uploadUrl": url, "expiresIn": 3600 }),
+    ))
 }
 
 #[utoipa::path(post, path = "/v1/materials/{id}/uploaded", tag = "materials", params(("id" = Uuid, Path)), responses((status = 202, body = Material)))]
-pub async fn uploaded(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<(StatusCode, Json<Material>), ApiError> {
-    let key: Option<String> = sqlx::query_scalar("SELECT object_key FROM materials WHERE id = $1 AND user_id = $2 AND state = 'uploading'")
-        .bind(id).bind(caller.user_id).fetch_optional(&st.notes).await?.flatten();
+pub async fn uploaded(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<(StatusCode, Json<Material>), ApiError> {
+    let key: Option<String> = sqlx::query_scalar(
+        "SELECT object_key FROM materials WHERE id = $1 AND user_id = $2 AND state = 'uploading'",
+    )
+    .bind(id)
+    .bind(caller.user_id)
+    .fetch_optional(&st.notes)
+    .await?
+    .flatten();
     let key = key.ok_or_else(|| ApiError::not_found("pending upload not found"))?;
-    let head = st.storage.get(&key).await.map_err(|_| ApiError::bad_request("file not uploaded yet"))?;
-    let name: String = sqlx::query_scalar("SELECT filename FROM materials WHERE id = $1").bind(id).fetch_one(&st.notes).await?;
-    let (kind, mime) = sniff(&head, &name).ok_or_else(|| ApiError::bad_request("unsupported file").with_code("unsupported_type"))?;
+    let head = st
+        .storage
+        .get(&key)
+        .await
+        .map_err(|_| ApiError::bad_request("file not uploaded yet"))?;
+    let name: String = sqlx::query_scalar("SELECT filename FROM materials WHERE id = $1")
+        .bind(id)
+        .fetch_one(&st.notes)
+        .await?;
+    let (kind, mime) = sniff(&head, &name)
+        .ok_or_else(|| ApiError::bad_request("unsupported file").with_code("unsupported_type"))?;
     let m = sqlx::query_as::<_, Material>(&format!("UPDATE materials SET state = 'processing', type = $2, mime = $3, bytes = $4 WHERE id = $1 RETURNING {COLUMNS}"))
         .bind(id).bind(kind).bind(mime).bind(head.len() as i64).fetch_one(&st.notes).await?;
-    jobs::enqueue(&st.notes, Some(caller.user_id), "material.process", json!({ "materialId": id, "sessionId": m.session_id }), Some(&format!("material:{id}"))).await?;
+    jobs::enqueue(
+        &st.notes,
+        Some(caller.user_id),
+        "material.process",
+        json!({ "materialId": id, "sessionId": m.session_id }),
+        Some(&format!("material:{id}")),
+    )
+    .await?;
     Ok((StatusCode::ACCEPTED, Json(m)))
 }
 
@@ -190,25 +287,50 @@ pub struct FromStudio {
 /// indexed text becomes the pages).
 #[utoipa::path(post, path = "/v1/sessions/{id}/materials/from-studio", tag = "materials", params(("id" = Uuid, Path)),
     request_body = FromStudio, responses((status = 201, body = Material)))]
-pub async fn from_studio(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<FromStudio>) -> Result<(StatusCode, Json<Material>), ApiError> {
-    let studio = st.studio.as_ref().ok_or_else(|| ApiError::unavailable("Study Studio is not connected"))?;
-    let vectors = st.studio_vector.as_ref().ok_or_else(|| ApiError::unavailable("Study Studio index is not connected"))?;
+pub async fn from_studio(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<FromStudio>,
+) -> Result<(StatusCode, Json<Material>), ApiError> {
+    let studio = st
+        .studio
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("Study Studio is not connected"))?;
+    let vectors = st
+        .studio_vector
+        .as_ref()
+        .ok_or_else(|| ApiError::unavailable("Study Studio index is not connected"))?;
     {
         let mut conn = st.notes.acquire().await?;
         access::writable_session(&mut conn, &caller, session_id).await?;
     }
-    let doc = sqlx::query("SELECT d.filename, d.mime, d.bytes FROM documents d JOIN studios s ON s.id = d.studio_id \
-                           WHERE d.id = $1 AND d.studio_id = $2 AND s.user_id = $3")
-        .bind(req.document_id).bind(req.studio_id).bind(caller.user_id).fetch_optional(studio).await?
-        .ok_or_else(|| ApiError::not_found("Study Studio document not found"))?;
-    let chunks: Vec<String> = sqlx::query_scalar("SELECT content FROM chunks WHERE document_id = $1 AND user_id = $2 ORDER BY ordinal")
-        .bind(req.document_id).bind(caller.user_id).fetch_all(vectors).await?;
+    let doc = sqlx::query(
+        "SELECT d.filename, d.mime, d.bytes FROM documents d JOIN studios s ON s.id = d.studio_id \
+                           WHERE d.id = $1 AND d.studio_id = $2 AND s.user_id = $3",
+    )
+    .bind(req.document_id)
+    .bind(req.studio_id)
+    .bind(caller.user_id)
+    .fetch_optional(studio)
+    .await?
+    .ok_or_else(|| ApiError::not_found("Study Studio document not found"))?;
+    let chunks: Vec<String> = sqlx::query_scalar(
+        "SELECT content FROM chunks WHERE document_id = $1 AND user_id = $2 ORDER BY ordinal",
+    )
+    .bind(req.document_id)
+    .bind(caller.user_id)
+    .fetch_all(vectors)
+    .await?;
     let filename: String = doc.get("filename");
     // ~1500 characters per page.
     let mut pages: Vec<String> = Vec::new();
     for c in chunks {
         match pages.last_mut() {
-            Some(p) if p.len() + c.len() < 1500 => { p.push('\n'); p.push_str(&c); }
+            Some(p) if p.len() + c.len() < 1500 => {
+                p.push('\n');
+                p.push_str(&c);
+            }
             _ => pages.push(c),
         }
     }
@@ -222,32 +344,60 @@ pub async fn from_studio(State(st): State<AppState>, caller: Caller, Path(sessio
         sqlx::query("INSERT INTO material_pages (material_id, number, title, ocr_text, ocr_confidence) VALUES ($1,$2,$3,$4,'high')")
             .bind(m.id).bind(i as i32 + 1).bind(first_line(text)).bind(text).execute(&mut *tx).await?;
     }
-    jobs::enqueue_tx(&mut tx, Some(caller.user_id), "embed.session", json!({ "sessionId": session_id }), None).await?;
+    jobs::enqueue_tx(
+        &mut tx,
+        Some(caller.user_id),
+        "embed.session",
+        json!({ "sessionId": session_id }),
+        None,
+    )
+    .await?;
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(m)))
 }
 
 fn first_line(text: &str) -> String {
-    text.lines().map(str::trim).find(|l| !l.is_empty()).map(|l| l.chars().take(120).collect()).unwrap_or_default()
+    text.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(|l| l.chars().take(120).collect())
+        .unwrap_or_default()
 }
 
 #[utoipa::path(get, path = "/v1/sessions/{id}/materials", tag = "materials", params(("id" = Uuid, Path)), responses((status = 200, body = Vec<Material>)))]
-pub async fn list(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>) -> Result<Json<Vec<Material>>, ApiError> {
+pub async fn list(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<Vec<Material>>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
     Ok(Json(sqlx::query_as::<_, Material>(&format!("SELECT {COLUMNS} FROM materials WHERE session_id = $1 AND deleted_at IS NULL ORDER BY created_at"))
         .bind(session_id).fetch_all(&mut *conn).await?))
 }
 
-async fn owned(conn: &mut PgConnection, caller: &Caller, id: Uuid) -> Result<(Uuid, String), ApiError> {
-    let row: Option<(Uuid, String)> = sqlx::query_as("SELECT m.session_id, m.filename FROM materials m JOIN sessions s ON s.id = m.session_id \
-        WHERE m.id = $1 AND m.user_id = $2 AND m.deleted_at IS NULL AND s.deleted_at IS NULL")
-        .bind(id).bind(caller.user_id).fetch_optional(conn).await?;
+async fn owned(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    id: Uuid,
+) -> Result<(Uuid, String), ApiError> {
+    let row: Option<(Uuid, String)> = sqlx::query_as(
+        "SELECT m.session_id, m.filename FROM materials m JOIN sessions s ON s.id = m.session_id \
+        WHERE m.id = $1 AND m.user_id = $2 AND m.deleted_at IS NULL AND s.deleted_at IS NULL",
+    )
+    .bind(id)
+    .bind(caller.user_id)
+    .fetch_optional(conn)
+    .await?;
     row.ok_or_else(|| ApiError::not_found("material not found"))
 }
 
 #[utoipa::path(get, path = "/v1/materials/{id}/pages", tag = "materials", params(("id" = Uuid, Path)), responses((status = 200, body = Vec<Page>)))]
-pub async fn pages(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<Json<Vec<Page>>, ApiError> {
+pub async fn pages(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Vec<Page>>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     owned(&mut conn, &caller, id).await?;
     Ok(Json(sqlx::query_as::<_, Page>(
@@ -259,13 +409,25 @@ pub async fn pages(State(st): State<AppState>, caller: Caller, Path(id): Path<Uu
 
 #[utoipa::path(get, path = "/v1/materials/{id}/pages/{n}/image", tag = "materials", params(("id" = Uuid, Path), ("n" = i32, Path)),
     responses((status = 200, description = "{url, expiresIn}")))]
-pub async fn page_image(State(st): State<AppState>, caller: Caller, Path((id, n)): Path<(Uuid, i32)>) -> Result<Json<Value>, ApiError> {
+pub async fn page_image(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path((id, n)): Path<(Uuid, i32)>,
+) -> Result<Json<Value>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     owned(&mut conn, &caller, id).await?;
-    let key: Option<String> = sqlx::query_scalar("SELECT render_key FROM material_pages WHERE material_id = $1 AND number = $2")
-        .bind(id).bind(n).fetch_optional(&mut *conn).await?.flatten();
+    let key: Option<String> = sqlx::query_scalar(
+        "SELECT render_key FROM material_pages WHERE material_id = $1 AND number = $2",
+    )
+    .bind(id)
+    .bind(n)
+    .fetch_optional(&mut *conn)
+    .await?
+    .flatten();
     let key = key.ok_or_else(|| ApiError::not_found("no image for this page"))?;
-    Ok(Json(json!({ "url": st.storage.url(&key, 900).await.map_err(ApiError::unavailable)?, "expiresIn": 900 })))
+    Ok(Json(
+        json!({ "url": st.storage.url(&key, 900).await.map_err(ApiError::unavailable)?, "expiresIn": 900 }),
+    ))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -276,11 +438,21 @@ pub struct LinkBlock {
 
 #[utoipa::path(post, path = "/v1/materials/{id}/pages/{n}/link", tag = "materials", params(("id" = Uuid, Path), ("n" = i32, Path)),
     request_body = LinkBlock, responses((status = 204)))]
-pub async fn link(State(st): State<AppState>, caller: Caller, Path((id, n)): Path<(Uuid, i32)>, Json(req): Json<LinkBlock>) -> Result<StatusCode, ApiError> {
+pub async fn link(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path((id, n)): Path<(Uuid, i32)>,
+    Json(req): Json<LinkBlock>,
+) -> Result<StatusCode, ApiError> {
     let mut conn = st.notes.acquire().await?;
     let (session_id, _) = owned(&mut conn, &caller, id).await?;
-    let ok: Option<Uuid> = sqlx::query_scalar("SELECT id FROM blocks WHERE id = $1 AND session_id = $2 AND deleted_at IS NULL")
-        .bind(req.block_id).bind(session_id).fetch_optional(&mut *conn).await?;
+    let ok: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM blocks WHERE id = $1 AND session_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(req.block_id)
+    .bind(session_id)
+    .fetch_optional(&mut *conn)
+    .await?;
     ok.ok_or_else(|| ApiError::not_found("block not found"))?;
     sqlx::query("INSERT INTO links (session_id, user_id, from_kind, from_id, to_kind, to_id) VALUES ($1,$2,'block',$3,'slide',$4) ON CONFLICT DO NOTHING")
         .bind(session_id).bind(caller.user_id).bind(req.block_id.to_string()).bind(format!("{id}:{n}")).execute(&mut *conn).await?;
@@ -297,7 +469,12 @@ pub struct ActivePage {
 /// Follow Lecture: marks the slide on screen now (closes the previous one).
 #[utoipa::path(post, path = "/v1/materials/{id}/pages/{n}/active", tag = "materials", params(("id" = Uuid, Path), ("n" = i32, Path)),
     request_body = ActivePage, responses((status = 204)))]
-pub async fn set_active(State(st): State<AppState>, caller: Caller, Path((id, n)): Path<(Uuid, i32)>, Json(req): Json<ActivePage>) -> Result<StatusCode, ApiError> {
+pub async fn set_active(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path((id, n)): Path<(Uuid, i32)>,
+    Json(req): Json<ActivePage>,
+) -> Result<StatusCode, ApiError> {
     let mut tx = st.notes.begin().await?;
     let (session_id, _) = owned(&mut tx, &caller, id).await?;
     sqlx::query("UPDATE material_pages p SET active_to_ms = $2 FROM materials m WHERE m.id = p.material_id AND m.session_id = $1 \
@@ -309,27 +486,62 @@ pub async fn set_active(State(st): State<AppState>, caller: Caller, Path((id, n)
         return Err(ApiError::not_found("page not found"));
     }
     tx.commit().await?;
-    st.hub.session(session_id, Event::new("slide.changed", json!({ "materialId": id, "page": n, "atMs": req.at_ms }), None)).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "slide.changed",
+                json!({ "materialId": id, "page": n, "atMs": req.at_ms }),
+                None,
+            ),
+        )
+        .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(delete, path = "/v1/materials/{id}", tag = "materials", params(("id" = Uuid, Path)), responses((status = 204)))]
-pub async fn delete(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<StatusCode, ApiError> {
+pub async fn delete(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
     let mut conn = st.notes.acquire().await?;
     let (session_id, _) = owned(&mut conn, &caller, id).await?;
-    sqlx::query("UPDATE materials SET deleted_at = now() WHERE id = $1").bind(id).execute(&mut *conn).await?;
-    jobs::enqueue(&st.notes, Some(caller.user_id), "embed.session", json!({ "sessionId": session_id }), None).await?;
+    sqlx::query("UPDATE materials SET deleted_at = now() WHERE id = $1")
+        .bind(id)
+        .execute(&mut *conn)
+        .await?;
+    jobs::enqueue(
+        &st.notes,
+        Some(caller.user_id),
+        "embed.session",
+        json!({ "sessionId": session_id }),
+        None,
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// `"{materialId}:{page}"` → parts.
 pub fn parse_page_ref(s: &str) -> Result<(Uuid, i32), ApiError> {
-    let (m, p) = s.split_once(':').ok_or_else(|| ApiError::bad_request("slide ref must be materialId:page"))?;
-    Ok((Uuid::parse_str(m).map_err(|_| ApiError::bad_request("bad material id"))?, p.parse().map_err(|_| ApiError::bad_request("bad page number"))?))
+    let (m, p) = s
+        .split_once(':')
+        .ok_or_else(|| ApiError::bad_request("slide ref must be materialId:page"))?;
+    Ok((
+        Uuid::parse_str(m).map_err(|_| ApiError::bad_request("bad material id"))?,
+        p.parse()
+            .map_err(|_| ApiError::bad_request("bad page number"))?,
+    ))
 }
 
 /// (title, text, filename) of a page in the caller's session.
-pub async fn page_text(conn: &mut PgConnection, caller: &Caller, session_id: Uuid, material: Uuid, page: i32) -> Result<(String, String, String), ApiError> {
+pub async fn page_text(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    session_id: Uuid,
+    material: Uuid,
+    page: i32,
+) -> Result<(String, String, String), ApiError> {
     let row = sqlx::query("SELECT p.title, p.ocr_text, m.filename FROM material_pages p JOIN materials m ON m.id = p.material_id \
                            WHERE p.material_id = $1 AND p.number = $2 AND m.session_id = $3 AND m.user_id = $4 AND m.deleted_at IS NULL")
         .bind(material).bind(page).bind(session_id).bind(caller.user_id).fetch_optional(conn).await?
@@ -346,32 +558,72 @@ struct Extracted {
 }
 
 pub async fn job_process(st: AppState, job: Job) -> JobResult {
-    let id: Uuid = serde_json::from_value(job.payload["materialId"].clone()).map_err(|e| e.to_string())?;
+    let id: Uuid =
+        serde_json::from_value(job.payload["materialId"].clone()).map_err(|e| e.to_string())?;
     let row = sqlx::query("SELECT session_id, user_id, type, mime, object_key FROM materials WHERE id = $1 AND deleted_at IS NULL")
         .bind(id).fetch_optional(&st.notes).await.map_err(|e| e.to_string())?;
     let Some(row) = row else { return Ok(()) };
-    let (session_id, user_id, kind, mime, key): (Uuid, Uuid, String, String, Option<String>) =
-        (row.get("session_id"), row.get("user_id"), row.get("type"), row.get("mime"), row.get("object_key"));
+    let (session_id, user_id, kind, mime, key): (Uuid, Uuid, String, String, Option<String>) = (
+        row.get("session_id"),
+        row.get("user_id"),
+        row.get("type"),
+        row.get("mime"),
+        row.get("object_key"),
+    );
     let Some(key) = key else { return Ok(()) };
     let bytes = st.storage.get(&key).await?;
 
-    let result: Result<Vec<Extracted>, String> = match kind.as_str() {
-        "pdf" | "handout" if bytes.starts_with(b"%PDF") => extract_pdf(&bytes).await,
-        "pptx" => extract_pptx(&bytes).await,
-        _ => Ok(vec![Extracted { text: String::new(), render: Some(bytes.clone()), confidence: "low" }]),
+    // A crafted file must not tie up a worker: 2 minutes, then it fails.
+    let parse = async {
+        match kind.as_str() {
+            "pdf" | "handout" if bytes.starts_with(b"%PDF") => extract_pdf(&bytes).await,
+            "pptx" => extract_pptx(&bytes).await,
+            _ => Ok(vec![Extracted {
+                text: String::new(),
+                render: Some(bytes.clone()),
+                confidence: "low",
+            }]),
+        }
     };
+    let result: Result<Vec<Extracted>, String> =
+        tokio::time::timeout(std::time::Duration::from_secs(120), parse)
+            .await
+            .unwrap_or_else(|_| Err("processing timed out".into()));
     let mut pages = match result {
         Ok(p) => p,
         Err(e) => {
-            sqlx::query("UPDATE materials SET state = 'fail', error = $2 WHERE id = $1").bind(id).bind(&e).execute(&st.notes).await.map_err(|e| e.to_string())?;
-            st.hub.session(session_id, Event::new("job.progress", json!({ "kind": "material.failed", "materialId": id, "error": e }), None)).await;
+            sqlx::query("UPDATE materials SET state = 'fail', error = $2 WHERE id = $1")
+                .bind(id)
+                .bind(&e)
+                .execute(&st.notes)
+                .await
+                .map_err(|e| e.to_string())?;
+            st.hub
+                .session(
+                    session_id,
+                    Event::new(
+                        "job.progress",
+                        json!({ "kind": "material.failed", "materialId": id, "error": e }),
+                        None,
+                    ),
+                )
+                .await;
             return Ok(());
         }
     };
     // Pages with no text but an image (scans, photos): vision OCR.
-    for p in pages.iter_mut().filter(|p| p.text.trim().is_empty() && p.render.is_some()) {
+    for p in pages
+        .iter_mut()
+        .filter(|p| p.text.trim().is_empty() && p.render.is_some())
+    {
         let img = p.render.as_ref().expect("render");
-        let image_mime = if img.starts_with(b"\xFF\xD8\xFF") { "image/jpeg" } else if img.starts_with(b"RIFF") { "image/webp" } else { "image/png" };
+        let image_mime = if img.starts_with(b"\xFF\xD8\xFF") {
+            "image/jpeg"
+        } else if img.starts_with(b"RIFF") {
+            "image/webp"
+        } else {
+            "image/png"
+        };
         let _ = &mime;
         if let Ok(text) = vision_ocr(&st, img, image_mime).await {
             p.text = text;
@@ -379,13 +631,21 @@ pub async fn job_process(st: AppState, job: Job) -> JobResult {
         }
     }
     let mut tx = st.notes.begin().await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM material_pages WHERE material_id = $1").bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM material_pages WHERE material_id = $1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
     for (i, p) in pages.iter().enumerate() {
         let n = i as i32 + 1;
         let render_key = match &p.render {
             Some(img) => {
                 let k = format!("{user_id}/{session_id}/materials/{id}/page-{n:04}.png");
-                let stored = if kind == "pdf" || kind == "pptx" || kind == "handout" { st.storage.put(&k, img, "image/png").await.map(|_| k) } else { Ok(key.clone()) };
+                let stored = if kind == "pdf" || kind == "pptx" || kind == "handout" {
+                    st.storage.put(&k, img, "image/png").await.map(|_| k)
+                } else {
+                    Ok(key.clone())
+                };
                 stored.ok()
             }
             None => None,
@@ -395,26 +655,52 @@ pub async fn job_process(st: AppState, job: Job) -> JobResult {
             .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     }
     sqlx::query("UPDATE materials SET state = 'done', page_count = $2, error = NULL WHERE id = $1")
-        .bind(id).bind(pages.len() as i32).execute(&mut *tx).await.map_err(|e| e.to_string())?;
-    jobs::enqueue_tx(&mut tx, Some(user_id), "embed.session", json!({ "sessionId": session_id }), None).await.map_err(|e| e.to_string())?;
+        .bind(id)
+        .bind(pages.len() as i32)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+    jobs::enqueue_tx(
+        &mut tx,
+        Some(user_id),
+        "embed.session",
+        json!({ "sessionId": session_id }),
+        None,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
     tx.commit().await.map_err(|e| e.to_string())?;
-    st.hub.session(session_id, Event::new("job.progress", json!({ "kind": "material.done", "materialId": id, "pages": pages.len() }), None)).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "job.progress",
+                json!({ "kind": "material.done", "materialId": id, "pages": pages.len() }),
+                None,
+            ),
+        )
+        .await;
     Ok(())
 }
 
 async fn extract_pdf(bytes: &[u8]) -> Result<Vec<Extracted>, String> {
     let owned = bytes.to_vec();
-    let texts = tokio::task::spawn_blocking(move || pdf_extract::extract_text_from_mem_by_pages(&owned))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("could not read PDF: {e}"))?;
+    let texts =
+        tokio::task::spawn_blocking(move || pdf_extract::extract_text_from_mem_by_pages(&owned))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| format!("could not read PDF: {e}"))?;
     let renders = render_pdf(bytes).await.unwrap_or_default();
     Ok(texts
         .into_iter()
         .enumerate()
         .map(|(i, t)| {
             let text = t.split_whitespace().collect::<Vec<_>>().join(" ");
-            Extracted { confidence: if text.is_empty() { "low" } else { "high" }, text, render: renders.get(i).cloned() }
+            Extracted {
+                confidence: if text.is_empty() { "low" } else { "high" },
+                text,
+                render: renders.get(i).cloned(),
+            }
         })
         .collect())
 }
@@ -435,7 +721,11 @@ async fn render_pdf(bytes: &[u8]) -> Option<Vec<Vec<u8>>> {
         .success();
     let mut out = Vec::new();
     if ok {
-        let mut names: Vec<PathBuf> = std::fs::read_dir(&dir).ok()?.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "png")).collect();
+        let mut names: Vec<PathBuf> = std::fs::read_dir(&dir)
+            .ok()?
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "png"))
+            .collect();
         names.sort();
         for n in names {
             out.push(tokio::fs::read(n).await.ok()?);
@@ -454,12 +744,19 @@ fn temp_dir() -> PathBuf {
 async fn extract_pptx(bytes: &[u8]) -> Result<Vec<Extracted>, String> {
     let owned = bytes.to_vec();
     let texts = tokio::task::spawn_blocking(move || -> Result<Vec<String>, String> {
-        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(owned)).map_err(|e| format!("not a PPTX: {e}"))?;
+        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(owned))
+            .map_err(|e| format!("not a PPTX: {e}"))?;
         let mut slides: Vec<(u32, String)> = Vec::new();
         for i in 0..zip.len() {
             let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
             let name = f.name().to_string();
-            let Some(num) = name.strip_prefix("ppt/slides/slide").and_then(|r| r.strip_suffix(".xml")).and_then(|n| n.parse::<u32>().ok()) else { continue };
+            let Some(num) = name
+                .strip_prefix("ppt/slides/slide")
+                .and_then(|r| r.strip_suffix(".xml"))
+                .and_then(|n| n.parse::<u32>().ok())
+            else {
+                continue;
+            };
             let mut xml = String::new();
             std::io::Read::read_to_string(&mut f, &mut xml).map_err(|e| e.to_string())?;
             slides.push((num, slide_text(&xml)));
@@ -473,7 +770,11 @@ async fn extract_pptx(bytes: &[u8]) -> Result<Vec<Extracted>, String> {
     Ok(texts
         .into_iter()
         .enumerate()
-        .map(|(i, text)| Extracted { confidence: if text.is_empty() { "low" } else { "high" }, text, render: renders.get(i).cloned() })
+        .map(|(i, text)| Extracted {
+            confidence: if text.is_empty() { "low" } else { "high" },
+            text,
+            render: renders.get(i).cloned(),
+        })
         .collect())
 }
 
@@ -516,7 +817,11 @@ async fn render_pptx(bytes: &[u8]) -> Option<Vec<Vec<u8>>> {
         .await
         .ok()?
         .success();
-    let pdf = if ok { tokio::fs::read(dir.join("in.pdf")).await.ok() } else { None };
+    let pdf = if ok {
+        tokio::fs::read(dir.join("in.pdf")).await.ok()
+    } else {
+        None
+    };
     let _ = tokio::fs::remove_dir_all(&dir).await;
     render_pdf(&pdf?).await
 }
@@ -530,10 +835,20 @@ async fn vision_ocr(st: &AppState, image: &[u8], mime: &str) -> Result<String, S
         &b64,
     )];
     let (text, _) = llm
-        .complete(&messages, &ChatOptions { temperature: Some(0.0), max_tokens: Some(1500), json: true }, || json!({ "text": "" }).to_string())
+        .complete(
+            &messages,
+            &ChatOptions {
+                temperature: Some(0.0),
+                max_tokens: Some(1500),
+                json: true,
+            },
+            || json!({ "text": "" }).to_string(),
+        )
         .await
         .map_err(|e| e.message)?;
-    Ok(parse_json_loose(&text).and_then(|v| v["text"].as_str().map(str::to_string)).unwrap_or_default())
+    Ok(parse_json_loose(&text)
+        .and_then(|v| v["text"].as_str().map(str::to_string))
+        .unwrap_or_default())
 }
 
 #[cfg(test)]
@@ -543,7 +858,10 @@ mod tests {
     #[test]
     fn pptx_slide_text() {
         let xml = r#"<p:sld><p:txBody><a:p><a:r><a:t>Electron Transport</a:t></a:r><a:r><a:t> Chain</a:t></a:r></a:p><a:p><a:r><a:t>O&#8322; is the final acceptor</a:t></a:r></a:p></p:txBody></p:sld>"#;
-        assert_eq!(slide_text(xml), "Electron Transport Chain\nO₂ is the final acceptor");
+        assert_eq!(
+            slide_text(xml),
+            "Electron Transport Chain\nO₂ is the final acceptor"
+        );
     }
 
     #[test]

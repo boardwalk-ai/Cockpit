@@ -23,7 +23,8 @@ use tokio::sync::RwLock;
 
 use crate::error::ApiError;
 
-const JWKS_URL: &str = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
+const JWKS_URL: &str =
+    "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 
 #[derive(Debug, Clone)]
 pub struct AuthedUser {
@@ -96,7 +97,15 @@ impl FirebaseAuth {
             }
         }
         // Miss or stale → refetch.
-        let jwks: Jwks = self.http.get(JWKS_URL).send().await.ok()?.json().await.ok()?;
+        let jwks: Jwks = self
+            .http
+            .get(JWKS_URL)
+            .send()
+            .await
+            .ok()?
+            .json()
+            .await
+            .ok()?;
         let mut cache = self.jwks.write().await;
         cache.keys = jwks.keys;
         cache.fetched = Some(Instant::now());
@@ -109,7 +118,9 @@ impl FirebaseAuth {
             return Err(ApiError::unauthorized("auth disabled"));
         }
         let header = decode_header(token).map_err(|_| ApiError::unauthorized("malformed token"))?;
-        let kid = header.kid.ok_or_else(|| ApiError::unauthorized("token has no kid"))?;
+        let kid = header
+            .kid
+            .ok_or_else(|| ApiError::unauthorized("token has no kid"))?;
         let jwk = self
             .key_for(&kid)
             .await
@@ -119,7 +130,10 @@ impl FirebaseAuth {
             .map_err(|_| ApiError::unauthorized("bad signing key"))?;
         let mut validation = Validation::new(Algorithm::RS256);
         validation.set_audience(std::slice::from_ref(&self.project_id));
-        validation.set_issuer(&[format!("https://securetoken.google.com/{}", self.project_id)]);
+        validation.set_issuer(&[format!(
+            "https://securetoken.google.com/{}",
+            self.project_id
+        )]);
 
         let data = decode::<Claims>(token, &key, &validation)
             .map_err(|_| ApiError::unauthorized("invalid or expired token"))?;
@@ -132,7 +146,10 @@ impl FirebaseAuth {
 
     /// Resolve the caller from request headers (Bearer token, or `X-User-Id`
     /// when auth is disabled).
-    pub async fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<AuthedUser, ApiError> {
+    pub async fn authenticate(
+        &self,
+        headers: &axum::http::HeaderMap,
+    ) -> Result<AuthedUser, ApiError> {
         if !self.enabled() {
             let uid = headers
                 .get("x-user-id")

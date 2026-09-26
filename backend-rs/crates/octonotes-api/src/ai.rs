@@ -39,30 +39,56 @@ pub enum Role {
 impl Role {
     fn setting(self) -> (&'static str, &'static str, &'static str) {
         match self {
-            Role::Primary => ("octonotes_model_primary", "primary_model", "anthropic/claude-sonnet-4-6"),
-            Role::Fast => ("octonotes_model_fast", "secondary_model", "google/gemini-3.1-flash-lite-preview"),
-            Role::Vision => ("octonotes_model_vision", "secondary_model", "google/gemini-3.1-flash-lite-preview"),
-            Role::Search => ("octonotes_model_search", "source_search_model", "perplexity/sonar-pro-search"),
+            Role::Primary => (
+                "octonotes_model_primary",
+                "primary_model",
+                "anthropic/claude-sonnet-4-6",
+            ),
+            Role::Fast => (
+                "octonotes_model_fast",
+                "secondary_model",
+                "google/gemini-3.1-flash-lite-preview",
+            ),
+            Role::Vision => (
+                "octonotes_model_vision",
+                "secondary_model",
+                "google/gemini-3.1-flash-lite-preview",
+            ),
+            Role::Search => (
+                "octonotes_model_search",
+                "source_search_model",
+                "perplexity/sonar-pro-search",
+            ),
         }
     }
 }
 
 pub enum Llm {
-    Remote { client: OpenRouter, model: String },
+    Remote {
+        client: OpenRouter,
+        model: String,
+    },
     /// No key configured (dev/tests): deterministic output supplied by the caller.
     Offline,
 }
 
 impl Llm {
     pub async fn for_role(st: &AppState, role: Role) -> Llm {
-        let Some(pool) = &st.octopilot else { return Llm::Offline };
-        let Some(key) = llm::openrouter_key(pool).await else { return Llm::Offline };
+        let Some(pool) = &st.octopilot else {
+            return Llm::Offline;
+        };
+        let Some(key) = llm::openrouter_key(pool).await else {
+            return Llm::Offline;
+        };
         let (own, shared, default) = role.setting();
         let model = match llm::setting(pool, own).await {
             Some(m) => m,
             None => llm::model(pool, shared, default).await,
         };
-        Llm::Remote { client: OpenRouter::new(st.http.clone(), key), model }
+        Llm::Remote {
+            client: OpenRouter::new(st.http.clone(), key),
+            model,
+        }
     }
 
     pub fn model_name(&self) -> String {
@@ -73,21 +99,41 @@ impl Llm {
     }
 
     /// One completion; `offline` is the answer when no model is configured.
-    pub async fn complete(&self, messages: &[Message], o: &ChatOptions, offline: impl FnOnce() -> String) -> Result<(String, Usage), ApiError> {
+    pub async fn complete(
+        &self,
+        messages: &[Message],
+        o: &ChatOptions,
+        offline: impl FnOnce() -> String,
+    ) -> Result<(String, Usage), ApiError> {
         match self {
-            Llm::Remote { client, model } => client.chat(model, messages, o).await.map_err(ApiError::bad_gateway),
+            Llm::Remote { client, model } => client
+                .chat(model, messages, o)
+                .await
+                .map_err(ApiError::bad_gateway),
             Llm::Offline => Ok((offline(), Usage::default())),
         }
     }
 
     /// Streamed completion as text deltas.
-    pub async fn stream(&self, messages: &[Message], o: &ChatOptions, offline: impl FnOnce() -> String) -> Result<BoxStream<'static, Result<String, String>>, ApiError> {
+    pub async fn stream(
+        &self,
+        messages: &[Message],
+        o: &ChatOptions,
+        offline: impl FnOnce() -> String,
+    ) -> Result<BoxStream<'static, Result<String, String>>, ApiError> {
         match self {
-            Llm::Remote { client, model } => Ok(client.chat_stream(model, messages, o).await.map_err(ApiError::bad_gateway)?.boxed()),
+            Llm::Remote { client, model } => Ok(client
+                .chat_stream(model, messages, o)
+                .await
+                .map_err(ApiError::bad_gateway)?
+                .boxed()),
             Llm::Offline => {
                 let text = offline();
                 // Word-sized deltas, like a real stream.
-                let parts: Vec<Result<String, String>> = text.split_inclusive(' ').map(|w| Ok(w.to_string())).collect();
+                let parts: Vec<Result<String, String>> = text
+                    .split_inclusive(' ')
+                    .map(|w| Ok(w.to_string()))
+                    .collect();
                 Ok(futures::stream::iter(parts).boxed())
             }
         }
@@ -105,11 +151,18 @@ impl RateLimiter {
         let mut map = self.inner.lock().expect("rate lock");
         let q = map.entry(user).or_default();
         let now = Instant::now();
-        while q.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
+        while q
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60))
+        {
             q.pop_front();
         }
         if q.len() >= max {
-            return Err(ApiError::new(StatusCode::TOO_MANY_REQUESTS, "Too many AI requests — try again in a minute.").with_code("rate_limited"));
+            return Err(ApiError::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "Too many AI requests — try again in a minute.",
+            )
+            .with_code("rate_limited"));
         }
         q.push_back(now);
         Ok(())
@@ -124,7 +177,14 @@ pub async fn guard(st: &AppState, caller: &Caller, price: i32) -> Result<(), Api
     st.credits.precheck(caller.user_id, price).await
 }
 
-pub async fn start_run(st: &AppState, caller: &Caller, session_id: Option<Uuid>, kind: &str, command: Option<&str>, contexts: &Value) -> Result<Uuid, ApiError> {
+pub async fn start_run(
+    st: &AppState,
+    caller: &Caller,
+    session_id: Option<Uuid>,
+    kind: &str,
+    command: Option<&str>,
+    contexts: &Value,
+) -> Result<Uuid, ApiError> {
     Ok(sqlx::query_scalar("INSERT INTO ai_runs (session_id, user_id, kind, command, contexts) VALUES ($1,$2,$3,$4,$5) RETURNING id")
         .bind(session_id)
         .bind(caller.user_id)
@@ -146,9 +206,27 @@ pub struct Outcome<'a> {
 
 /// Marks a run done, charges its price once (`octonotes:{kind}:{run}`), and
 /// returns the credits charged.
-pub async fn finish_run(st: &AppState, caller: &Caller, run: Uuid, o: Outcome<'_>) -> Result<i32, ApiError> {
-    let Outcome { kind, response, model, usage, price } = o;
-    let charged = crate::pricing::charge(st, caller.user_id, price, &format!("octonotes:{kind}:{run}"), &format!("OctoNotes {kind}")).await?;
+pub async fn finish_run(
+    st: &AppState,
+    caller: &Caller,
+    run: Uuid,
+    o: Outcome<'_>,
+) -> Result<i32, ApiError> {
+    let Outcome {
+        kind,
+        response,
+        model,
+        usage,
+        price,
+    } = o;
+    let charged = crate::pricing::charge(
+        st,
+        caller.user_id,
+        price,
+        &format!("octonotes:{kind}:{run}"),
+        &format!("OctoNotes {kind}"),
+    )
+    .await?;
     sqlx::query(
         "UPDATE ai_runs SET status = 'done', response = $2, model = $3, tokens_in = $4, tokens_out = $5, credits_charged = $6 WHERE id = $1",
     )
@@ -164,7 +242,11 @@ pub async fn finish_run(st: &AppState, caller: &Caller, run: Uuid, o: Outcome<'_
 }
 
 pub async fn fail_run(st: &AppState, run: Uuid, error: &str) {
-    let _ = sqlx::query("UPDATE ai_runs SET status = 'failed', error = $2 WHERE id = $1").bind(run).bind(error).execute(&st.notes).await;
+    let _ = sqlx::query("UPDATE ai_runs SET status = 'failed', error = $2 WHERE id = $1")
+        .bind(run)
+        .bind(error)
+        .execute(&st.notes)
+        .await;
 }
 
 pub fn event(name: &str, data: Value) -> Result<SseEvent, Infallible> {

@@ -74,7 +74,10 @@ async fn main() {
         .route("/v1/outline", post(outline::outline))
         .route("/v1/me", get(me))
         .route("/v1/essays", get(essays::list).post(essays::save))
-        .route("/v1/essays/:id", get(essays::get_one).delete(essays::remove))
+        .route(
+            "/v1/essays/:id",
+            get(essays::get_one).delete(essays::remove),
+        )
         .route("/v1/essays/:id/", delete(essays::remove))
         .layer(CorsLayer::permissive())
         .with_state(state);
@@ -103,7 +106,11 @@ async fn me(
 ) -> Result<Json<serde_json::Value>, error::ApiError> {
     let row = db::user_by_firebase_uid(&st.db, &user.uid).await?;
     match row {
-        Some(u) => Ok(Json(json!({ "uid": user.uid, "email": user.email, "user": u }))),
-        None => Ok(Json(json!({ "uid": user.uid, "email": user.email, "user": null }))),
+        Some(u) => Ok(Json(
+            json!({ "uid": user.uid, "email": user.email, "user": u }),
+        )),
+        None => Ok(Json(
+            json!({ "uid": user.uid, "email": user.email, "user": null }),
+        )),
     }
 }

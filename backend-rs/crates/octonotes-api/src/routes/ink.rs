@@ -22,7 +22,15 @@ use crate::realtime::Event;
 use crate::routes::blocks::SinceRev;
 use crate::{access, revs, AppState};
 
-const TOOLS: &[&str] = &["pen", "pencil", "highlighter", "rect", "circle", "line", "text"];
+const TOOLS: &[&str] = &[
+    "pen",
+    "pencil",
+    "highlighter",
+    "rect",
+    "circle",
+    "line",
+    "text",
+];
 const BACKGROUNDS: &[&str] = &["blank", "lined", "grid", "dotted"];
 const MAX_POINTS: usize = 20_000;
 
@@ -134,7 +142,10 @@ pub fn parse_points(bytes: &[u8]) -> Vec<(f32, f32, f32)> {
         .collect()
 }
 
-pub async fn load_pages(conn: &mut PgConnection, session_id: Uuid) -> Result<Vec<InkPage>, sqlx::Error> {
+pub async fn load_pages(
+    conn: &mut PgConnection,
+    session_id: Uuid,
+) -> Result<Vec<InkPage>, sqlx::Error> {
     sqlx::query_as::<_, InkPage>(&format!(
         "SELECT {PAGE_COLUMNS} FROM ink_pages WHERE session_id = $1 AND deleted_at IS NULL ORDER BY ordinal, created_at"
     ))
@@ -152,11 +163,18 @@ pub struct PagesResponse {
 
 #[utoipa::path(get, path = "/v1/sessions/{id}/ink/pages", tag = "ink", params(("id" = Uuid, Path)),
     responses((status = 200, body = PagesResponse)))]
-pub async fn list_pages(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>) -> Result<Json<PagesResponse>, ApiError> {
+pub async fn list_pages(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<PagesResponse>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
     let rev = revs::current(&mut conn, session_id, revs::INK).await?;
-    Ok(Json(PagesResponse { rev, pages: load_pages(&mut conn, session_id).await? }))
+    Ok(Json(PagesResponse {
+        rev,
+        pages: load_pages(&mut conn, session_id).await?,
+    }))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -173,7 +191,9 @@ pub struct PageInput {
 fn check_page(input: &PageInput) -> Result<(), ApiError> {
     if let Some(b) = &input.background {
         if !BACKGROUNDS.contains(&b.as_str()) {
-            return Err(ApiError::bad_request("background must be blank, lined, grid or dotted"));
+            return Err(ApiError::bad_request(
+                "background must be blank, lined, grid or dotted",
+            ));
         }
     }
     for v in [input.width, input.height].into_iter().flatten() {
@@ -197,10 +217,12 @@ pub async fn create_page(
     access::writable_session(&mut tx, &caller, session_id).await?;
     revs::lock(&mut tx, session_id, revs::INK).await?;
     let id = req.id.unwrap_or_else(Uuid::new_v4);
-    if let Some(existing) = sqlx::query_as::<_, InkPage>(&format!("SELECT {PAGE_COLUMNS} FROM ink_pages WHERE id = $1"))
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?
+    if let Some(existing) = sqlx::query_as::<_, InkPage>(&format!(
+        "SELECT {PAGE_COLUMNS} FROM ink_pages WHERE id = $1"
+    ))
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?
     {
         if existing.session_id != session_id {
             return Err(ApiError::bad_request("page id already in use"));
@@ -230,11 +252,20 @@ pub async fn create_page(
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
-    st.hub.session(session_id, Event::new("ink.changed", json!({ "pageIds": [id] }), Some(rev))).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new("ink.changed", json!({ "pageIds": [id] }), Some(rev)),
+        )
+        .await;
     Ok((StatusCode::CREATED, Json(page)))
 }
 
-async fn owned_page(conn: &mut PgConnection, caller: &Caller, page_id: Uuid) -> Result<InkPage, ApiError> {
+async fn owned_page(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    page_id: Uuid,
+) -> Result<InkPage, ApiError> {
     let page = sqlx::query_as::<_, InkPage>(&format!(
         "SELECT {PAGE_COLUMNS} FROM ink_pages WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL"
     ))
@@ -249,7 +280,12 @@ async fn owned_page(conn: &mut PgConnection, caller: &Caller, page_id: Uuid) -> 
 
 #[utoipa::path(patch, path = "/v1/ink/pages/{id}", tag = "ink", params(("id" = Uuid, Path)),
     request_body = PageInput, responses((status = 200, body = InkPage)))]
-pub async fn update_page(State(st): State<AppState>, caller: Caller, Path(page_id): Path<Uuid>, Json(req): Json<PageInput>) -> Result<Json<InkPage>, ApiError> {
+pub async fn update_page(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(page_id): Path<Uuid>,
+    Json(req): Json<PageInput>,
+) -> Result<Json<InkPage>, ApiError> {
     check_page(&req)?;
     let mut tx = st.notes.begin().await?;
     let page = owned_page(&mut tx, &caller, page_id).await?;
@@ -269,12 +305,21 @@ pub async fn update_page(State(st): State<AppState>, caller: Caller, Path(page_i
     .fetch_one(&mut *tx)
     .await?;
     tx.commit().await?;
-    st.hub.session(page.session_id, Event::new("ink.changed", json!({ "pageIds": [page_id] }), Some(rev))).await;
+    st.hub
+        .session(
+            page.session_id,
+            Event::new("ink.changed", json!({ "pageIds": [page_id] }), Some(rev)),
+        )
+        .await;
     Ok(Json(page))
 }
 
 #[utoipa::path(delete, path = "/v1/ink/pages/{id}", tag = "ink", params(("id" = Uuid, Path)), responses((status = 204)))]
-pub async fn delete_page(State(st): State<AppState>, caller: Caller, Path(page_id): Path<Uuid>) -> Result<StatusCode, ApiError> {
+pub async fn delete_page(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(page_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
     let mut tx = st.notes.begin().await?;
     let page = owned_page(&mut tx, &caller, page_id).await?;
     revs::lock(&mut tx, page.session_id, revs::INK).await?;
@@ -285,7 +330,12 @@ pub async fn delete_page(State(st): State<AppState>, caller: Caller, Path(page_i
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    st.hub.session(page.session_id, Event::new("ink.changed", json!({ "pageIds": [page_id] }), Some(rev))).await;
+    st.hub
+        .session(
+            page.session_id,
+            Event::new("ink.changed", json!({ "pageIds": [page_id] }), Some(rev)),
+        )
+        .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -299,31 +349,53 @@ pub struct StrokesResponse {
 
 #[utoipa::path(get, path = "/v1/ink/pages/{id}/strokes", tag = "ink", params(("id" = Uuid, Path), SinceRev),
     responses((status = 200, body = StrokesResponse)))]
-pub async fn page_strokes(State(st): State<AppState>, caller: Caller, Path(page_id): Path<Uuid>, Query(q): Query<SinceRev>) -> Result<Json<StrokesResponse>, ApiError> {
+pub async fn page_strokes(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(page_id): Path<Uuid>,
+    Query(q): Query<SinceRev>,
+) -> Result<Json<StrokesResponse>, ApiError> {
     let mut conn = st.notes.acquire().await?;
-    let session_id: Uuid = sqlx::query_scalar("SELECT session_id FROM ink_pages WHERE id = $1 AND user_id = $2")
-        .bind(page_id)
-        .bind(caller.user_id)
-        .fetch_optional(&mut *conn)
-        .await?
-        .ok_or_else(|| ApiError::not_found("page not found"))?;
+    let session_id: Uuid =
+        sqlx::query_scalar("SELECT session_id FROM ink_pages WHERE id = $1 AND user_id = $2")
+            .bind(page_id)
+            .bind(caller.user_id)
+            .fetch_optional(&mut *conn)
+            .await?
+            .ok_or_else(|| ApiError::not_found("page not found"))?;
     access::session(&mut conn, &caller, session_id).await?;
     let rev = revs::current(&mut conn, session_id, revs::INK).await?;
     let rows = strokes_query(&mut conn, "page_id", page_id, q.since_rev).await?;
-    Ok(Json(StrokesResponse { rev, strokes: rows.into_iter().map(Stroke::from).collect() }))
+    Ok(Json(StrokesResponse {
+        rev,
+        strokes: rows.into_iter().map(Stroke::from).collect(),
+    }))
 }
 
 #[utoipa::path(get, path = "/v1/sessions/{id}/ink/strokes", tag = "ink", params(("id" = Uuid, Path), SinceRev),
     responses((status = 200, body = StrokesResponse)))]
-pub async fn session_strokes(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Query(q): Query<SinceRev>) -> Result<Json<StrokesResponse>, ApiError> {
+pub async fn session_strokes(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Query(q): Query<SinceRev>,
+) -> Result<Json<StrokesResponse>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
     let rev = revs::current(&mut conn, session_id, revs::INK).await?;
     let rows = strokes_query(&mut conn, "session_id", session_id, q.since_rev).await?;
-    Ok(Json(StrokesResponse { rev, strokes: rows.into_iter().map(Stroke::from).collect() }))
+    Ok(Json(StrokesResponse {
+        rev,
+        strokes: rows.into_iter().map(Stroke::from).collect(),
+    }))
 }
 
-async fn strokes_query(conn: &mut PgConnection, column: &str, id: Uuid, since: Option<i64>) -> Result<Vec<StrokeRow>, sqlx::Error> {
+async fn strokes_query(
+    conn: &mut PgConnection,
+    column: &str,
+    id: Uuid,
+    since: Option<i64>,
+) -> Result<Vec<StrokeRow>, sqlx::Error> {
     match since {
         Some(since) => sqlx::query_as::<_, StrokeRow>(&format!(
             "SELECT {STROKE_COLUMNS} FROM ink_strokes WHERE {column} = $1 AND layer_rev > $2 ORDER BY layer_rev"
@@ -342,7 +414,11 @@ async fn strokes_query(conn: &mut PgConnection, column: &str, id: Uuid, since: O
 }
 
 /// Loads a page's live strokes as `(tool, color, width, points)` for rendering.
-pub async fn strokes_for_render(conn: &mut PgConnection, page_id: Uuid, ids: &[Uuid]) -> Result<Vec<(String, String, f32, Vec<(f32, f32, f32)>)>, sqlx::Error> {
+pub async fn strokes_for_render(
+    conn: &mut PgConnection,
+    page_id: Uuid,
+    ids: &[Uuid],
+) -> Result<Vec<(String, String, f32, Vec<(f32, f32, f32)>)>, sqlx::Error> {
     let rows: Vec<StrokeRow> = sqlx::query_as(&format!(
         "SELECT {STROKE_COLUMNS} FROM ink_strokes WHERE page_id = $1 AND id = ANY($2) AND deleted_at IS NULL"
     ))
@@ -350,7 +426,10 @@ pub async fn strokes_for_render(conn: &mut PgConnection, page_id: Uuid, ids: &[U
     .bind(ids)
     .fetch_all(conn)
     .await?;
-    Ok(rows.into_iter().map(|r| (r.tool, r.color, r.width, parse_points(&r.points))).collect())
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.tool, r.color, r.width, parse_points(&r.points)))
+        .collect())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -423,11 +502,13 @@ pub async fn stroke_ops(
     let mut results = Vec::with_capacity(req.ops.len());
     let mut changed = Vec::new();
     for op in &req.ops {
-        let prev: Option<Value> = sqlx::query_scalar("SELECT result FROM applied_ops WHERE session_id = $1 AND client_op_id = $2")
-            .bind(session_id)
-            .bind(&op.client_op_id)
-            .fetch_optional(&mut *tx)
-            .await?;
+        let prev: Option<Value> = sqlx::query_scalar(
+            "SELECT result FROM applied_ops WHERE session_id = $1 AND client_op_id = $2",
+        )
+        .bind(session_id)
+        .bind(&op.client_op_id)
+        .fetch_optional(&mut *tx)
+        .await?;
         if let Some(prev) = prev.and_then(|v| serde_json::from_value::<StrokeOpResult>(v).ok()) {
             results.push(prev);
             continue;
@@ -454,32 +535,83 @@ pub async fn stroke_ops(
     Ok(Json(StrokeOpsResponse { rev, results }))
 }
 
-fn stroke_result(op: &StrokeOp, status: &str, stroke: Option<Stroke>, error: Option<String>) -> StrokeOpResult {
-    StrokeOpResult { client_op_id: op.client_op_id.clone(), status: status.into(), stroke, error }
+fn stroke_result(
+    op: &StrokeOp,
+    status: &str,
+    stroke: Option<Stroke>,
+    error: Option<String>,
+) -> StrokeOpResult {
+    StrokeOpResult {
+        client_op_id: op.client_op_id.clone(),
+        status: status.into(),
+        stroke,
+        error,
+    }
 }
 
-async fn apply_stroke(conn: &mut PgConnection, caller: &Caller, session_id: Uuid, page_id: Uuid, device_id: Option<Uuid>, op: &StrokeOp) -> Result<StrokeOpResult, ApiError> {
+async fn apply_stroke(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    session_id: Uuid,
+    page_id: Uuid,
+    device_id: Option<Uuid>,
+    op: &StrokeOp,
+) -> Result<StrokeOpResult, ApiError> {
     if op.client_op_id.is_empty() || op.client_op_id.len() > 128 {
-        return Ok(stroke_result(op, "rejected", None, Some("clientOpId must be 1..128 chars".into())));
+        return Ok(stroke_result(
+            op,
+            "rejected",
+            None,
+            Some("clientOpId must be 1..128 chars".into()),
+        ));
     }
-    let existing: Option<StrokeRow> = sqlx::query_as(&format!("SELECT {STROKE_COLUMNS} FROM ink_strokes WHERE id = $1 FOR UPDATE"))
-        .bind(op.stroke_id)
-        .fetch_optional(&mut *conn)
-        .await?;
+    let existing: Option<StrokeRow> = sqlx::query_as(&format!(
+        "SELECT {STROKE_COLUMNS} FROM ink_strokes WHERE id = $1 FOR UPDATE"
+    ))
+    .bind(op.stroke_id)
+    .fetch_optional(&mut *conn)
+    .await?;
     if existing.as_ref().is_some_and(|s| s.page_id != page_id) {
-        return Ok(stroke_result(op, "rejected", None, Some("stroke belongs to another page".into())));
+        return Ok(stroke_result(
+            op,
+            "rejected",
+            None,
+            Some("stroke belongs to another page".into()),
+        ));
     }
-    let input = op.stroke.clone().unwrap_or(StrokeInput { tool: None, points: None, color: None, width: None, text: None, audio_ts_ms: None });
+    let input = op.stroke.clone().unwrap_or(StrokeInput {
+        tool: None,
+        points: None,
+        color: None,
+        width: None,
+        text: None,
+        audio_ts_ms: None,
+    });
     if let Some(t) = &input.tool {
         if !TOOLS.contains(&t.as_str()) {
-            return Ok(stroke_result(op, "rejected", None, Some(format!("unknown tool '{t}'"))));
+            return Ok(stroke_result(
+                op,
+                "rejected",
+                None,
+                Some(format!("unknown tool '{t}'")),
+            ));
         }
     }
     if input.color.as_deref().is_some_and(|c| !check_color(c)) {
-        return Ok(stroke_result(op, "rejected", None, Some("color must be #RRGGBB or #AARRGGBB".into())));
+        return Ok(stroke_result(
+            op,
+            "rejected",
+            None,
+            Some("color must be #RRGGBB or #AARRGGBB".into()),
+        ));
     }
     if input.width.is_some_and(|w| !(0.1..=200.0).contains(&w)) {
-        return Ok(stroke_result(op, "rejected", None, Some("width out of range".into())));
+        return Ok(stroke_result(
+            op,
+            "rejected",
+            None,
+            Some("width out of range".into()),
+        ));
     }
     let points = match input.points.as_deref().map(decode_points).transpose() {
         Ok(p) => p,
@@ -489,7 +621,12 @@ async fn apply_stroke(conn: &mut PgConnection, caller: &Caller, session_id: Uuid
     let row: StrokeRow = match (op.op.as_str(), existing) {
         ("add", None) => {
             let (Some(tool), Some(points)) = (input.tool.clone(), points) else {
-                return Ok(stroke_result(op, "rejected", None, Some("add needs tool and points".into())));
+                return Ok(stroke_result(
+                    op,
+                    "rejected",
+                    None,
+                    Some("add needs tool and points".into()),
+                ));
             };
             let rev = revs::bump(conn, session_id, revs::INK).await?;
             sqlx::query_as(&format!(
@@ -515,7 +652,12 @@ async fn apply_stroke(conn: &mut PgConnection, caller: &Caller, session_id: Uuid
         ("add", Some(cur)) => return Ok(stroke_result(op, "applied", Some(cur.into()), None)),
         ("update", Some(cur)) => {
             if cur.deleted_at.is_some() || op.base_revision != cur.revision {
-                return Ok(stroke_result(op, "conflict", Some(cur.into()), Some("stroke changed on the server".into())));
+                return Ok(stroke_result(
+                    op,
+                    "conflict",
+                    Some(cur.into()),
+                    Some("stroke changed on the server".into()),
+                ));
             }
             let rev = revs::bump(conn, session_id, revs::INK).await?;
             sqlx::query_as(&format!(
@@ -546,8 +688,22 @@ async fn apply_stroke(conn: &mut PgConnection, caller: &Caller, session_id: Uuid
             .fetch_one(&mut *conn)
             .await?
         }
-        ("update" | "erase", None) => return Ok(stroke_result(op, "rejected", None, Some("unknown stroke".into()))),
-        (other, _) => return Ok(stroke_result(op, "rejected", None, Some(format!("unknown op '{other}'")))),
+        ("update" | "erase", None) => {
+            return Ok(stroke_result(
+                op,
+                "rejected",
+                None,
+                Some("unknown stroke".into()),
+            ))
+        }
+        (other, _) => {
+            return Ok(stroke_result(
+                op,
+                "rejected",
+                None,
+                Some(format!("unknown op '{other}'")),
+            ))
+        }
     };
     Ok(stroke_result(op, "applied", Some(row.into()), None))
 }

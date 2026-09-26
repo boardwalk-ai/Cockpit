@@ -180,10 +180,7 @@ pub async fn thesaurus(
     let syn_url = format!("https://api.datamuse.com/words?rel_syn={enc}&max=14");
     let ant_url = format!("https://api.datamuse.com/words?rel_ant={enc}&max=10");
 
-    let (syn, ant) = tokio::join!(
-        fetch_datamuse(&st, &syn_url),
-        fetch_datamuse(&st, &ant_url)
-    );
+    let (syn, ant) = tokio::join!(fetch_datamuse(&st, &syn_url), fetch_datamuse(&st, &ant_url));
 
     Ok(Json(ThesResult {
         word: word.to_string(),
@@ -196,7 +193,10 @@ async fn fetch_datamuse(st: &AppState, url: &str) -> Result<Vec<ThesWord>, ApiEr
     let rows: Vec<DatamuseWord> = st.http.get(url).send().await?.json().await?;
     Ok(rows
         .into_iter()
-        .map(|r| ThesWord { word: r.word, score: r.score })
+        .map(|r| ThesWord {
+            word: r.word,
+            score: r.score,
+        })
         .collect())
 }
 
@@ -251,11 +251,7 @@ struct DocResp {
     status: Option<String>,
 }
 
-async fn humanize_undetectable(
-    st: &AppState,
-    key: &str,
-    text: &str,
-) -> Result<String, ApiError> {
+async fn humanize_undetectable(st: &AppState, key: &str, text: &str) -> Result<String, ApiError> {
     let submit: SubmitResp = st
         .http
         .post("https://humanize.undetectable.ai/submit")

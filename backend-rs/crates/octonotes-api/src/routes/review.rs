@@ -38,20 +38,37 @@ pub struct Review {
     pub updated_at: DateTime<Utc>,
 }
 
-const COLUMNS: &str = "id, session_id, status, checklist, smart_notes, draft, created_at, updated_at";
+const COLUMNS: &str =
+    "id, session_id, status, checklist, smart_notes, draft, created_at, updated_at";
 
 #[utoipa::path(post, path = "/v1/sessions/{id}/review/prepare", tag = "review", params(("id" = Uuid, Path)),
     responses((status = 202, body = Review)))]
-pub async fn prepare(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>) -> Result<(StatusCode, Json<Review>), ApiError> {
+pub async fn prepare(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+) -> Result<(StatusCode, Json<Review>), ApiError> {
     let mut tx = st.notes.begin().await?;
     access::writable_session(&mut tx, &caller, session_id).await?;
     let price = pricing::price(&st, "smart_notes").await;
     ai::guard(&st, &caller, price).await?;
-    let review = sqlx::query_as::<_, Review>(&format!("INSERT INTO reviews (session_id, user_id) VALUES ($1, $2) RETURNING {COLUMNS}"))
-        .bind(session_id).bind(caller.user_id).fetch_one(&mut *tx).await?;
+    let review = sqlx::query_as::<_, Review>(&format!(
+        "INSERT INTO reviews (session_id, user_id) VALUES ($1, $2) RETURNING {COLUMNS}"
+    ))
+    .bind(session_id)
+    .bind(caller.user_id)
+    .fetch_one(&mut *tx)
+    .await?;
     sqlx::query("UPDATE sessions SET status = 'reviewing' WHERE id = $1 AND status NOT IN ('finalized', 'archived')")
         .bind(session_id).execute(&mut *tx).await?;
-    jobs::enqueue_tx(&mut tx, Some(caller.user_id), "review.prepare", json!({ "reviewId": review.id, "sessionId": session_id }), Some(&format!("review:{}", review.id))).await?;
+    jobs::enqueue_tx(
+        &mut tx,
+        Some(caller.user_id),
+        "review.prepare",
+        json!({ "reviewId": review.id, "sessionId": session_id }),
+        Some(&format!("review:{}", review.id)),
+    )
+    .await?;
     tx.commit().await?;
     Ok((StatusCode::ACCEPTED, Json(review)))
 }
@@ -76,18 +93,51 @@ async fn checklist(st: &AppState, session_id: Uuid) -> Result<Value, sqlx::Error
     .fetch_one(&st.notes)
     .await?;
     let n = |c: &str| r.get::<i64, _>(c);
-    let item = |key: &str, ok: bool, count: i64, layer: Option<&str>| {
-        json!({ "key": key, "state": if ok { "done" } else { "warning" }, "count": count, "layer": layer })
-    };
+    let item = |key: &str, ok: bool, count: i64, layer: Option<&str>| json!({ "key": key, "state": if ok { "done" } else { "warning" }, "count": count, "layer": layer });
     Ok(json!([
         item("devicesSynced", n("recording") == 0, n("recording"), None),
-        item("audioUploaded", n("unassembled") == 0, n("unassembled"), Some("transcript")),
-        item("transcriptFinal", n("asr_pending") == 0, n("asr_pending"), Some("transcript")),
-        item("lowConfidenceTranscript", n("low_conf") == 0, n("low_conf"), Some("transcript")),
-        item("aiSuggestionsReviewed", n("pending_ai") == 0, n("pending_ai"), Some("ai")),
-        item("organizationReviewed", n("pending_org") == 0, n("pending_org"), Some("smartNotes")),
-        item("handwritingConfirmed", n("pending_ink") == 0, n("pending_ink"), Some("ink")),
-        item("materialsProcessed", n("materials_pending") == 0, n("materials_pending"), Some("materials")),
+        item(
+            "audioUploaded",
+            n("unassembled") == 0,
+            n("unassembled"),
+            Some("transcript")
+        ),
+        item(
+            "transcriptFinal",
+            n("asr_pending") == 0,
+            n("asr_pending"),
+            Some("transcript")
+        ),
+        item(
+            "lowConfidenceTranscript",
+            n("low_conf") == 0,
+            n("low_conf"),
+            Some("transcript")
+        ),
+        item(
+            "aiSuggestionsReviewed",
+            n("pending_ai") == 0,
+            n("pending_ai"),
+            Some("ai")
+        ),
+        item(
+            "organizationReviewed",
+            n("pending_org") == 0,
+            n("pending_org"),
+            Some("smartNotes")
+        ),
+        item(
+            "handwritingConfirmed",
+            n("pending_ink") == 0,
+            n("pending_ink"),
+            Some("ink")
+        ),
+        item(
+            "materialsProcessed",
+            n("materials_pending") == 0,
+            n("materials_pending"),
+            Some("materials")
+        ),
         json!({ "key": "totals", "state": "info", "blocks": n("blocks"), "segments": n("segments"), "recordings": n("recordings") }),
     ]))
 }
@@ -97,16 +147,24 @@ fn offline_smart(blocks: &[Block]) -> Value {
     let mut sections: Vec<Value> = Vec::new();
     for b in blocks {
         if matches!(b.kind.as_str(), "h1" | "h2") || sections.is_empty() {
-            let title = if matches!(b.kind.as_str(), "h1" | "h2") { b.text.clone() } else { "Notes".into() };
+            let title = if matches!(b.kind.as_str(), "h1" | "h2") {
+                b.text.clone()
+            } else {
+                "Notes".into()
+            };
             sections.push(json!({ "title": title, "blockIds": [] }));
         }
-        sections.last_mut().expect("section")["blockIds"].as_array_mut().expect("ids").push(json!(b.id));
+        sections.last_mut().expect("section")["blockIds"]
+            .as_array_mut()
+            .expect("ids")
+            .push(json!(b.id));
     }
     json!({ "sections": sections })
 }
 
 pub async fn job_prepare(st: AppState, job: Job) -> JobResult {
-    let review_id: Uuid = serde_json::from_value(job.payload["reviewId"].clone()).map_err(|e| e.to_string())?;
+    let review_id: Uuid =
+        serde_json::from_value(job.payload["reviewId"].clone()).map_err(|e| e.to_string())?;
     let row = sqlx::query("SELECT r.session_id, r.user_id, r.status, s.status AS session_status FROM reviews r JOIN sessions s ON s.id = r.session_id WHERE r.id = $1")
         .bind(review_id).fetch_optional(&st.notes).await.map_err(|e| e.to_string())?;
     let Some(row) = row else { return Ok(()) };
@@ -114,55 +172,152 @@ pub async fn job_prepare(st: AppState, job: Job) -> JobResult {
     if row.get::<String, _>("status") != "preparing" {
         return Ok(());
     }
-    let caller = Caller { uid: String::new(), email: None, user_id };
-    st.hub.session(session_id, Event::new("job.progress", json!({ "kind": "review.checking", "reviewId": review_id }), None)).await;
-    let checks = checklist(&st, session_id).await.map_err(|e| e.to_string())?;
+    let caller = Caller {
+        uid: String::new(),
+        email: None,
+        user_id,
+    };
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "job.progress",
+                json!({ "kind": "review.checking", "reviewId": review_id }),
+                None,
+            ),
+        )
+        .await;
+    let checks = checklist(&st, session_id)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Smart Notes over the current blocks.
     let mut conn = st.notes.acquire().await.map_err(|e| e.to_string())?;
-    let all = blocks::load_blocks(&mut conn, session_id, None).await.map_err(|e| e.to_string())?;
+    let all = blocks::load_blocks(&mut conn, session_id, None)
+        .await
+        .map_err(|e| e.to_string())?;
     drop(conn);
-    let listing = all.iter().map(|b| format!("{} | {} | {}", b.id, b.kind, clip(&b.text, 160))).collect::<Vec<_>>().join("\n");
+    let listing = all
+        .iter()
+        .map(|b| format!("{} | {} | {}", b.id, b.kind, clip(&b.text, 160)))
+        .collect::<Vec<_>>()
+        .join("\n");
     let messages = vec![
         Message::system("Group a student's lecture-note blocks into clear sections for review. Never rewrite text. Reply with JSON only: \
 {\"sections\": [{\"title\": string, \"blockIds\": [string]}]} using every block id exactly once, in reading order."),
         Message::user(format!("Blocks (id | type | text):\n{listing}")),
     ];
     let price = pricing::price(&st, "smart_notes").await;
-    let run = ai::start_run(&st, &caller, Some(session_id), "smartNotes", None, &json!([{ "type": "session" }])).await.map_err(|e| e.message)?;
+    let run = ai::start_run(
+        &st,
+        &caller,
+        Some(session_id),
+        "smartNotes",
+        None,
+        &json!([{ "type": "session" }]),
+    )
+    .await
+    .map_err(|e| e.message)?;
     let llm = Llm::for_role(&st, Role::Primary).await;
     let model = llm.model_name();
     let plan = offline_smart(&all).to_string();
-    let (text, usage) = llm.complete(&messages, &ChatOptions { temperature: Some(0.1), max_tokens: Some(3000), json: true }, || plan).await.map_err(|e| e.message)?;
+    let (text, usage) = llm
+        .complete(
+            &messages,
+            &ChatOptions {
+                temperature: Some(0.1),
+                max_tokens: Some(3000),
+                json: true,
+            },
+            || plan,
+        )
+        .await
+        .map_err(|e| e.message)?;
     // Keep only known ids; anything the model dropped goes to a final section.
     let known: std::collections::HashSet<String> = all.iter().map(|b| b.id.to_string()).collect();
     let mut seen = std::collections::HashSet::new();
-    let mut sections: Vec<Value> = parse_json_loose(&text).and_then(|v| v["sections"].as_array().cloned()).unwrap_or_default().into_iter().map(|s| {
-        let ids: Vec<Value> = s["blockIds"].as_array().cloned().unwrap_or_default().into_iter()
-            .filter(|i| i.as_str().is_some_and(|x| known.contains(x) && seen.insert(x.to_string()))).collect();
-        json!({ "title": s["title"], "blockIds": ids })
-    }).filter(|s| !s["blockIds"].as_array().is_none_or(|a| a.is_empty())).collect();
-    let leftover: Vec<Value> = all.iter().filter(|b| !seen.contains(&b.id.to_string())).map(|b| json!(b.id)).collect();
+    let mut sections: Vec<Value> = parse_json_loose(&text)
+        .and_then(|v| v["sections"].as_array().cloned())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|s| {
+            let ids: Vec<Value> = s["blockIds"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|i| {
+                    i.as_str()
+                        .is_some_and(|x| known.contains(x) && seen.insert(x.to_string()))
+                })
+                .collect();
+            json!({ "title": s["title"], "blockIds": ids })
+        })
+        .filter(|s| !s["blockIds"].as_array().is_none_or(|a| a.is_empty()))
+        .collect();
+    let leftover: Vec<Value> = all
+        .iter()
+        .filter(|b| !seen.contains(&b.id.to_string()))
+        .map(|b| json!(b.id))
+        .collect();
     if !leftover.is_empty() {
         sections.push(json!({ "title": "More notes", "blockIds": leftover }));
     }
     let smart = json!({ "sections": sections });
-    ai::finish_run(&st, &caller, run, ai::Outcome { kind: "smartNotes", response: &smart, model: &model, usage: &usage, price }).await.map_err(|e| e.message)?;
-    sqlx::query("UPDATE reviews SET status = 'ready', checklist = $2, smart_notes = $3 WHERE id = $1")
-        .bind(review_id).bind(&checks).bind(&smart).execute(&st.notes).await.map_err(|e| e.to_string())?;
-    st.hub.session(session_id, Event::new("job.progress", json!({ "kind": "review.ready", "reviewId": review_id }), None)).await;
+    ai::finish_run(
+        &st,
+        &caller,
+        run,
+        ai::Outcome {
+            kind: "smartNotes",
+            response: &smart,
+            model: &model,
+            usage: &usage,
+            price,
+        },
+    )
+    .await
+    .map_err(|e| e.message)?;
+    sqlx::query(
+        "UPDATE reviews SET status = 'ready', checklist = $2, smart_notes = $3 WHERE id = $1",
+    )
+    .bind(review_id)
+    .bind(&checks)
+    .bind(&smart)
+    .execute(&st.notes)
+    .await
+    .map_err(|e| e.to_string())?;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "job.progress",
+                json!({ "kind": "review.ready", "reviewId": review_id }),
+                None,
+            ),
+        )
+        .await;
     Ok(())
 }
 
 async fn owned(st: &AppState, caller: &Caller, id: Uuid) -> Result<Review, ApiError> {
-    sqlx::query_as::<_, Review>(&format!("SELECT {COLUMNS} FROM reviews WHERE id = $1 AND user_id = $2"))
-        .bind(id).bind(caller.user_id).fetch_optional(&st.notes).await?
-        .ok_or_else(|| ApiError::not_found("review not found"))
+    sqlx::query_as::<_, Review>(&format!(
+        "SELECT {COLUMNS} FROM reviews WHERE id = $1 AND user_id = $2"
+    ))
+    .bind(id)
+    .bind(caller.user_id)
+    .fetch_optional(&st.notes)
+    .await?
+    .ok_or_else(|| ApiError::not_found("review not found"))
 }
 
 #[utoipa::path(get, path = "/v1/reviews/{id}", tag = "review", params(("id" = Uuid, Path)),
     responses((status = 200, description = "{review, layers{studentNotes, smartNotes, transcript, ink, ai, research}, decisions}")))]
-pub async fn get(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<Json<Value>, ApiError> {
+pub async fn get(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, ApiError> {
     let mut review = owned(&st, &caller, id).await?;
     if review.status != "preparing" {
         // Keep the checklist live while the student works through it.
@@ -198,11 +353,21 @@ pub async fn get(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid
 }
 
 #[utoipa::path(get, path = "/v1/sessions/{id}/review", tag = "review", params(("id" = Uuid, Path)), responses((status = 200, body = Review)))]
-pub async fn latest(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>) -> Result<Json<Review>, ApiError> {
+pub async fn latest(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<Review>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
-    sqlx::query_as::<_, Review>(&format!("SELECT {COLUMNS} FROM reviews WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1"))
-        .bind(session_id).fetch_optional(&mut *conn).await?.map(Json).ok_or_else(|| ApiError::not_found("no review yet"))
+    sqlx::query_as::<_, Review>(&format!(
+        "SELECT {COLUMNS} FROM reviews WHERE session_id = $1 ORDER BY created_at DESC LIMIT 1"
+    ))
+    .bind(session_id)
+    .fetch_optional(&mut *conn)
+    .await?
+    .map(Json)
+    .ok_or_else(|| ApiError::not_found("no review yet"))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -217,10 +382,18 @@ pub struct Decision {
 
 #[utoipa::path(post, path = "/v1/reviews/{id}/decisions", tag = "review", params(("id" = Uuid, Path)), request_body = Vec<Decision>,
     responses((status = 204)))]
-pub async fn decide(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>, Json(req): Json<Vec<Decision>>) -> Result<StatusCode, ApiError> {
+pub async fn decide(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+    Json(req): Json<Vec<Decision>>,
+) -> Result<StatusCode, ApiError> {
     let review = owned(&st, &caller, id).await?;
     if review.status == "finalized" {
-        return Err(ApiError::new(StatusCode::CONFLICT, "review already finalized").with_code("review_finalized"));
+        return Err(
+            ApiError::new(StatusCode::CONFLICT, "review already finalized")
+                .with_code("review_finalized"),
+        );
     }
     if req.len() > 2000 {
         return Err(ApiError::bad_request("at most 2000 decisions per request"));
@@ -231,14 +404,21 @@ pub async fn decide(State(st): State<AppState>, caller: Caller, Path(id): Path<U
             ("accepted" | "excluded", _) => {}
             ("edited", Some(t)) if !t.trim().is_empty() && t.len() <= 100_000 => {}
             ("edited", _) => return Err(ApiError::bad_request("edited needs editedText")),
-            _ => return Err(ApiError::bad_request("decision must be accepted, excluded or edited")),
+            _ => {
+                return Err(ApiError::bad_request(
+                    "decision must be accepted, excluded or edited",
+                ))
+            }
         }
         sqlx::query("INSERT INTO review_decisions (review_id, block_key, decision, edited_text) VALUES ($1,$2,$3,$4) \
                      ON CONFLICT (review_id, block_key) DO UPDATE SET decision = EXCLUDED.decision, edited_text = EXCLUDED.edited_text, updated_at = now()")
             .bind(id).bind(&d.block_key).bind(&d.decision).bind(&d.edited_text).execute(&mut *tx).await?;
     }
     if review.status == "ready" {
-        sqlx::query("UPDATE reviews SET status = 'draft' WHERE id = $1").bind(id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE reviews SET status = 'draft' WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
     }
     tx.commit().await?;
     Ok(StatusCode::NO_CONTENT)
@@ -246,13 +426,23 @@ pub async fn decide(State(st): State<AppState>, caller: Caller, Path(id): Path<U
 
 #[utoipa::path(put, path = "/v1/reviews/{id}/draft", tag = "review", params(("id" = Uuid, Path)), request_body = Object,
     responses((status = 204)))]
-pub async fn save_draft(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>, Json(draft): Json<Value>) -> Result<StatusCode, ApiError> {
+pub async fn save_draft(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+    Json(draft): Json<Value>,
+) -> Result<StatusCode, ApiError> {
     if !draft.is_object() || draft.to_string().len() > 100_000 {
-        return Err(ApiError::bad_request("draft must be an object under 100 KB"));
+        return Err(ApiError::bad_request(
+            "draft must be an object under 100 KB",
+        ));
     }
     let review = owned(&st, &caller, id).await?;
     if review.status == "finalized" {
-        return Err(ApiError::new(StatusCode::CONFLICT, "review already finalized").with_code("review_finalized"));
+        return Err(
+            ApiError::new(StatusCode::CONFLICT, "review already finalized")
+                .with_code("review_finalized"),
+        );
     }
     sqlx::query("UPDATE reviews SET draft = $2, status = CASE WHEN status = 'ready' THEN 'draft' ELSE status END WHERE id = $1")
         .bind(id).bind(draft).execute(&st.notes).await?;

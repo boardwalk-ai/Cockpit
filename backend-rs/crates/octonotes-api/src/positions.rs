@@ -11,7 +11,10 @@ fn digit(c: u8) -> Option<usize> {
 /// A key is non-empty, base-62 only, and does not end in '0' (so a key
 /// between two others always exists).
 pub fn is_valid(key: &str) -> bool {
-    !key.is_empty() && key.len() <= 256 && key.bytes().all(|b| digit(b).is_some()) && !key.ends_with('0')
+    !key.is_empty()
+        && key.len() <= 256
+        && key.bytes().all(|b| digit(b).is_some())
+        && !key.ends_with('0')
 }
 
 /// A key strictly between `a` and `b` (`None` = open end). Port of the

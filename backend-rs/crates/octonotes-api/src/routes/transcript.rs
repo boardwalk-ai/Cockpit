@@ -82,7 +82,12 @@ pub struct TranscriptPage {
 
 #[utoipa::path(get, path = "/v1/sessions/{id}/transcript", tag = "transcript", params(("id" = Uuid, Path), TranscriptQuery),
     responses((status = 200, body = TranscriptPage)))]
-pub async fn list(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Query(q): Query<TranscriptQuery>) -> Result<Json<TranscriptPage>, ApiError> {
+pub async fn list(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Query(q): Query<TranscriptQuery>,
+) -> Result<Json<TranscriptPage>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
     let rev = revs::current(&mut conn, session_id, revs::TRANSCRIPT).await?;
@@ -102,7 +107,8 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Path(session_id): 
         qb.push(" AND t.layer_rev > ").push_bind(v);
     }
     if let Some(text) = q.q.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        qb.push(" AND COALESCE(t.corrected_text, t.faithful_text, t.raw_text) ILIKE ").push_bind(format!("%{}%", text.replace('%', "\\%")));
+        qb.push(" AND COALESCE(t.corrected_text, t.faithful_text, t.raw_text) ILIKE ")
+            .push_bind(format!("%{}%", text.replace('%', "\\%")));
     }
     match q.filter.as_deref() {
         None | Some("all") => {}
@@ -126,7 +132,8 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Path(session_id): 
         }
         Some(other) => return Err(ApiError::bad_request(format!("unknown filter '{other}'"))),
     }
-    qb.push(" ORDER BY t.start_ms, t.ordinal LIMIT ").push_bind(limit + 1);
+    qb.push(" ORDER BY t.start_ms, t.ordinal LIMIT ")
+        .push_bind(limit + 1);
     let mut segments: Vec<Segment> = qb.build_query_as().fetch_all(&mut *conn).await?;
     let next_after_ms = if segments.len() as i64 > limit {
         segments.truncate(limit as usize);
@@ -134,10 +141,18 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Path(session_id): 
     } else {
         None
     };
-    Ok(Json(TranscriptPage { rev, segments, next_after_ms }))
+    Ok(Json(TranscriptPage {
+        rev,
+        segments,
+        next_after_ms,
+    }))
 }
 
-async fn owned_segment(conn: &mut sqlx::PgConnection, caller: &Caller, id: Uuid) -> Result<(Uuid, Option<String>, String, String), ApiError> {
+async fn owned_segment(
+    conn: &mut sqlx::PgConnection,
+    caller: &Caller,
+    id: Uuid,
+) -> Result<(Uuid, Option<String>, String, String), ApiError> {
     let row: Option<(Uuid, Option<String>, String, String)> = sqlx::query_as(
         "SELECT t.session_id, t.corrected_text, t.speaker, t.speaker_original FROM transcript_segments t \
          JOIN sessions s ON s.id = t.session_id WHERE t.id = $1 AND s.user_id = $2 AND s.deleted_at IS NULL FOR UPDATE OF t",
@@ -150,7 +165,12 @@ async fn owned_segment(conn: &mut sqlx::PgConnection, caller: &Caller, id: Uuid)
 }
 
 async fn one(conn: &mut sqlx::PgConnection, id: Uuid) -> Result<Segment, ApiError> {
-    Ok(sqlx::query_as::<_, Segment>(&format!("{SELECT} WHERE t.id = $1")).bind(id).fetch_one(conn).await?)
+    Ok(
+        sqlx::query_as::<_, Segment>(&format!("{SELECT} WHERE t.id = $1"))
+            .bind(id)
+            .fetch_one(conn)
+            .await?,
+    )
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -162,14 +182,27 @@ pub struct Correction {
 
 #[utoipa::path(patch, path = "/v1/transcript/segments/{id}", tag = "transcript", params(("id" = Uuid, Path)),
     request_body = Correction, responses((status = 200, body = Segment)))]
-pub async fn correct(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>, Json(req): Json<Correction>) -> Result<Json<Segment>, ApiError> {
+pub async fn correct(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+    Json(req): Json<Correction>,
+) -> Result<Json<Segment>, ApiError> {
     if let Some(s) = &req.speaker {
         if !SPEAKERS.contains(&s.as_str()) {
-            return Err(ApiError::bad_request("speaker must be professor, student, speaker1 or unknown"));
+            return Err(ApiError::bad_request(
+                "speaker must be professor, student, speaker1 or unknown",
+            ));
         }
     }
-    if req.corrected_text.as_ref().is_some_and(|t| t.trim().is_empty() || t.len() > 20_000) {
-        return Err(ApiError::bad_request("correctedText must be 1..20000 chars"));
+    if req
+        .corrected_text
+        .as_ref()
+        .is_some_and(|t| t.trim().is_empty() || t.len() > 20_000)
+    {
+        return Err(ApiError::bad_request(
+            "correctedText must be 1..20000 chars",
+        ));
     }
     let mut tx = st.notes.begin().await?;
     let (session_id, old_text, old_speaker, _) = owned_segment(&mut tx, &caller, id).await?;
@@ -205,7 +238,16 @@ pub async fn correct(State(st): State<AppState>, caller: Caller, Path(id): Path<
     .await?;
     let seg = one(&mut tx, id).await?;
     tx.commit().await?;
-    st.hub.session(session_id, Event::new("transcript.corrected", json!({ "segmentIds": [id] }), Some(rev))).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "transcript.corrected",
+                json!({ "segmentIds": [id] }),
+                Some(rev),
+            ),
+        )
+        .await;
     Ok(Json(seg))
 }
 
@@ -218,7 +260,12 @@ pub struct RestoreSegment {
 
 #[utoipa::path(post, path = "/v1/transcript/segments/{id}/restore", tag = "transcript", params(("id" = Uuid, Path)),
     request_body = RestoreSegment, responses((status = 200, body = Segment)))]
-pub async fn restore(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>, Json(req): Json<RestoreSegment>) -> Result<Json<Segment>, ApiError> {
+pub async fn restore(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+    Json(req): Json<RestoreSegment>,
+) -> Result<Json<Segment>, ApiError> {
     let field = req.field.unwrap_or_else(|| "both".into());
     if !["text", "speaker", "both"].contains(&field.as_str()) {
         return Err(ApiError::bad_request("field must be text or speaker"));
@@ -234,7 +281,10 @@ pub async fn restore(State(st): State<AppState>, caller: Caller, Path(id): Path<
             .bind(caller.user_id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("UPDATE transcript_segments SET corrected_text = NULL WHERE id = $1").bind(id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE transcript_segments SET corrected_text = NULL WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
     }
     if field != "text" && old_speaker != original {
         sqlx::query("INSERT INTO transcript_revisions (segment_id, field, old_value, new_value, corrected_by) VALUES ($1,'speaker',$2,$3,$4)")
@@ -244,16 +294,30 @@ pub async fn restore(State(st): State<AppState>, caller: Caller, Path(id): Path<
             .bind(caller.user_id)
             .execute(&mut *tx)
             .await?;
-        sqlx::query("UPDATE transcript_segments SET speaker = speaker_original WHERE id = $1").bind(id).execute(&mut *tx).await?;
+        sqlx::query("UPDATE transcript_segments SET speaker = speaker_original WHERE id = $1")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
     }
-    sqlx::query("UPDATE transcript_segments SET revision = revision + 1, layer_rev = $2 WHERE id = $1")
-        .bind(id)
-        .bind(rev)
-        .execute(&mut *tx)
-        .await?;
+    sqlx::query(
+        "UPDATE transcript_segments SET revision = revision + 1, layer_rev = $2 WHERE id = $1",
+    )
+    .bind(id)
+    .bind(rev)
+    .execute(&mut *tx)
+    .await?;
     let seg = one(&mut tx, id).await?;
     tx.commit().await?;
-    st.hub.session(session_id, Event::new("transcript.corrected", json!({ "segmentIds": [id] }), Some(rev))).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "transcript.corrected",
+                json!({ "segmentIds": [id] }),
+                Some(rev),
+            ),
+        )
+        .await;
     Ok(Json(seg))
 }
 
@@ -264,7 +328,12 @@ pub struct TranscriptionToggle {
 
 #[utoipa::path(post, path = "/v1/sessions/{id}/transcription", tag = "transcript", params(("id" = Uuid, Path)),
     request_body = TranscriptionToggle, responses((status = 200)))]
-pub async fn toggle(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<TranscriptionToggle>) -> Result<Json<Value>, ApiError> {
+pub async fn toggle(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<TranscriptionToggle>,
+) -> Result<Json<Value>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::writable_session(&mut conn, &caller, session_id).await?;
     sqlx::query("UPDATE sessions SET config = jsonb_set(config, '{liveTranscription}', to_jsonb($2::boolean)) WHERE id = $1")
@@ -272,7 +341,12 @@ pub async fn toggle(State(st): State<AppState>, caller: Caller, Path(session_id)
         .bind(req.on)
         .execute(&mut *conn)
         .await?;
-    st.hub.session(session_id, Event::new("transcription.state", json!({ "on": req.on }), None)).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new("transcription.state", json!({ "on": req.on }), None),
+        )
+        .await;
     Ok(Json(json!({ "liveTranscription": req.on })))
 }
 
@@ -289,14 +363,26 @@ pub struct FromSource {
 
 #[utoipa::path(post, path = "/v1/sessions/{id}/blocks/from-source", tag = "blocks", params(("id" = Uuid, Path)),
     request_body = FromSource, responses((status = 201, body = Block)))]
-pub async fn from_source(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<FromSource>) -> Result<(axum::http::StatusCode, Json<Block>), ApiError> {
+pub async fn from_source(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<FromSource>,
+) -> Result<(axum::http::StatusCode, Json<Block>), ApiError> {
     let mut tx = st.notes.begin().await?;
     access::writable_session(&mut tx, &caller, session_id).await?;
     let (block, link_kind, link_id) = match req.kind.as_str() {
         "transcript" => {
-            let seg_id = Uuid::parse_str(&req.source_id).map_err(|_| ApiError::bad_request("sourceId must be a segment id"))?;
-            let seg = one(&mut tx, seg_id).await.map_err(|_| ApiError::not_found("segment not found"))?;
-            let session_of: Uuid = sqlx::query_scalar("SELECT session_id FROM transcript_segments WHERE id = $1").bind(seg_id).fetch_one(&mut *tx).await?;
+            let seg_id = Uuid::parse_str(&req.source_id)
+                .map_err(|_| ApiError::bad_request("sourceId must be a segment id"))?;
+            let seg = one(&mut tx, seg_id)
+                .await
+                .map_err(|_| ApiError::not_found("segment not found"))?;
+            let session_of: Uuid =
+                sqlx::query_scalar("SELECT session_id FROM transcript_segments WHERE id = $1")
+                    .bind(seg_id)
+                    .fetch_one(&mut *tx)
+                    .await?;
             if session_of != session_id {
                 return Err(ApiError::not_found("segment not found"));
             }
@@ -318,7 +404,9 @@ pub async fn from_source(State(st): State<AppState>, caller: Caller, Path(sessio
         }
         "slide" => {
             let (material, page) = crate::routes::materials::parse_page_ref(&req.source_id)?;
-            let (title, text, filename) = crate::routes::materials::page_text(&mut tx, &caller, session_id, material, page).await?;
+            let (title, text, filename) =
+                crate::routes::materials::page_text(&mut tx, &caller, session_id, material, page)
+                    .await?;
             let block = blocks::insert_server_block(&mut tx, &caller, NewServerBlock {
                 session_id,
                 after: req.after_block_id,
@@ -335,8 +423,11 @@ pub async fn from_source(State(st): State<AppState>, caller: Caller, Path(sessio
             (block, "slide", format!("{material}:{page}"))
         }
         "ink" => {
-            let rec_id = Uuid::parse_str(&req.source_id).map_err(|_| ApiError::bad_request("sourceId must be a recognition id"))?;
-            let (text, page_id, ordinal) = crate::routes::ink_ai::recognition_text(&mut tx, &caller, session_id, rec_id).await?;
+            let rec_id = Uuid::parse_str(&req.source_id)
+                .map_err(|_| ApiError::bad_request("sourceId must be a recognition id"))?;
+            let (text, page_id, ordinal) =
+                crate::routes::ink_ai::recognition_text(&mut tx, &caller, session_id, rec_id)
+                    .await?;
             let block = blocks::insert_server_block(&mut tx, &caller, NewServerBlock {
                 session_id,
                 after: req.after_block_id,
@@ -352,7 +443,11 @@ pub async fn from_source(State(st): State<AppState>, caller: Caller, Path(sessio
             .await?;
             (block, "inkPage", page_id.to_string())
         }
-        other => return Err(ApiError::bad_request(format!("unknown source kind '{other}'"))),
+        other => {
+            return Err(ApiError::bad_request(format!(
+                "unknown source kind '{other}'"
+            )))
+        }
     };
     sqlx::query("INSERT INTO links (session_id, user_id, from_kind, from_id, to_kind, to_id) VALUES ($1,$2,'block',$3,$4,$5) ON CONFLICT DO NOTHING")
         .bind(session_id)
@@ -364,7 +459,14 @@ pub async fn from_source(State(st): State<AppState>, caller: Caller, Path(sessio
         .await?;
     tx.commit().await?;
     st.hub
-        .session(session_id, Event::new("block.changed", json!({ "blockIds": [block.id] }), Some(block.layer_rev)))
+        .session(
+            session_id,
+            Event::new(
+                "block.changed",
+                json!({ "blockIds": [block.id] }),
+                Some(block.layer_rev),
+            ),
+        )
         .await;
     Ok((axum::http::StatusCode::CREATED, Json(block)))
 }
@@ -380,5 +482,7 @@ pub fn format_ms(ms: i64) -> String {
 
 fn title_case(s: &str) -> String {
     let mut c = s.chars();
-    c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+    c.next()
+        .map(|f| f.to_uppercase().collect::<String>() + c.as_str())
+        .unwrap_or_default()
 }

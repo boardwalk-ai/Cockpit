@@ -29,7 +29,13 @@ pub struct Job {
 }
 
 /// Queue a job. `dedupe_key` makes it at-most-once per key (scheduled jobs).
-pub async fn enqueue(pool: &PgPool, user_id: Option<Uuid>, kind: &str, payload: Value, dedupe_key: Option<&str>) -> Result<Option<Uuid>, sqlx::Error> {
+pub async fn enqueue(
+    pool: &PgPool,
+    user_id: Option<Uuid>,
+    kind: &str,
+    payload: Value,
+    dedupe_key: Option<&str>,
+) -> Result<Option<Uuid>, sqlx::Error> {
     sqlx::query_scalar(
         "INSERT INTO jobs (user_id, kind, payload, dedupe_key) VALUES ($1, $2, $3, $4) \
          ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING RETURNING id",
@@ -43,7 +49,13 @@ pub async fn enqueue(pool: &PgPool, user_id: Option<Uuid>, kind: &str, payload: 
 }
 
 /// A job that runs `delay_secs` from now (polling follow-ups).
-pub async fn enqueue_at(pool: &PgPool, user_id: Option<Uuid>, kind: &str, payload: Value, delay_secs: i64) -> Result<Uuid, sqlx::Error> {
+pub async fn enqueue_at(
+    pool: &PgPool,
+    user_id: Option<Uuid>,
+    kind: &str,
+    payload: Value,
+    delay_secs: i64,
+) -> Result<Uuid, sqlx::Error> {
     sqlx::query_scalar("INSERT INTO jobs (user_id, kind, payload, run_after) VALUES ($1, $2, $3, now() + make_interval(secs => $4)) RETURNING id")
         .bind(user_id)
         .bind(kind)
@@ -54,7 +66,13 @@ pub async fn enqueue_at(pool: &PgPool, user_id: Option<Uuid>, kind: &str, payloa
 }
 
 /// Same, inside an open transaction (job appears only if the tx commits).
-pub async fn enqueue_tx(conn: &mut sqlx::PgConnection, user_id: Option<Uuid>, kind: &str, payload: Value, dedupe_key: Option<&str>) -> Result<Option<Uuid>, sqlx::Error> {
+pub async fn enqueue_tx(
+    conn: &mut sqlx::PgConnection,
+    user_id: Option<Uuid>,
+    kind: &str,
+    payload: Value,
+    dedupe_key: Option<&str>,
+) -> Result<Option<Uuid>, sqlx::Error> {
     sqlx::query_scalar(
         "INSERT INTO jobs (user_id, kind, payload, dedupe_key) VALUES ($1, $2, $3, $4) \
          ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING RETURNING id",
@@ -72,13 +90,17 @@ fn handler(kind: &str) -> Option<Handler> {
         "system.purge" => |st, job| Box::pin(purge(st, job)),
         "asr.chunk" => |st, job| Box::pin(crate::asr::job_chunk(st, job)),
         "transcript.faithful" => |st, job| Box::pin(crate::asr::job_faithful(st, job)),
-        "recording.assemble" => |st, job| Box::pin(crate::routes::recordings::job_assemble(st, job)),
+        "recording.assemble" => {
+            |st, job| Box::pin(crate::routes::recordings::job_assemble(st, job))
+        }
         "system.outbox" => |st, job| Box::pin(crate::outbox::job_publish(st, job)),
         "material.process" => |st, job| Box::pin(crate::routes::materials::job_process(st, job)),
         "embed.session" => |st, job| Box::pin(crate::retrieval::job_embed_session(st, job)),
         "system.meter" => |st, job| Box::pin(crate::pricing::job_meter(st, job)),
         "review.prepare" => |st, job| Box::pin(crate::routes::review::job_prepare(st, job)),
-        "recommendations.build" => |st, job| Box::pin(crate::routes::recommendations::job_build(st, job)),
+        "recommendations.build" => {
+            |st, job| Box::pin(crate::routes::recommendations::job_build(st, job))
+        }
         "conversion.follow" => |st, job| Box::pin(crate::routes::conversions::job_follow(st, job)),
         "export.render" => |st, job| Box::pin(crate::routes::final_notes::job_export(st, job)),
         // PHASE-HANDLERS
@@ -100,7 +122,12 @@ async fn claim(pool: &PgPool, worker: &str) -> Result<Option<Job>, sqlx::Error> 
 
 async fn finish(pool: &PgPool, job: &Job, result: JobResult) {
     let res = match result {
-        Ok(()) => sqlx::query("UPDATE jobs SET status = 'done', error = NULL WHERE id = $1").bind(job.id).execute(pool).await,
+        Ok(()) => {
+            sqlx::query("UPDATE jobs SET status = 'done', error = NULL WHERE id = $1")
+                .bind(job.id)
+                .execute(pool)
+                .await
+        }
         Err(e) if job.attempts < job.max_attempts => {
             let backoff = 5i64 * 2i64.pow(job.attempts.clamp(0, 10) as u32);
             tracing::warn!(job = %job.id, kind = %job.kind, attempt = job.attempts, error = %e, "job failed; retrying");
@@ -113,7 +140,11 @@ async fn finish(pool: &PgPool, job: &Job, result: JobResult) {
         }
         Err(e) => {
             tracing::error!(job = %job.id, kind = %job.kind, error = %e, "job failed permanently");
-            sqlx::query("UPDATE jobs SET status = 'failed', error = $2 WHERE id = $1").bind(job.id).bind(&e).execute(pool).await
+            sqlx::query("UPDATE jobs SET status = 'failed', error = $2 WHERE id = $1")
+                .bind(job.id)
+                .bind(&e)
+                .execute(pool)
+                .await
         }
     };
     if let Err(e) = res {
@@ -164,11 +195,39 @@ async fn scheduler(st: AppState) {
         )
         .execute(&st.notes)
         .await;
+        // Safety net: an audio chunk with no transcription job (should never
+        // happen — row and job are written together) gets one.
+        let _ = sqlx::query(
+            "INSERT INTO jobs (user_id, kind, payload, dedupe_key)              SELECT r.user_id, 'asr.chunk', json_build_object('recordingId', c.recording_id, 'seq', c.seq, 'sessionId', r.session_id),                     'asr:' || c.recording_id || ':' || c.seq              FROM audio_chunks c JOIN recordings r ON r.id = c.recording_id              WHERE c.asr_status = 'pending' AND c.received_at < now() - interval '5 minutes'              ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING",
+        )
+        .execute(&st.notes)
+        .await;
         let day = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        let _ = enqueue(&st.notes, None, "system.purge", json!({}), Some(&format!("purge:{day}"))).await;
+        let _ = enqueue(
+            &st.notes,
+            None,
+            "system.purge",
+            json!({}),
+            Some(&format!("purge:{day}")),
+        )
+        .await;
         let minute = chrono::Utc::now().format("%Y-%m-%dT%H:%M").to_string();
-        let _ = enqueue(&st.notes, None, "system.outbox", json!({}), Some(&format!("outbox:{minute}"))).await;
-        let _ = enqueue(&st.notes, None, "system.meter", json!({}), Some(&format!("meter:{minute}"))).await;
+        let _ = enqueue(
+            &st.notes,
+            None,
+            "system.outbox",
+            json!({}),
+            Some(&format!("outbox:{minute}")),
+        )
+        .await;
+        let _ = enqueue(
+            &st.notes,
+            None,
+            "system.meter",
+            json!({}),
+            Some(&format!("meter:{minute}")),
+        )
+        .await;
     }
 }
 
@@ -186,7 +245,11 @@ async fn purge(st: AppState, _job: Job) -> JobResult {
             .delete_prefix(&format!("{user_id}/{id}/"))
             .await
             .map_err(|e| format!("storage purge failed: {e}"))?;
-        sqlx::query("DELETE FROM sessions WHERE id = $1").bind(id).execute(&st.notes).await.map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM sessions WHERE id = $1")
+            .bind(id)
+            .execute(&st.notes)
+            .await
+            .map_err(|e| e.to_string())?;
     }
     sqlx::query("DELETE FROM applied_ops WHERE created_at < now() - interval '90 days'")
         .execute(&st.notes)
@@ -206,7 +269,9 @@ async fn purge(st: AppState, _job: Job) -> JobResult {
 /// Runs all due jobs synchronously (tests).
 pub async fn drain(st: &AppState) {
     for _ in 0..500 {
-        let Ok(Some(job)) = claim(&st.notes, "test").await else { return };
+        let Ok(Some(job)) = claim(&st.notes, "test").await else {
+            return;
+        };
         let result = match handler(&job.kind) {
             Some(h) => h(st.clone(), job.clone()).await,
             None => Err(format!("no handler for '{}'", job.kind)),

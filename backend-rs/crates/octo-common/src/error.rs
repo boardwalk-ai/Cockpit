@@ -17,7 +17,12 @@ pub struct ApiError {
 
 impl ApiError {
     pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self { status, message: message.into(), code: None, details: None }
+        Self {
+            status,
+            message: message.into(),
+            code: None,
+            details: None,
+        }
     }
     pub fn with_code(mut self, code: &'static str) -> Self {
         self.code = Some(code);

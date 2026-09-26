@@ -12,13 +12,19 @@ use crate::{db, AppState};
 
 fn tone_flavor(tone: &str) -> &'static str {
     match tone {
-        "roast" => "ROAST the essay mercilessly but usefully. Savage, funny, \
+        "roast" => {
+            "ROAST the essay mercilessly but usefully. Savage, funny, \
             sarcastic — use 💀 😂 sparingly. The user asked for it, so go in, but \
-            every jab must point at a real, fixable problem.",
-        "mentor" => "Be a warm, encouraging mentor. Lead with what works, then \
-            give concrete, kind guidance on what to improve.",
-        _ => "Be honest and direct — a sharp, fair reader. No flattery, no \
-            cruelty. Say what is strong and what is weak, specifically.",
+            every jab must point at a real, fixable problem."
+        }
+        "mentor" => {
+            "Be a warm, encouraging mentor. Lead with what works, then \
+            give concrete, kind guidance on what to improve."
+        }
+        _ => {
+            "Be honest and direct — a sharp, fair reader. No flattery, no \
+            cruelty. Say what is strong and what is weak, specifically."
+        }
     }
 }
 
@@ -57,7 +63,10 @@ pub async fn chat(
     let essay_block = if essay.is_empty() {
         "(The student hasn't written anything substantial yet.)".to_string()
     } else {
-        format!("The student's essay so far:\n\"\"\"\n{}\n\"\"\"", essay.chars().take(8000).collect::<String>())
+        format!(
+            "The student's essay so far:\n\"\"\"\n{}\n\"\"\"",
+            essay.chars().take(8000).collect::<String>()
+        )
     };
     let mode_directive = if body.mode == "criticism" {
         "The user is in CRITICISM mode: focus your reply on critiquing the essay \
@@ -79,14 +88,27 @@ pub async fn chat(
         essay_block = essay_block,
     );
 
-    let mut messages = vec![ChatMessage { role: "system", content: system }];
+    let mut messages = vec![ChatMessage {
+        role: "system",
+        content: system,
+    }];
     for turn in body.history.iter().rev().take(8).rev() {
-        let role = if turn.role == "user" { "user" } else { "assistant" };
-        messages.push(ChatMessage { role, content: turn.content.clone() });
+        let role = if turn.role == "user" {
+            "user"
+        } else {
+            "assistant"
+        };
+        messages.push(ChatMessage {
+            role,
+            content: turn.content.clone(),
+        });
     }
     // Ensure the latest user message is present even if history omitted it.
     if body.history.last().map(|t| t.content.as_str()) != Some(body.message.as_str()) {
-        messages.push(ChatMessage { role: "user", content: body.message.clone() });
+        messages.push(ChatMessage {
+            role: "user",
+            content: body.message.clone(),
+        });
     }
 
     let raw = call_json(&st.http, &key, &model, messages, 0.7).await?;
@@ -112,11 +134,16 @@ fn extract_message(v: &Value) -> Option<String> {
             if let Some(items) = v.get(arr).and_then(|x| x.as_array()) {
                 for it in items {
                     let t = it.get("title").and_then(|x| x.as_str()).unwrap_or("");
-                    let note = it.get("note").or_else(|| it.get("suggestion"))
-                        .and_then(|x| x.as_str()).unwrap_or("");
+                    let note = it
+                        .get("note")
+                        .or_else(|| it.get("suggestion"))
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("");
                     if !t.is_empty() || !note.is_empty() {
-                        out.push_str(&format!("• [{label}] {t}{}{note}\n",
-                            if t.is_empty() { "" } else { ": " }));
+                        out.push_str(&format!(
+                            "• [{label}] {t}{}{note}\n",
+                            if t.is_empty() { "" } else { ": " }
+                        ));
                     }
                 }
             }

@@ -24,9 +24,31 @@ use crate::realtime::Event;
 use crate::{access, positions, revs, AppState};
 
 pub const BLOCK_TYPES: &[&str] = &[
-    "paragraph", "h1", "h2", "h3", "bulleted", "numbered", "checklist", "quote", "definition", "keyIdea",
-    "formula", "example", "question", "examHint", "warning", "assignment", "summary", "table", "image",
-    "diagram", "slideRef", "pdfExcerpt", "transcriptExcerpt", "audioTimestamp", "divider",
+    "paragraph",
+    "h1",
+    "h2",
+    "h3",
+    "bulleted",
+    "numbered",
+    "checklist",
+    "quote",
+    "definition",
+    "keyIdea",
+    "formula",
+    "example",
+    "question",
+    "examHint",
+    "warning",
+    "assignment",
+    "summary",
+    "table",
+    "image",
+    "diagram",
+    "slideRef",
+    "pdfExcerpt",
+    "transcriptExcerpt",
+    "audioTimestamp",
+    "divider",
 ];
 /// Origins a client may create directly. `aiInsertedByStudent` only comes from
 /// the AI apply endpoints.
@@ -166,7 +188,11 @@ pub async fn list(
     Ok(Json(BlocksPage { rev, blocks }))
 }
 
-pub async fn load_blocks(conn: &mut PgConnection, session_id: Uuid, since_rev: Option<i64>) -> Result<Vec<Block>, sqlx::Error> {
+pub async fn load_blocks(
+    conn: &mut PgConnection,
+    session_id: Uuid,
+    since_rev: Option<i64>,
+) -> Result<Vec<Block>, sqlx::Error> {
     match since_rev {
         Some(since) => {
             sqlx::query_as::<_, Block>(&format!(
@@ -197,7 +223,9 @@ pub async fn ops(
     Json(req): Json<OpsRequest>,
 ) -> Result<Json<OpsResponse>, ApiError> {
     if req.ops.len() > MAX_OPS {
-        return Err(ApiError::bad_request(format!("at most {MAX_OPS} ops per request")));
+        return Err(ApiError::bad_request(format!(
+            "at most {MAX_OPS} ops per request"
+        )));
     }
     let mut tx = st.notes.begin().await?;
     access::writable_session(&mut tx, &caller, session_id).await?;
@@ -222,23 +250,39 @@ pub async fn ops(
 
     if !changed.is_empty() {
         st.hub
-            .session(session_id, Event::new("block.changed", json!({ "blockIds": changed, "deviceId": req.device_id }), Some(rev)))
+            .session(
+                session_id,
+                Event::new(
+                    "block.changed",
+                    json!({ "blockIds": changed, "deviceId": req.device_id }),
+                    Some(rev),
+                ),
+            )
             .await;
     }
     Ok(Json(OpsResponse { rev, results }))
 }
 
-async fn applied(conn: &mut PgConnection, session_id: Uuid, client_op_id: &str) -> Result<Option<OpResult>, ApiError> {
-    let row: Option<Value> =
-        sqlx::query_scalar("SELECT result FROM applied_ops WHERE session_id = $1 AND client_op_id = $2")
-            .bind(session_id)
-            .bind(client_op_id)
-            .fetch_optional(conn)
-            .await?;
+async fn applied(
+    conn: &mut PgConnection,
+    session_id: Uuid,
+    client_op_id: &str,
+) -> Result<Option<OpResult>, ApiError> {
+    let row: Option<Value> = sqlx::query_scalar(
+        "SELECT result FROM applied_ops WHERE session_id = $1 AND client_op_id = $2",
+    )
+    .bind(session_id)
+    .bind(client_op_id)
+    .fetch_optional(conn)
+    .await?;
     Ok(row.and_then(|v| serde_json::from_value(v).ok()))
 }
 
-async fn record(conn: &mut PgConnection, session_id: Uuid, result: &OpResult) -> Result<(), ApiError> {
+async fn record(
+    conn: &mut PgConnection,
+    session_id: Uuid,
+    result: &OpResult,
+) -> Result<(), ApiError> {
     sqlx::query("INSERT INTO applied_ops (session_id, client_op_id, result) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING")
         .bind(session_id)
         .bind(&result.client_op_id)
@@ -249,7 +293,12 @@ async fn record(conn: &mut PgConnection, session_id: Uuid, result: &OpResult) ->
 }
 
 fn rejected(op: &BlockOp, error: impl Into<String>) -> OpResult {
-    OpResult { client_op_id: op.client_op_id.clone(), status: "rejected".into(), block: None, error: Some(error.into()) }
+    OpResult {
+        client_op_id: op.client_op_id.clone(),
+        status: "rejected".into(),
+        block: None,
+        error: Some(error.into()),
+    }
 }
 
 fn conflict(op: &BlockOp, server: Block) -> OpResult {
@@ -257,15 +306,23 @@ fn conflict(op: &BlockOp, server: Block) -> OpResult {
         client_op_id: op.client_op_id.clone(),
         status: "conflict".into(),
         block: Some(server),
-        error: Some(format!("block changed on the server (revision {})", op.base_revision)),
+        error: Some(format!(
+            "block changed on the server (revision {})",
+            op.base_revision
+        )),
     }
 }
 
-async fn fetch_for_update(conn: &mut PgConnection, block_id: Uuid) -> Result<Option<Block>, sqlx::Error> {
-    sqlx::query_as::<_, Block>(&format!("SELECT {BLOCK_COLUMNS} FROM blocks WHERE id = $1 FOR UPDATE"))
-        .bind(block_id)
-        .fetch_optional(conn)
-        .await
+async fn fetch_for_update(
+    conn: &mut PgConnection,
+    block_id: Uuid,
+) -> Result<Option<Block>, sqlx::Error> {
+    sqlx::query_as::<_, Block>(&format!(
+        "SELECT {BLOCK_COLUMNS} FROM blocks WHERE id = $1 FOR UPDATE"
+    ))
+    .bind(block_id)
+    .fetch_optional(conn)
+    .await
 }
 
 fn validate_input(input: &BlockInput) -> Result<(), String> {
@@ -288,7 +345,13 @@ fn validate_input(input: &BlockInput) -> Result<(), String> {
     Ok(())
 }
 
-async fn apply(conn: &mut PgConnection, caller: &Caller, session_id: Uuid, device_id: Option<Uuid>, op: &BlockOp) -> Result<OpResult, ApiError> {
+async fn apply(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    session_id: Uuid,
+    device_id: Option<Uuid>,
+    op: &BlockOp,
+) -> Result<OpResult, ApiError> {
     if op.client_op_id.is_empty() || op.client_op_id.len() > 128 {
         return Ok(rejected(op, "clientOpId must be 1..128 chars"));
     }
@@ -299,9 +362,15 @@ async fn apply(conn: &mut PgConnection, caller: &Caller, session_id: Uuid, devic
         }
         if b.origin == "aiInsertedByStudent" && op.op == "upsert" {
             // Text of an AI block stays as approved; only move/delete/restore.
-            let changes_text = op.block.as_ref().is_some_and(|i| i.text.is_some() || i.kind.is_some());
+            let changes_text = op
+                .block
+                .as_ref()
+                .is_some_and(|i| i.text.is_some() || i.kind.is_some());
             if changes_text {
-                return Ok(rejected(op, "AI-inserted blocks can be moved or deleted, not rewritten"));
+                return Ok(rejected(
+                    op,
+                    "AI-inserted blocks can be moved or deleted, not rewritten",
+                ));
             }
         }
     }
@@ -317,7 +386,10 @@ async fn apply(conn: &mut PgConnection, caller: &Caller, session_id: Uuid, devic
             }
             let origin = input.origin.clone().unwrap_or_else(|| "student".into());
             if !CLIENT_ORIGINS.contains(&origin.as_str()) {
-                return Ok(rejected(op, format!("origin '{origin}' cannot be created by a client")));
+                return Ok(rejected(
+                    op,
+                    format!("origin '{origin}' cannot be created by a client"),
+                ));
             }
             let (Some(kind), Some(position)) = (input.kind.clone(), input.position.clone()) else {
                 return Ok(rejected(op, "new blocks need type and position"));
@@ -438,11 +510,22 @@ async fn apply(conn: &mut PgConnection, caller: &Caller, session_id: Uuid, devic
 }
 
 fn applied_result(op: &BlockOp, block: Block) -> OpResult {
-    OpResult { client_op_id: op.client_op_id.clone(), status: "applied".into(), block: Some(block), error: None }
+    OpResult {
+        client_op_id: op.client_op_id.clone(),
+        status: "applied".into(),
+        block: Some(block),
+        error: None,
+    }
 }
 
 /// Stores the block as it now is in `block_revisions`.
-pub async fn snapshot(conn: &mut PgConnection, caller: &Caller, block: &Block, op: &str, device_id: Option<Uuid>) -> Result<(), ApiError> {
+pub async fn snapshot(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    block: &Block,
+    op: &str,
+    device_id: Option<Uuid>,
+) -> Result<(), ApiError> {
     sqlx::query(
         "INSERT INTO block_revisions (block_id, session_id, user_id, revision, op, snapshot, device_id) \
          VALUES ($1,$2,$3,$4,$5,$6,$7)",
@@ -461,7 +544,11 @@ pub async fn snapshot(conn: &mut PgConnection, caller: &Caller, block: &Block, o
 
 /// Server-side block creation (AI apply, from-source): computes a position
 /// right after `after` (or at the end), bumps the layer and snapshots.
-pub async fn insert_server_block(conn: &mut PgConnection, caller: &Caller, b: NewServerBlock) -> Result<Block, ApiError> {
+pub async fn insert_server_block(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    b: NewServerBlock,
+) -> Result<Block, ApiError> {
     revs::lock(conn, b.session_id, revs::BLOCKS).await?;
     let position = position_after(conn, b.session_id, b.after).await?;
     let rev = revs::bump(conn, b.session_id, revs::BLOCKS).await?;
@@ -503,7 +590,11 @@ pub struct NewServerBlock {
     pub indent: i32,
 }
 
-async fn position_after(conn: &mut PgConnection, session_id: Uuid, after: Option<Uuid>) -> Result<String, ApiError> {
+async fn position_after(
+    conn: &mut PgConnection,
+    session_id: Uuid,
+    after: Option<Uuid>,
+) -> Result<String, ApiError> {
     let keys: Vec<String> = match after {
         Some(after) => {
             let anchor: Option<String> = sqlx::query_scalar(
@@ -547,7 +638,11 @@ pub struct BlockRevision {
 
 #[utoipa::path(get, path = "/v1/blocks/{id}/history", tag = "blocks",
     params(("id" = Uuid, Path)), responses((status = 200, body = Vec<BlockRevision>)))]
-pub async fn history(State(st): State<AppState>, caller: Caller, Path(block_id): Path<Uuid>) -> Result<Json<Vec<BlockRevision>>, ApiError> {
+pub async fn history(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(block_id): Path<Uuid>,
+) -> Result<Json<Vec<BlockRevision>>, ApiError> {
     let rows = sqlx::query(
         "SELECT r.revision, r.op, r.snapshot, r.device_id, r.created_at FROM block_revisions r \
          JOIN sessions s ON s.id = r.session_id \
@@ -589,19 +684,22 @@ pub async fn restore(
     Json(req): Json<RestoreRequest>,
 ) -> Result<Json<Block>, ApiError> {
     let mut tx = st.notes.begin().await?;
-    let session_id: Option<Uuid> = sqlx::query_scalar("SELECT session_id FROM blocks WHERE id = $1")
-        .bind(block_id)
-        .fetch_optional(&mut *tx)
-        .await?;
+    let session_id: Option<Uuid> =
+        sqlx::query_scalar("SELECT session_id FROM blocks WHERE id = $1")
+            .bind(block_id)
+            .fetch_optional(&mut *tx)
+            .await?;
     let session_id = session_id.ok_or_else(|| ApiError::not_found("block not found"))?;
     access::writable_session(&mut tx, &caller, session_id).await?;
     revs::lock(&mut tx, session_id, revs::BLOCKS).await?;
 
-    let snap: Option<Value> = sqlx::query_scalar("SELECT snapshot FROM block_revisions WHERE block_id = $1 AND revision = $2")
-        .bind(block_id)
-        .bind(req.revision)
-        .fetch_optional(&mut *tx)
-        .await?;
+    let snap: Option<Value> = sqlx::query_scalar(
+        "SELECT snapshot FROM block_revisions WHERE block_id = $1 AND revision = $2",
+    )
+    .bind(block_id)
+    .bind(req.revision)
+    .fetch_optional(&mut *tx)
+    .await?;
     let snap: Block = snap
         .and_then(|v| serde_json::from_value(v).ok())
         .ok_or_else(|| ApiError::not_found("revision not found"))?;
@@ -633,7 +731,14 @@ pub async fn restore(
     snapshot(&mut tx, &caller, &block, "restore", req.device_id).await?;
     tx.commit().await?;
     st.hub
-        .session(session_id, Event::new("block.changed", json!({ "blockIds": [block_id] }), Some(rev)))
+        .session(
+            session_id,
+            Event::new(
+                "block.changed",
+                json!({ "blockIds": [block_id] }),
+                Some(rev),
+            ),
+        )
         .await;
     Ok(Json(block))
 }

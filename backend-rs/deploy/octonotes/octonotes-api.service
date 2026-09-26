@@ -1,0 +1,30 @@
+[Unit]
+Description=OctoNotes API (octonotes-api, Rust)
+After=network-online.target docker.service postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=octonotes
+Group=octonotes
+EnvironmentFile=/opt/octonotes-api/.env
+WorkingDirectory=/var/lib/octonotes
+ExecStart=/opt/octonotes-api/bin/octonotes-api
+Restart=always
+RestartSec=3
+# Graceful stop: the API finishes in-flight requests on SIGTERM.
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/octonotes
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

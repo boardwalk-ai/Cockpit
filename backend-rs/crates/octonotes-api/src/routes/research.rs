@@ -43,8 +43,20 @@ fn kind_of(p: &Passage) -> &'static str {
 }
 
 fn trust_of(url: &str) -> &'static str {
-    let host = url.split("//").nth(1).unwrap_or(url).split('/').next().unwrap_or("").to_lowercase();
-    if host.ends_with(".edu") || host.ends_with(".gov") || host.contains("nih.gov") || host.contains("britannica") || host.contains("khanacademy") {
+    let host = url
+        .split("//")
+        .nth(1)
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
+    if host.ends_with(".edu")
+        || host.ends_with(".gov")
+        || host.contains("nih.gov")
+        || host.contains("britannica")
+        || host.contains("khanacademy")
+    {
         "high"
     } else if host.contains("wikipedia") || host.contains("openstax") {
         "medium"
@@ -55,15 +67,24 @@ fn trust_of(url: &str) -> &'static str {
 
 #[utoipa::path(post, path = "/v1/sessions/{id}/research", tag = "research", params(("id" = Uuid, Path)), request_body = ResearchRequest,
     responses((status = 200, description = "SSE: evidence… delta… result {researchId, explanation, evidence, sourcesAgree, conflict, lowEvidence} · done")))]
-pub async fn run(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>, Json(req): Json<ResearchRequest>) -> Result<SseStream, ApiError> {
+pub async fn run(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+    Json(req): Json<ResearchRequest>,
+) -> Result<SseStream, ApiError> {
     let question = req.question.trim().to_string();
     if question.is_empty() || question.chars().count() > 1000 {
         return Err(ApiError::bad_request("question must be 1..1000 chars"));
     }
     let scope = req.scope.unwrap_or_else(|| "courseFirst".into());
     let depth = req.depth.unwrap_or_else(|| "standard".into());
-    if !["courseFirst", "external", "both"].contains(&scope.as_str()) || !["quick", "standard", "deep"].contains(&depth.as_str()) {
-        return Err(ApiError::bad_request("scope: courseFirst|external|both · depth: quick|standard|deep"));
+    if !["courseFirst", "external", "both"].contains(&scope.as_str())
+        || !["quick", "standard", "deep"].contains(&depth.as_str())
+    {
+        return Err(ApiError::bad_request(
+            "scope: courseFirst|external|both · depth: quick|standard|deep",
+        ));
     }
     {
         let mut conn = st.notes.acquire().await?;
@@ -71,11 +92,17 @@ pub async fn run(State(st): State<AppState>, caller: Caller, Path(session_id): P
     }
     let price = pricing::price(&st, &format!("research_{depth}")).await;
     ai::guard(&st, &caller, price).await?;
-    let k = match depth.as_str() { "quick" => 4, "deep" => 10, _ => 6 };
+    let k = match depth.as_str() {
+        "quick" => 4,
+        "deep" => 10,
+        _ => 6,
+    };
 
     // Course evidence first.
     let course: Vec<Passage> = if scope != "external" {
-        retrieval::search(&st, caller.user_id, session_id, &question, k).await.map_err(ApiError::internal)?
+        retrieval::search(&st, caller.user_id, session_id, &question, k)
+            .await
+            .map_err(ApiError::internal)?
     } else {
         Vec::new()
     };
@@ -92,8 +119,24 @@ pub async fn run(State(st): State<AppState>, caller: Caller, Path(session_id): P
             Message::system("Find reliable sources for a student's question. Reply with JSON only: {\"sources\": [{\"title\": string, \"url\": string, \"excerpt\": string}]} — 2–5 sources, excerpt = a short quote or faithful summary of what the page says."),
             Message::user(question.clone()),
         ];
-        if let Ok((text, _)) = search.complete(&messages, &ChatOptions { temperature: Some(0.1), max_tokens: Some(1200), json: true }, || json!({ "sources": [] }).to_string()).await {
-            for s in parse_json_loose(&text).and_then(|v| v["sources"].as_array().cloned()).unwrap_or_default().into_iter().take(k) {
+        if let Ok((text, _)) = search
+            .complete(
+                &messages,
+                &ChatOptions {
+                    temperature: Some(0.1),
+                    max_tokens: Some(1200),
+                    json: true,
+                },
+                || json!({ "sources": [] }).to_string(),
+            )
+            .await
+        {
+            for s in parse_json_loose(&text)
+                .and_then(|v| v["sources"].as_array().cloned())
+                .unwrap_or_default()
+                .into_iter()
+                .take(k)
+            {
                 let url = s["url"].as_str().unwrap_or("").to_string();
                 if !url.starts_with("http") {
                     continue;
@@ -107,7 +150,19 @@ pub async fn run(State(st): State<AppState>, caller: Caller, Path(session_id): P
     let numbered = evidence
         .iter()
         .enumerate()
-        .map(|(i, e)| format!("[{}] ({}{}) {}", i + 1, e["title"].as_str().unwrap_or(""), if e["kind"] == "external" { ", external" } else { "" }, e["excerpt"].as_str().unwrap_or("")))
+        .map(|(i, e)| {
+            format!(
+                "[{}] ({}{}) {}",
+                i + 1,
+                e["title"].as_str().unwrap_or(""),
+                if e["kind"] == "external" {
+                    ", external"
+                } else {
+                    ""
+                },
+                e["excerpt"].as_str().unwrap_or("")
+            )
+        })
         .collect::<Vec<_>>()
         .join("\n\n");
     let messages = vec![
@@ -116,9 +171,30 @@ pub async fn run(State(st): State<AppState>, caller: Caller, Path(session_id): P
     ];
     let llm = Llm::for_role(&st, Role::Primary).await;
     let model = llm.model_name();
-    let offline = format!("{question} — offline explanation from {} piece(s) of evidence [1].\nSOURCES: agree", evidence.len());
-    let mut deltas = llm.stream(&messages, &ChatOptions { temperature: Some(0.2), max_tokens: Some(1200), json: false }, || offline).await?;
-    let run = ai::start_run(&st, &caller, Some(session_id), "research", Some(&question), &json!([{ "scope": scope, "depth": depth }])).await?;
+    let offline = format!(
+        "{question} — offline explanation from {} piece(s) of evidence [1].\nSOURCES: agree",
+        evidence.len()
+    );
+    let mut deltas = llm
+        .stream(
+            &messages,
+            &ChatOptions {
+                temperature: Some(0.2),
+                max_tokens: Some(1200),
+                json: false,
+            },
+            || offline,
+        )
+        .await?;
+    let run = ai::start_run(
+        &st,
+        &caller,
+        Some(session_id),
+        "research",
+        Some(&question),
+        &json!([{ "scope": scope, "depth": depth }]),
+    )
+    .await?;
 
     Ok(ai::sse(async_stream::stream! {
         for e in &evidence { yield event("evidence", e.clone()); }
@@ -157,11 +233,19 @@ pub async fn run(State(st): State<AppState>, caller: Caller, Path(session_id): P
     }))
 }
 
-async fn owned_run(st: &AppState, caller: &Caller, id: Uuid) -> Result<(Uuid, String, Option<String>), ApiError> {
+async fn owned_run(
+    st: &AppState,
+    caller: &Caller,
+    id: Uuid,
+) -> Result<(Uuid, String, Option<String>), ApiError> {
     let row = sqlx::query("SELECT session_id, question, explanation FROM research_runs WHERE id = $1 AND user_id = $2")
         .bind(id).bind(caller.user_id).fetch_optional(&st.notes).await?
         .ok_or_else(|| ApiError::not_found("research not found"))?;
-    Ok((row.get("session_id"), row.get("question"), row.get("explanation")))
+    Ok((
+        row.get("session_id"),
+        row.get("question"),
+        row.get("explanation"),
+    ))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -174,12 +258,21 @@ pub struct ApplyResearch {
 
 #[utoipa::path(post, path = "/v1/research/{id}/apply", tag = "research", params(("id" = Uuid, Path)), request_body = ApplyResearch,
     responses((status = 201, body = crate::routes::blocks::Block)))]
-pub async fn apply(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>, Json(req): Json<ApplyResearch>) -> Result<(StatusCode, Json<crate::routes::blocks::Block>), ApiError> {
+pub async fn apply(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+    Json(req): Json<ApplyResearch>,
+) -> Result<(StatusCode, Json<crate::routes::blocks::Block>), ApiError> {
     if !["asExplanation", "insertBelow"].contains(&req.mode.as_str()) {
-        return Err(ApiError::bad_request("mode must be asExplanation or insertBelow"));
+        return Err(ApiError::bad_request(
+            "mode must be asExplanation or insertBelow",
+        ));
     }
     let (session_id, _, explanation) = owned_run(&st, &caller, id).await?;
-    let explanation = explanation.filter(|e| !e.trim().is_empty()).ok_or_else(|| ApiError::bad_request("research has no explanation"))?;
+    let explanation = explanation
+        .filter(|e| !e.trim().is_empty())
+        .ok_or_else(|| ApiError::bad_request("research has no explanation"))?;
     let sources: Value = sqlx::query_scalar(
         "SELECT COALESCE(json_agg(json_build_object('kind', kind, 'label', title, 'excerpt', excerpt, 'locator', locator, 'url', url, 'trust', trust) ORDER BY ordinal), '[]') \
          FROM research_sources WHERE run_id = $1")
@@ -187,28 +280,74 @@ pub async fn apply(State(st): State<AppState>, caller: Caller, Path(id): Path<Uu
     let mut tx = st.notes.begin().await?;
     access::writable_session(&mut tx, &caller, session_id).await?;
     let indent = match (req.mode.as_str(), req.after_block_id) {
-        ("asExplanation", Some(b)) => sqlx::query_scalar::<_, i32>("SELECT indent + 1 FROM blocks WHERE id = $1").bind(b).fetch_optional(&mut *tx).await?.unwrap_or(1),
+        ("asExplanation", Some(b)) => {
+            sqlx::query_scalar::<_, i32>("SELECT indent + 1 FROM blocks WHERE id = $1")
+                .bind(b)
+                .fetch_optional(&mut *tx)
+                .await?
+                .unwrap_or(1)
+        }
         _ => 0,
     };
-    let block = blocks::insert_server_block(&mut tx, &caller, NewServerBlock {
-        session_id, after: req.after_block_id, kind: "paragraph".into(), text: explanation, origin: "aiInsertedByStudent".into(),
-        audio_ts_ms: None, transcript_anchor: None, source_ref: None, ai_sources: Some(sources), indent,
-    }).await?;
+    let block = blocks::insert_server_block(
+        &mut tx,
+        &caller,
+        NewServerBlock {
+            session_id,
+            after: req.after_block_id,
+            kind: "paragraph".into(),
+            text: explanation,
+            origin: "aiInsertedByStudent".into(),
+            audio_ts_ms: None,
+            transcript_anchor: None,
+            source_ref: None,
+            ai_sources: Some(sources),
+            indent,
+        },
+    )
+    .await?;
     tx.commit().await?;
-    st.hub.session(session_id, Event::new("block.changed", json!({ "blockIds": [block.id] }), Some(block.layer_rev))).await;
+    st.hub
+        .session(
+            session_id,
+            Event::new(
+                "block.changed",
+                json!({ "blockIds": [block.id] }),
+                Some(block.layer_rev),
+            ),
+        )
+        .await;
     Ok((StatusCode::CREATED, Json(block)))
 }
 
 #[utoipa::path(post, path = "/v1/research/{id}/save", tag = "research", params(("id" = Uuid, Path)), responses((status = 204)))]
-pub async fn save(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<StatusCode, ApiError> {
+pub async fn save(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
     let (session_id, _, _) = owned_run(&st, &caller, id).await?;
-    sqlx::query("UPDATE research_runs SET saved = true WHERE id = $1").bind(id).execute(&st.notes).await?;
-    jobs::enqueue(&st.notes, Some(caller.user_id), "embed.session", json!({ "sessionId": session_id }), None).await?;
+    sqlx::query("UPDATE research_runs SET saved = true WHERE id = $1")
+        .bind(id)
+        .execute(&st.notes)
+        .await?;
+    jobs::enqueue(
+        &st.notes,
+        Some(caller.user_id),
+        "embed.session",
+        json!({ "sessionId": session_id }),
+        None,
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(get, path = "/v1/sessions/{id}/research", tag = "research", params(("id" = Uuid, Path)), responses((status = 200)))]
-pub async fn list(State(st): State<AppState>, caller: Caller, Path(session_id): Path<Uuid>) -> Result<Json<Value>, ApiError> {
+pub async fn list(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<Value>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, session_id).await?;
     Ok(Json(sqlx::query_scalar(

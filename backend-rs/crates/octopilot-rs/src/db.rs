@@ -19,8 +19,7 @@ pub async fn openrouter_key(pool: &PgPool) -> Result<String, ApiError> {
          ORDER BY usage_count ASC NULLS FIRST LIMIT 1",
     )
     .fetch_optional(pool)
-    .await
-    ?;
+    .await?;
     match row {
         Some(r) => Ok(r.get::<String, _>("key")),
         None => Err(ApiError::new(

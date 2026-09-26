@@ -73,16 +73,21 @@ const USER_ID_TTL: Duration = Duration::from_secs(300);
 
 impl UserIdCache {
     /// The caller's `users.id`, or `None` if they have no octopilot account yet.
-    pub async fn user_id(&self, pool: &PgPool, firebase_uid: &str) -> Result<Option<String>, ApiError> {
+    pub async fn user_id(
+        &self,
+        pool: &PgPool,
+        firebase_uid: &str,
+    ) -> Result<Option<String>, ApiError> {
         if let Some((id, at)) = self.inner.read().await.get(firebase_uid) {
             if at.elapsed() < USER_ID_TTL {
                 return Ok(Some(id.clone()));
             }
         }
-        let id: Option<String> = sqlx::query_scalar("SELECT id::text FROM users WHERE firebase_uid = $1")
-            .bind(firebase_uid)
-            .fetch_optional(pool)
-            .await?;
+        let id: Option<String> =
+            sqlx::query_scalar("SELECT id::text FROM users WHERE firebase_uid = $1")
+                .bind(firebase_uid)
+                .fetch_optional(pool)
+                .await?;
         if let Some(id) = &id {
             self.inner
                 .write()

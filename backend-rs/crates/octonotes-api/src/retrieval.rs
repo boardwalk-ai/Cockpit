@@ -32,7 +32,10 @@ pub enum Embedder {
 impl Embedder {
     pub fn from_state(st: &AppState) -> Self {
         match &st.config.embed_url {
-            Some(url) => Embedder::Remote { http: st.http.clone(), url: url.trim_end_matches('/').to_string() },
+            Some(url) => Embedder::Remote {
+                http: st.http.clone(),
+                url: url.trim_end_matches('/').to_string(),
+            },
             None => Embedder::Hashing,
         }
     }
@@ -58,7 +61,8 @@ impl Embedder {
                         .json()
                         .await
                         .map_err(|e| format!("embed body: {e}"))?;
-                    let vectors: Vec<Vec<f32>> = serde_json::from_value(v["vectors"].clone()).map_err(|e| format!("embed shape: {e}"))?;
+                    let vectors: Vec<Vec<f32>> = serde_json::from_value(v["vectors"].clone())
+                        .map_err(|e| format!("embed shape: {e}"))?;
                     if vectors.iter().any(|x| x.len() != DIM) {
                         return Err(format!("embed service returned non-{DIM}-dim vectors"));
                     }
@@ -112,32 +116,54 @@ struct Doc {
 /// Rebuilds a session's index incrementally: unchanged sources keep their
 /// vectors, changed ones are re-embedded, removed ones are dropped.
 pub async fn job_embed_session(st: AppState, job: Job) -> JobResult {
-    let sid: Uuid = serde_json::from_value(job.payload["sessionId"].clone()).map_err(|e| e.to_string())?;
-    let user: Option<Uuid> = sqlx::query_scalar("SELECT user_id FROM sessions WHERE id = $1 AND deleted_at IS NULL")
-        .bind(sid)
-        .fetch_optional(&st.notes)
-        .await
-        .map_err(|e| e.to_string())?;
+    let sid: Uuid =
+        serde_json::from_value(job.payload["sessionId"].clone()).map_err(|e| e.to_string())?;
+    let user: Option<Uuid> =
+        sqlx::query_scalar("SELECT user_id FROM sessions WHERE id = $1 AND deleted_at IS NULL")
+            .bind(sid)
+            .fetch_optional(&st.notes)
+            .await
+            .map_err(|e| e.to_string())?;
     let Some(user) = user else { return Ok(()) };
     let docs = collect(&st, sid).await.map_err(|e| e.to_string())?;
 
-    let existing: HashMap<(String, String), String> = sqlx::query("SELECT source_kind, source_id, content_hash FROM note_chunks WHERE session_id = $1")
-        .bind(sid)
-        .fetch_all(&st.notes)
-        .await
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(|r| ((r.get::<String, _>("source_kind"), r.get::<String, _>("source_id")), r.get::<String, _>("content_hash")))
-        .collect();
+    let existing: HashMap<(String, String), String> = sqlx::query(
+        "SELECT source_kind, source_id, content_hash FROM note_chunks WHERE session_id = $1",
+    )
+    .bind(sid)
+    .fetch_all(&st.notes)
+    .await
+    .map_err(|e| e.to_string())?
+    .into_iter()
+    .map(|r| {
+        (
+            (
+                r.get::<String, _>("source_kind"),
+                r.get::<String, _>("source_id"),
+            ),
+            r.get::<String, _>("content_hash"),
+        )
+    })
+    .collect();
     let embedder = Embedder::from_state(&st);
     let changed: Vec<&Doc> = docs
         .iter()
         .filter(|d| existing.get(&(d.kind.to_string(), d.id.clone())) != Some(&hash(&d.content)))
         .collect();
-    let vectors = embedder.embed(&changed.iter().map(|d| d.content.clone()).collect::<Vec<_>>()).await?;
+    let vectors = embedder
+        .embed(
+            &changed
+                .iter()
+                .map(|d| d.content.clone())
+                .collect::<Vec<_>>(),
+        )
+        .await?;
 
     let mut tx = st.notes.begin().await.map_err(|e| e.to_string())?;
-    let keep: Vec<String> = docs.iter().map(|d| format!("{}|{}", d.kind, d.id)).collect();
+    let keep: Vec<String> = docs
+        .iter()
+        .map(|d| format!("{}|{}", d.kind, d.id))
+        .collect();
     sqlx::query("DELETE FROM note_chunks WHERE session_id = $1 AND NOT (source_kind || '|' || source_id = ANY($2))")
         .bind(sid)
         .bind(&keep)
@@ -255,9 +281,19 @@ pub struct Passage {
 }
 
 /// Top-k passages for `query` in the session, plus its linked studio.
-pub async fn search(st: &AppState, user_id: Uuid, session_id: Uuid, query: &str, k: usize) -> Result<Vec<Passage>, String> {
+pub async fn search(
+    st: &AppState,
+    user_id: Uuid,
+    session_id: Uuid,
+    query: &str,
+    k: usize,
+) -> Result<Vec<Passage>, String> {
     let embedder = Embedder::from_state(st);
-    let qv = embedder.embed(&[query.to_string()]).await?.pop().unwrap_or_default();
+    let qv = embedder
+        .embed(&[query.to_string()])
+        .await?
+        .pop()
+        .unwrap_or_default();
     let dense = sqlx::query(
         "SELECT source_kind, source_id, content, locator FROM note_chunks WHERE session_id = $1 AND user_id = $2 \
          ORDER BY embedding <=> $3 LIMIT 20",
@@ -286,10 +322,15 @@ pub async fn search(st: &AppState, user_id: Uuid, session_id: Uuid, query: &str,
         locator: r.get("locator"),
         score: 0.0,
     };
-    let mut lists: Vec<Vec<Passage>> = vec![dense.iter().map(to_passage).collect(), lexical.iter().map(to_passage).collect()];
+    let mut lists: Vec<Vec<Passage>> = vec![
+        dense.iter().map(to_passage).collect(),
+        lexical.iter().map(to_passage).collect(),
+    ];
 
     // The linked Study Studio (course sources first).
-    if let (Some(vec_pool), Some(studio_id)) = (&st.studio_vector, linked_studio(st, session_id).await) {
+    if let (Some(vec_pool), Some(studio_id)) =
+        (&st.studio_vector, linked_studio(st, session_id).await)
+    {
         let remote = matches!(embedder, Embedder::Remote { .. });
         let studio_rows = if remote {
             sqlx::query(
@@ -330,8 +371,17 @@ pub async fn search(st: &AppState, user_id: Uuid, session_id: Uuid, query: &str,
 
 /// The Study Studio studio a session is saved to (`deck_ref = studio:<uuid>`).
 pub async fn linked_studio(st: &AppState, session_id: Uuid) -> Option<Uuid> {
-    let r: Option<String> = sqlx::query_scalar("SELECT deck_ref FROM sessions WHERE id = $1").bind(session_id).fetch_optional(&st.notes).await.ok().flatten().flatten();
-    r.and_then(|r| r.strip_prefix("studio:").and_then(|id| Uuid::parse_str(id).ok()))
+    let r: Option<String> = sqlx::query_scalar("SELECT deck_ref FROM sessions WHERE id = $1")
+        .bind(session_id)
+        .fetch_optional(&st.notes)
+        .await
+        .ok()
+        .flatten()
+        .flatten();
+    r.and_then(|r| {
+        r.strip_prefix("studio:")
+            .and_then(|id| Uuid::parse_str(id).ok())
+    })
 }
 
 /// Reciprocal-rank fusion (k = 60) across ranked lists, de-duplicated.
@@ -344,8 +394,18 @@ pub fn rrf(lists: Vec<Vec<Passage>>, k: usize) -> Vec<Passage> {
             e.0 += 1.0 / (60.0 + rank as f64 + 1.0);
         }
     }
-    let mut out: Vec<Passage> = scores.into_values().map(|(s, mut p)| { p.score = s; p }).collect();
-    out.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    let mut out: Vec<Passage> = scores
+        .into_values()
+        .map(|(s, mut p)| {
+            p.score = s;
+            p
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     out.truncate(k);
     out
 }
@@ -356,9 +416,17 @@ pub fn label(p: &Passage) -> String {
         "transcript" => {
             let from = p.locator["fromMs"].as_i64().unwrap_or(0);
             let to = p.locator["toMs"].as_i64().unwrap_or(0);
-            format!("Transcript · {}–{}", crate::routes::transcript::format_ms(from), crate::routes::transcript::format_ms(to))
+            format!(
+                "Transcript · {}–{}",
+                crate::routes::transcript::format_ms(from),
+                crate::routes::transcript::format_ms(to)
+            )
         }
-        "slide" => format!("{} · Slide {}", p.locator["filename"].as_str().unwrap_or("Slides"), p.locator["page"]),
+        "slide" => format!(
+            "{} · Slide {}",
+            p.locator["filename"].as_str().unwrap_or("Slides"),
+            p.locator["page"]
+        ),
         "block" => "Your notes".into(),
         "research" => "Saved research".into(),
         "studyStudio" => "Study Studio".into(),
@@ -382,7 +450,13 @@ mod tests {
 
     #[test]
     fn rrf_prefers_items_in_both_lists() {
-        let p = |id: &str| Passage { kind: "block".into(), source_id: id.into(), content: String::new(), locator: json!({}), score: 0.0 };
+        let p = |id: &str| Passage {
+            kind: "block".into(),
+            source_id: id.into(),
+            content: String::new(),
+            locator: json!({}),
+            score: 0.0,
+        };
         let fused = rrf(vec![vec![p("a"), p("b")], vec![p("b"), p("c")]], 3);
         assert_eq!(fused[0].source_id, "b");
     }

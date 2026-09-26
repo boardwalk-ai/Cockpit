@@ -46,11 +46,18 @@ pub struct Config {
     pub credits_ledger_type: String,
     /// Disable charging (dev without the shared DB).
     pub credits_enabled: bool,
+    /// Bearer token for `/metrics` from outside loopback.
+    pub metrics_token: Option<String>,
+    /// `json` for structured logs (production), anything else for text.
+    pub log_format: String,
 }
 
 impl Config {
     pub fn from_env() -> Self {
-        let port = std::env::var("PORT").ok().and_then(|s| s.parse().ok()).unwrap_or(8790);
+        let port = std::env::var("PORT")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(8790);
         Self {
             notes_database_url: std::env::var("NOTES_DATABASE_URL").unwrap_or_else(|_| {
                 "postgres://postgres:postgres@127.0.0.1:5432/octonotes".to_string()
@@ -64,10 +71,15 @@ impl Config {
             cors_allow_localhost: flag("CORS_ALLOW_LOCALHOST", true),
             port,
             role: std::env::var("ROLE").unwrap_or_else(|_| "all".into()),
-            workers: std::env::var("WORKERS").ok().and_then(|s| s.parse().ok()).unwrap_or(4),
-            public_base_url: std::env::var("PUBLIC_BASE_URL").unwrap_or_else(|_| format!("http://127.0.0.1:{port}")),
+            workers: std::env::var("WORKERS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(4),
+            public_base_url: std::env::var("PUBLIC_BASE_URL")
+                .unwrap_or_else(|_| format!("http://127.0.0.1:{port}")),
             storage_dir: std::env::var("STORAGE_DIR").unwrap_or_else(|_| "./data/blobs".into()),
-            storage_signing_key: std::env::var("STORAGE_SIGNING_KEY").unwrap_or_else(|_| uuid::Uuid::new_v4().to_string()),
+            storage_signing_key: std::env::var("STORAGE_SIGNING_KEY")
+                .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string()),
             s3_endpoint: env_opt("S3_ENDPOINT"),
             s3_bucket: std::env::var("S3_BUCKET").unwrap_or_else(|_| "octonotes".into()),
             s3_access_key: std::env::var("S3_ACCESS_KEY").unwrap_or_default(),
@@ -78,8 +90,11 @@ impl Config {
             study_studio_api_url: env_opt("STUDY_STUDIO_API_URL"),
             study_studio_service_key: env_opt("STUDY_STUDIO_SERVICE_KEY"),
             service_keys: list("SERVICE_KEYS"),
-            credits_ledger_type: std::env::var("CREDITS_LEDGER_TYPE").unwrap_or_else(|_| "octo".into()),
+            credits_ledger_type: std::env::var("CREDITS_LEDGER_TYPE")
+                .unwrap_or_else(|_| "octo".into()),
             credits_enabled: flag("CREDITS_ENABLED", true),
+            metrics_token: env_opt("METRICS_TOKEN"),
+            log_format: std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".into()),
         }
     }
 
@@ -97,7 +112,9 @@ fn env_opt(key: &str) -> Option<String> {
 }
 
 fn flag(key: &str, default: bool) -> bool {
-    std::env::var(key).map(|v| !matches!(v.trim(), "false" | "0" | "no")).unwrap_or(default)
+    std::env::var(key)
+        .map(|v| !matches!(v.trim(), "false" | "0" | "no"))
+        .unwrap_or(default)
 }
 
 fn list(key: &str) -> Vec<String> {

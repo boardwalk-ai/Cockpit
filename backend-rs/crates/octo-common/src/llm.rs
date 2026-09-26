@@ -40,7 +40,9 @@ pub async fn setting(pool: &PgPool, key: &str) -> Option<String> {
 }
 
 pub async fn model(pool: &PgPool, key: &str, default: &str) -> String {
-    setting(pool, key).await.unwrap_or_else(|| default.to_string())
+    setting(pool, key)
+        .await
+        .unwrap_or_else(|| default.to_string())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,10 +54,16 @@ pub struct Message {
 
 impl Message {
     pub fn system(text: impl Into<String>) -> Self {
-        Self { role: "system".into(), content: Value::String(text.into()) }
+        Self {
+            role: "system".into(),
+            content: Value::String(text.into()),
+        }
     }
     pub fn user(text: impl Into<String>) -> Self {
-        Self { role: "user".into(), content: Value::String(text.into()) }
+        Self {
+            role: "user".into(),
+            content: Value::String(text.into()),
+        }
     }
     /// A user message with an image (PNG/JPEG bytes as a data URL).
     pub fn user_with_image(text: impl Into<String>, mime: &str, b64: &str) -> Self {
@@ -91,7 +99,10 @@ pub struct OpenRouter {
 
 impl OpenRouter {
     pub fn new(http: reqwest::Client, key: impl Into<String>) -> Self {
-        Self { http, key: key.into() }
+        Self {
+            http,
+            key: key.into(),
+        }
     }
 
     fn body(model: &str, messages: &[Message], o: &ChatOptions, stream: bool) -> Value {
@@ -109,7 +120,12 @@ impl OpenRouter {
     }
 
     /// One completion → (text, usage).
-    pub async fn chat(&self, model: &str, messages: &[Message], o: &ChatOptions) -> Result<(String, Usage), String> {
+    pub async fn chat(
+        &self,
+        model: &str,
+        messages: &[Message],
+        o: &ChatOptions,
+    ) -> Result<(String, Usage), String> {
         let res = self
             .http
             .post(format!("{BASE}/chat/completions"))
@@ -120,11 +136,20 @@ impl OpenRouter {
             .await
             .map_err(|e| format!("openrouter: {e}"))?;
         let status = res.status();
-        let v: Value = res.json().await.map_err(|e| format!("openrouter body: {e}"))?;
+        let v: Value = res
+            .json()
+            .await
+            .map_err(|e| format!("openrouter body: {e}"))?;
         if !status.is_success() {
-            return Err(format!("openrouter {status}: {}", v["error"]["message"].as_str().unwrap_or("error")));
+            return Err(format!(
+                "openrouter {status}: {}",
+                v["error"]["message"].as_str().unwrap_or("error")
+            ));
         }
-        let text = v["choices"][0]["message"]["content"].as_str().unwrap_or("").to_string();
+        let text = v["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
         let usage = Usage {
             prompt_tokens: v["usage"]["prompt_tokens"].as_u64().unwrap_or(0) as u32,
             completion_tokens: v["usage"]["completion_tokens"].as_u64().unwrap_or(0) as u32,
@@ -133,7 +158,12 @@ impl OpenRouter {
     }
 
     /// Streams content deltas (SSE from OpenRouter). The stream ends at `[DONE]`.
-    pub async fn chat_stream(&self, model: &str, messages: &[Message], o: &ChatOptions) -> Result<impl Stream<Item = Result<String, String>>, String> {
+    pub async fn chat_stream(
+        &self,
+        model: &str,
+        messages: &[Message],
+        o: &ChatOptions,
+    ) -> Result<impl Stream<Item = Result<String, String>>, String> {
         let res = self
             .http
             .post(format!("{BASE}/chat/completions"))
@@ -171,7 +201,14 @@ impl OpenRouter {
     }
 
     /// Speech-to-text. `format`: ogg, webm, wav, mp3, flac, m4a, aac.
-    pub async fn transcribe(&self, model: &str, audio: &[u8], format: &str, language: Option<&str>, words: bool) -> Result<Transcription, String> {
+    pub async fn transcribe(
+        &self,
+        model: &str,
+        audio: &[u8],
+        format: &str,
+        language: Option<&str>,
+        words: bool,
+    ) -> Result<Transcription, String> {
         use base64::Engine;
         let mut body = json!({
             "model": model,
@@ -194,9 +231,15 @@ impl OpenRouter {
             .await
             .map_err(|e| format!("openrouter stt: {e}"))?;
         let status = res.status();
-        let v: Value = res.json().await.map_err(|e| format!("openrouter stt body: {e}"))?;
+        let v: Value = res
+            .json()
+            .await
+            .map_err(|e| format!("openrouter stt body: {e}"))?;
         if !status.is_success() {
-            return Err(format!("openrouter stt {status}: {}", v["error"]["message"].as_str().unwrap_or("error")));
+            return Err(format!(
+                "openrouter stt {status}: {}",
+                v["error"]["message"].as_str().unwrap_or("error")
+            ));
         }
         Ok(Transcription::from_json(&v))
     }
@@ -235,7 +278,12 @@ impl Transcription {
     pub fn from_json(v: &Value) -> Self {
         let segs = v["segments"].as_array().cloned().unwrap_or_default();
         let words = v["words"].as_array().cloned().unwrap_or_default();
-        let speaker = |x: &Value| x["speaker"].as_str().map(str::to_string).or_else(|| x["speaker"].as_i64().map(|n| n.to_string()));
+        let speaker = |x: &Value| {
+            x["speaker"]
+                .as_str()
+                .map(str::to_string)
+                .or_else(|| x["speaker"].as_i64().map(|n| n.to_string()))
+        };
         Transcription {
             text: v["text"].as_str().unwrap_or("").trim().to_string(),
             language: v["language"].as_str().map(str::to_string),
@@ -248,7 +296,9 @@ impl Transcription {
                     end: s["end"].as_f64().unwrap_or(0.0),
                     speaker: speaker(s),
                     // Whisper-style avg_logprob → rough 0..1 confidence.
-                    confidence: s["confidence"].as_f64().or_else(|| s["avg_logprob"].as_f64().map(|l| l.exp().clamp(0.0, 1.0))),
+                    confidence: s["confidence"]
+                        .as_f64()
+                        .or_else(|| s["avg_logprob"].as_f64().map(|l| l.exp().clamp(0.0, 1.0))),
                 })
                 .filter(|s| !s.text.is_empty())
                 .collect(),

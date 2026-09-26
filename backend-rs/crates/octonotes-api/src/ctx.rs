@@ -27,15 +27,25 @@ impl FromRequestParts<AppState> for Caller {
         let user_id = match &st.octopilot {
             Some(pool) => {
                 let id = st.user_ids.user_id(pool, &user.uid).await?.ok_or_else(|| {
-                    ApiError::new(StatusCode::FORBIDDEN, "no Octopilot account for this sign-in")
-                        .with_code("account_required")
+                    ApiError::new(
+                        StatusCode::FORBIDDEN,
+                        "no Octopilot account for this sign-in",
+                    )
+                    .with_code("account_required")
                 })?;
                 Uuid::parse_str(&id).map_err(|_| ApiError::internal("bad users.id"))?
             }
             // Dev without the shared DB: a stable id derived from the header uid.
-            None if !st.firebase.enabled() => Uuid::new_v5(&Uuid::NAMESPACE_OID, user.uid.as_bytes()),
+            None if !st.firebase.enabled() => {
+                Uuid::new_v5(&Uuid::NAMESPACE_OID, user.uid.as_bytes())
+            }
             None => return Err(ApiError::unavailable("identity database not configured")),
         };
-        Ok(Caller { uid: user.uid, email: user.email, user_id })
+        tracing::Span::current().record("user_id", tracing::field::display(user_id));
+        Ok(Caller {
+            uid: user.uid,
+            email: user.email,
+            user_id,
+        })
     }
 }

@@ -18,7 +18,15 @@ use crate::routes::ink::{self, InkPage};
 use crate::{access, idempotency, revs, AppState};
 
 const WORKSPACE_MODES: &[&str] = &["typewriter", "pencil", "both"];
-const STATUSES: &[&str] = &["draft", "live", "paused", "ended", "reviewing", "finalized", "archived"];
+const STATUSES: &[&str] = &[
+    "draft",
+    "live",
+    "paused",
+    "ended",
+    "reviewing",
+    "finalized",
+    "archived",
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow, ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +49,8 @@ pub struct Session {
     pub updated_at: DateTime<Utc>,
 }
 
-pub const SESSION_COLUMNS: &str = "id, course_id, title, workspace_mode, config, status, deck_ref, started_at, \
+pub const SESSION_COLUMNS: &str =
+    "id, course_id, title, workspace_mode, config, status, deck_ref, started_at, \
     ended_at, duration_ms, layout_prefs, revision, created_at, updated_at";
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -68,13 +77,16 @@ pub async fn create(
     let idem = idempotency::key(&headers);
     let hash = idempotency::hash(&req);
     if let Some(k) = &idem {
-        if let Some((code, body)) = idempotency::replay(&st.notes, caller.user_id, k, &hash).await? {
+        if let Some((code, body)) = idempotency::replay(&st.notes, caller.user_id, k, &hash).await?
+        {
             return Ok((code, Json(body)));
         }
     }
     let mode = req.workspace_mode.unwrap_or_else(|| "typewriter".into());
     if !WORKSPACE_MODES.contains(&mode.as_str()) {
-        return Err(ApiError::bad_request("workspaceMode must be typewriter, pencil or both"));
+        return Err(ApiError::bad_request(
+            "workspaceMode must be typewriter, pencil or both",
+        ));
     }
     let title = clean_title(req.title.as_deref())?;
     let mut conn = st.notes.acquire().await?;
@@ -84,9 +96,12 @@ pub async fn create(
     if let Some(r) = &req.deck_ref {
         validate_deck_ref(r)?;
     }
-    let config = merge_config(json!({
-        "record": true, "liveTranscription": true, "smartOrganization": true, "liveSuggestions": true
-    }), req.config)?;
+    let config = merge_config(
+        json!({
+            "record": true, "liveTranscription": true, "smartOrganization": true, "liveSuggestions": true
+        }),
+        req.config,
+    )?;
 
     let session = sqlx::query_as::<_, Session>(&format!(
         "INSERT INTO sessions (id, user_id, course_id, title, workspace_mode, config, deck_ref) \
@@ -107,15 +122,27 @@ pub async fn create(
         // Same client id sent twice (offline retry): return the existing one.
         None => owned(&mut conn, &caller, req.id.expect("conflict implies id")).await?,
     };
+    drop(conn);
     let body = serde_json::to_value(&session).unwrap_or(Value::Null);
     if let Some(k) = &idem {
-        idempotency::store(&st.notes, caller.user_id, k, &hash, StatusCode::CREATED, &body).await?;
+        idempotency::store(
+            &st.notes,
+            caller.user_id,
+            k,
+            &hash,
+            StatusCode::CREATED,
+            &body,
+        )
+        .await?;
     }
     Ok((StatusCode::CREATED, Json(body)))
 }
 
 fn clean_title(t: Option<&str>) -> Result<String, ApiError> {
-    let t = t.map(str::trim).filter(|t| !t.is_empty()).unwrap_or("Untitled session");
+    let t = t
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .unwrap_or("Untitled session");
     if t.chars().count() > 300 {
         return Err(ApiError::bad_request("title too long"));
     }
@@ -126,36 +153,60 @@ pub fn validate_deck_ref(r: &str) -> Result<(), ApiError> {
     let ok = r
         .split_once(':')
         .is_some_and(|(kind, id)| matches!(kind, "studio" | "deck") && Uuid::parse_str(id).is_ok());
-    if ok { Ok(()) } else { Err(ApiError::bad_request("deckRef must be 'studio:<uuid>' or 'deck:<uuid>'")) }
+    if ok {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(
+            "deckRef must be 'studio:<uuid>' or 'deck:<uuid>'",
+        ))
+    }
 }
 
 /// Shallow merge of the known boolean toggles; unknown keys are rejected so a
 /// typo can't silently disable a feature.
 fn merge_config(mut base: Value, patch: Option<Value>) -> Result<Value, ApiError> {
     let Some(patch) = patch else { return Ok(base) };
-    let obj = patch.as_object().ok_or_else(|| ApiError::bad_request("config must be an object"))?;
+    let obj = patch
+        .as_object()
+        .ok_or_else(|| ApiError::bad_request("config must be an object"))?;
     for (k, v) in obj {
-        if !matches!(k.as_str(), "record" | "liveTranscription" | "smartOrganization" | "liveSuggestions") {
+        if !matches!(
+            k.as_str(),
+            "record" | "liveTranscription" | "smartOrganization" | "liveSuggestions"
+        ) {
             return Err(ApiError::bad_request(format!("unknown config key '{k}'")));
         }
         if !v.is_boolean() {
-            return Err(ApiError::bad_request(format!("config.{k} must be a boolean")));
+            return Err(ApiError::bad_request(format!(
+                "config.{k} must be a boolean"
+            )));
         }
         base[k] = v.clone();
     }
     Ok(base)
 }
 
-async fn ensure_course(conn: &mut PgConnection, caller: &Caller, course: Uuid) -> Result<(), ApiError> {
-    let ok: Option<Uuid> = sqlx::query_scalar("SELECT id FROM courses WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL")
-        .bind(course)
-        .bind(caller.user_id)
-        .fetch_optional(conn)
-        .await?;
-    ok.map(|_| ()).ok_or_else(|| ApiError::bad_request("unknown courseId"))
+async fn ensure_course(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    course: Uuid,
+) -> Result<(), ApiError> {
+    let ok: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM courses WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL",
+    )
+    .bind(course)
+    .bind(caller.user_id)
+    .fetch_optional(conn)
+    .await?;
+    ok.map(|_| ())
+        .ok_or_else(|| ApiError::bad_request("unknown courseId"))
 }
 
-pub async fn owned(conn: &mut PgConnection, caller: &Caller, id: Uuid) -> Result<Session, ApiError> {
+pub async fn owned(
+    conn: &mut PgConnection,
+    caller: &Caller,
+    id: Uuid,
+) -> Result<Session, ApiError> {
     sqlx::query_as::<_, Session>(&format!(
         "SELECT {SESSION_COLUMNS} FROM sessions WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL"
     ))
@@ -192,21 +243,32 @@ pub struct SessionList {
 
 #[utoipa::path(get, path = "/v1/sessions", tag = "sessions", params(ListQuery),
     responses((status = 200, body = SessionList)))]
-pub async fn list(State(st): State<AppState>, caller: Caller, Query(q): Query<ListQuery>) -> Result<Json<SessionList>, ApiError> {
+pub async fn list(
+    State(st): State<AppState>,
+    caller: Caller,
+    Query(q): Query<ListQuery>,
+) -> Result<Json<SessionList>, ApiError> {
     let limit = q.limit.unwrap_or(20).clamp(1, 100);
     let mut qb: QueryBuilder<Postgres> = QueryBuilder::new(format!(
         "SELECT {SESSION_COLUMNS} FROM sessions WHERE deleted_at IS NULL AND user_id = "
     ));
     qb.push_bind(caller.user_id);
     if let Some(text) = q.q.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        qb.push(" AND (search @@ plainto_tsquery('simple', ").push_bind(text.to_string())
-            .push(") OR title ILIKE ").push_bind(format!("%{}%", text.replace('%', "\\%"))).push(")");
+        qb.push(" AND (search @@ plainto_tsquery('simple', ")
+            .push_bind(text.to_string())
+            .push(") OR title ILIKE ")
+            .push_bind(format!("%{}%", text.replace('%', "\\%")))
+            .push(")");
     }
     if let Some(c) = q.course_id {
         qb.push(" AND course_id = ").push_bind(c);
     }
     if let Some(statuses) = &q.status {
-        let list: Vec<String> = statuses.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        let list: Vec<String> = statuses
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
         if let Some(bad) = list.iter().find(|s| !STATUSES.contains(&s.as_str())) {
             return Err(ApiError::bad_request(format!("unknown status '{bad}'")));
         }
@@ -223,9 +285,14 @@ pub async fn list(State(st): State<AppState>, caller: Caller, Query(q): Query<Li
     }
     if let Some(c) = &q.cursor {
         let (ts, id) = decode_cursor(c)?;
-        qb.push(" AND (updated_at, id) < (").push_bind(ts).push(", ").push_bind(id).push(")");
+        qb.push(" AND (updated_at, id) < (")
+            .push_bind(ts)
+            .push(", ")
+            .push_bind(id)
+            .push(")");
     }
-    qb.push(" ORDER BY updated_at DESC, id DESC LIMIT ").push_bind(limit + 1);
+    qb.push(" ORDER BY updated_at DESC, id DESC LIMIT ")
+        .push_bind(limit + 1);
     let mut items: Vec<Session> = qb.build_query_as().fetch_all(&st.notes).await?;
     let next_cursor = if items.len() as i64 > limit {
         items.truncate(limit as usize);
@@ -242,11 +309,15 @@ pub fn encode_cursor(ts: DateTime<Utc>, id: Uuid) -> String {
 
 pub fn decode_cursor(c: &str) -> Result<(DateTime<Utc>, Uuid), ApiError> {
     let bad = || ApiError::bad_request("invalid cursor");
-    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(c).map_err(|_| bad())?;
+    let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(c)
+        .map_err(|_| bad())?;
     let s = String::from_utf8(raw).map_err(|_| bad())?;
     let (ts, id) = s.split_once('|').ok_or_else(bad)?;
     Ok((
-        DateTime::parse_from_rfc3339(ts).map_err(|_| bad())?.with_timezone(&Utc),
+        DateTime::parse_from_rfc3339(ts)
+            .map_err(|_| bad())?
+            .with_timezone(&Utc),
         Uuid::parse_str(id).map_err(|_| bad())?,
     ))
 }
@@ -267,7 +338,11 @@ pub struct SessionSnapshot {
 
 #[utoipa::path(get, path = "/v1/sessions/{id}", tag = "sessions", params(("id" = Uuid, Path)),
     responses((status = 200, body = SessionSnapshot)))]
-pub async fn get(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<Json<SessionSnapshot>, ApiError> {
+pub async fn get(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<Json<SessionSnapshot>, ApiError> {
     let mut conn = st.notes.acquire().await?;
     let session = owned(&mut conn, &caller, id).await?;
     let blocks = blocks::load_blocks(&mut conn, id, None).await?;
@@ -286,7 +361,13 @@ pub async fn get(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid
     .bind(id)
     .fetch_one(&mut *conn)
     .await?;
-    Ok(Json(SessionSnapshot { session, blocks, ink_pages, devices, revs }))
+    Ok(Json(SessionSnapshot {
+        session,
+        blocks,
+        ink_pages,
+        devices,
+        revs,
+    }))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -330,9 +411,14 @@ pub async fn update(
         Some(t) => clean_title(Some(t))?,
         None => cur.title.clone(),
     };
-    let mode = req.workspace_mode.clone().unwrap_or(cur.workspace_mode.clone());
+    let mode = req
+        .workspace_mode
+        .clone()
+        .unwrap_or(cur.workspace_mode.clone());
     if !WORKSPACE_MODES.contains(&mode.as_str()) {
-        return Err(ApiError::bad_request("workspaceMode must be typewriter, pencil or both"));
+        return Err(ApiError::bad_request(
+            "workspaceMode must be typewriter, pencil or both",
+        ));
     }
     let course_id = match req.course_id {
         Some(Some(c)) => {
@@ -375,10 +461,17 @@ pub async fn update(
 
 #[utoipa::path(delete, path = "/v1/sessions/{id}", tag = "sessions", params(("id" = Uuid, Path)),
     responses((status = 204)))]
-pub async fn delete(State(st): State<AppState>, caller: Caller, Path(id): Path<Uuid>) -> Result<StatusCode, ApiError> {
+pub async fn delete(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
     let mut conn = st.notes.acquire().await?;
     access::session(&mut conn, &caller, id).await?;
-    sqlx::query("UPDATE sessions SET deleted_at = now() WHERE id = $1").bind(id).execute(&mut *conn).await?;
+    sqlx::query("UPDATE sessions SET deleted_at = now() WHERE id = $1")
+        .bind(id)
+        .execute(&mut *conn)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

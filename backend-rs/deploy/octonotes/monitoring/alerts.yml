@@ -1,0 +1,52 @@
+# Prometheus alert rules for octonotes-api (scrape 127.0.0.1:8790/metrics).
+groups:
+  - name: octonotes
+    rules:
+      - alert: OctoNotesAsrLagging
+        expr: octonotes_asr_lag_seconds > 30
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Live transcription is {{ $value | humanizeDuration }} behind"
+
+      - alert: OctoNotesJobsFailing
+        expr: octonotes_jobs_failed_10m > 5
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} background jobs failed in 10 minutes"
+
+      - alert: OctoNotesJobBacklog
+        expr: octonotes_jobs_queued > 200
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} jobs waiting"
+
+      - alert: OctoNotesDbConnectionsHigh
+        expr: octonotes_db_connections > 80
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "notes_db at {{ $value }} of 100 connections"
+
+      - alert: OctoNotesDown
+        expr: up{job="octonotes"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "octonotes-api is not answering /metrics"
+
+      - alert: OctoNotesServerErrors
+        expr: sum(rate(octonotes_http_requests_total{status=~"5.."}[5m])) > 0.2
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "More than 1 in 5 s requests failing with 5xx"
+
+      # Needs node_exporter on the host.
+      - alert: DiskAlmostFull
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) > 0.8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $value | humanizePercentage }} full"

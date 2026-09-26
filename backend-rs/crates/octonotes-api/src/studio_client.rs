@@ -20,7 +20,11 @@ pub struct OnBehalf {
 
 #[derive(Clone)]
 pub enum StudioClient {
-    Http { http: reqwest::Client, base: String, service_key: Option<String> },
+    Http {
+        http: reqwest::Client,
+        base: String,
+        service_key: Option<String>,
+    },
     /// Not configured.
     None,
 }
@@ -28,19 +32,37 @@ pub enum StudioClient {
 impl StudioClient {
     pub fn new(http: reqwest::Client, base: Option<String>, service_key: Option<String>) -> Self {
         match base {
-            Some(b) => StudioClient::Http { http, base: b.trim_end_matches('/').to_string(), service_key },
+            Some(b) => StudioClient::Http {
+                http,
+                base: b.trim_end_matches('/').to_string(),
+                service_key,
+            },
             None => StudioClient::None,
         }
     }
 
-    fn req(&self, method: reqwest::Method, path: &str, who: &OnBehalf) -> Result<reqwest::RequestBuilder, String> {
-        let StudioClient::Http { http, base, service_key } = self else { return Err("Study Studio API is not configured".into()) };
+    fn req(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        who: &OnBehalf,
+    ) -> Result<reqwest::RequestBuilder, String> {
+        let StudioClient::Http {
+            http,
+            base,
+            service_key,
+        } = self
+        else {
+            return Err("Study Studio API is not configured".into());
+        };
         let mut r = http.request(method, format!("{base}{path}"));
         if let Some(t) = &who.bearer {
             r = r.bearer_auth(t);
         }
         if let (Some(k), Some(u)) = (service_key, who.user_id) {
-            r = r.header("X-Service-Key", k).header("X-On-Behalf-Of", u.to_string());
+            r = r
+                .header("X-Service-Key", k)
+                .header("X-On-Behalf-Of", u.to_string());
         }
         // Local dev (Study Studio with ALLOW_DEV_USER_HEADER): identify by id.
         if who.bearer.is_none() {
@@ -52,20 +74,47 @@ impl StudioClient {
     }
 
     /// `POST /studios` (SSE) → new studio id.
-    pub async fn create_studio(&self, who: &OnBehalf, title: &str, subject: Option<&str>) -> Result<Uuid, String> {
-        let res = self.req(reqwest::Method::POST, "/studios", who)?
+    pub async fn create_studio(
+        &self,
+        who: &OnBehalf,
+        title: &str,
+        subject: Option<&str>,
+    ) -> Result<Uuid, String> {
+        let res = self
+            .req(reqwest::Method::POST, "/studios", who)?
             .json(&serde_json::json!({ "title": title, "subject": subject }))
-            .send().await.map_err(|e| format!("study studio: {e}"))?;
+            .send()
+            .await
+            .map_err(|e| format!("study studio: {e}"))?;
         let data = sse_data(res).await?;
-        data["id"].as_str().and_then(|s| Uuid::parse_str(s).ok()).ok_or_else(|| format!("study studio: no studio id in {data}"))
+        data["id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or_else(|| format!("study studio: no studio id in {data}"))
     }
 
     /// `POST /studios/{id}/documents` (multipart) → ingest job accepted.
-    pub async fn upload(&self, who: &OnBehalf, studio: Uuid, filename: &str, bytes: Vec<u8>) -> Result<Value, String> {
-        let part = reqwest::multipart::Part::bytes(bytes).file_name(filename.to_string()).mime_str("text/markdown").map_err(|e| e.to_string())?;
-        let res = self.req(reqwest::Method::POST, &format!("/studios/{studio}/documents"), who)?
+    pub async fn upload(
+        &self,
+        who: &OnBehalf,
+        studio: Uuid,
+        filename: &str,
+        bytes: Vec<u8>,
+    ) -> Result<Value, String> {
+        let part = reqwest::multipart::Part::bytes(bytes)
+            .file_name(filename.to_string())
+            .mime_str("text/markdown")
+            .map_err(|e| e.to_string())?;
+        let res = self
+            .req(
+                reqwest::Method::POST,
+                &format!("/studios/{studio}/documents"),
+                who,
+            )?
             .multipart(reqwest::multipart::Form::new().part("file", part))
-            .send().await.map_err(|e| format!("study studio upload: {e}"))?;
+            .send()
+            .await
+            .map_err(|e| format!("study studio upload: {e}"))?;
         let status = res.status();
         let v: Value = res.json().await.unwrap_or(Value::Null);
         if !status.is_success() {
@@ -76,9 +125,20 @@ impl StudioClient {
 
     /// `POST /studios/{id}/build` (SSE) → build id.
     pub async fn start_build(&self, who: &OnBehalf, studio: Uuid) -> Result<Uuid, String> {
-        let res = self.req(reqwest::Method::POST, &format!("/studios/{studio}/build"), who)?.send().await.map_err(|e| format!("study studio build: {e}"))?;
+        let res = self
+            .req(
+                reqwest::Method::POST,
+                &format!("/studios/{studio}/build"),
+                who,
+            )?
+            .send()
+            .await
+            .map_err(|e| format!("study studio build: {e}"))?;
         let data = sse_data(res).await?;
-        data["buildId"].as_str().and_then(|s| Uuid::parse_str(s).ok()).ok_or_else(|| format!("study studio: no build id in {data}"))
+        data["buildId"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or_else(|| format!("study studio: no build id in {data}"))
     }
 }
 
@@ -93,11 +153,18 @@ async fn sse_data(res: reqwest::Response) -> Result<Value, String> {
     for frame in text.replace("\r\n", "\n").split("\n\n") {
         let (mut ev, mut data) = (String::new(), String::new());
         for line in frame.lines() {
-            if let Some(v) = line.strip_prefix("event:") { ev = v.trim().to_string(); }
-            if let Some(v) = line.strip_prefix("data:") { data.push_str(v.trim_start()); }
+            if let Some(v) = line.strip_prefix("event:") {
+                ev = v.trim().to_string();
+            }
+            if let Some(v) = line.strip_prefix("data:") {
+                data.push_str(v.trim_start());
+            }
         }
         match ev.as_str() {
-            "data" => return serde_json::from_str(&data).map_err(|e| format!("study studio: bad data: {e}")),
+            "data" => {
+                return serde_json::from_str(&data)
+                    .map_err(|e| format!("study studio: bad data: {e}"))
+            }
             "error" => return Err(format!("study studio: {data}")),
             _ => {}
         }
