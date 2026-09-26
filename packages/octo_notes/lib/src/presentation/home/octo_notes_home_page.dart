@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/account_providers.dart';
+import '../../application/session_providers.dart';
 import '../../domain/account.dart';
-
+import '../../domain/notes_session.dart';
 import '../../theme/octo_notes_theme.dart';
 import '../new_session/new_session_dialog.dart';
 import '../widgets/octo_widgets.dart';
@@ -477,11 +478,42 @@ class _MainColumns extends StatelessWidget {
   }
 }
 
-class _ContinueSection extends StatelessWidget {
+class _ContinueSection extends ConsumerWidget {
   const _ContinueSection();
 
+  static String _statusLabel(NotesSession s) => switch (s.status) {
+        'live' => 'Recording now',
+        'paused' => 'Paused',
+        'ended' => 'Ready for Review',
+        'reviewing' => 'In review',
+        _ => 'Draft',
+      };
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final home = ref.watch(homeDataProvider).valueOrNull;
+    if (home != null) {
+      final sessions = [...home.live, ...home.continueSessions];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Eyebrow('Continue'),
+          const SizedBox(height: CockpitSpacing.lg),
+          if (sessions.isEmpty)
+            Text('Nothing in progress.', style: Theme.of(context).textTheme.bodyMedium),
+          for (final s in sessions) ...[
+            _ContinueRow(
+              leading: Icon(s.status == 'live' ? Icons.mic_rounded : Icons.edit_note_rounded),
+              title: s.title,
+              subtitle: _statusLabel(s),
+              ready: s.status == 'ended',
+              onTap: () => context.go('/notes/session?id=${s.id}'),
+            ),
+            const SizedBox(height: CockpitSpacing.sm),
+          ],
+        ],
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: const [
@@ -512,19 +544,21 @@ class _ContinueRow extends StatelessWidget {
     required this.subtitle,
     this.progress,
     this.ready = false,
+    this.onTap,
   });
   final Widget leading;
   final String title;
   final String subtitle;
   final double? progress;
   final bool ready;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return OctoHoverRow(
-      onTap: () {},
+      onTap: onTap ?? () {},
       child: Row(
         children: [
           IconTheme(
@@ -573,15 +607,26 @@ class _ContinueRow extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Recent Notes
 // ---------------------------------------------------------------------------
-class _RecentNotesSection extends StatelessWidget {
+class _RecentNotesSection extends ConsumerWidget {
   const _RecentNotesSection({this.expand = false});
 
   /// When true, the note list fills remaining height and scrolls internally
   /// (only IT scrolls — the page never does).
   final bool expand;
 
+  static String _date(DateTime d) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
+  static String _duration(int ms) {
+    final s = ms ~/ 1000;
+    return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final home = ref.watch(homeDataProvider).valueOrNull;
     final header = Row(
       children: [
         const Expanded(child: Eyebrow('Recent Notes')),
@@ -596,7 +641,20 @@ class _RecentNotesSection extends StatelessWidget {
         ),
       ],
     );
-    const notes = [
+    final notes = home != null
+        ? [
+            for (final s in home.recent)
+              _NoteRow(
+                icon: Icons.check_circle_rounded,
+                title: s.title,
+                course: '',
+                date: _date(s.updatedAt.toLocal()),
+                duration: _duration(s.durationMs),
+                deck: s.deckRef == null ? 'Not saved to The Deck' : 'The Deck',
+                finalized: s.isFinalized,
+              ),
+          ]
+        : const [
       _NoteRow(
         icon: Icons.mic_none_rounded,
         title: 'Cellular Respiration — Glycolysis',

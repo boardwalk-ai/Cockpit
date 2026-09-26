@@ -1,6 +1,9 @@
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../application/session_providers.dart';
 
 import '../../theme/octo_notes_theme.dart';
 import '../widgets/octo_widgets.dart';
@@ -84,7 +87,17 @@ class _NewSessionDialogState extends State<NewSessionDialog> {
               ),
             ),
             const SizedBox(height: CockpitSpacing.xs),
-            _Footer(workspaceLabel: _workspaceLabels[_workspace], recording: _record),
+            _Footer(
+              workspaceLabel: _workspaceLabels[_workspace],
+              recording: _record,
+              workspaceMode: const ['typewriter', 'pencil', 'both'][_workspace],
+              config: {
+                'record': _record,
+                'liveTranscription': _liveTranscription,
+                'smartOrganization': _smartOrganization,
+                'liveSuggestions': _liveSuggestions,
+              },
+            ),
           ],
         ),
       ),
@@ -508,9 +521,37 @@ class _ToggleTile extends StatelessWidget {
 // Footer
 // ---------------------------------------------------------------------------
 class _Footer extends StatelessWidget {
-  const _Footer({required this.workspaceLabel, required this.recording});
+  const _Footer({
+    required this.workspaceLabel,
+    required this.recording,
+    this.workspaceMode = 'typewriter',
+    this.config = const {},
+  });
   final String workspaceLabel;
   final bool recording;
+  final String workspaceMode;
+  final Map<String, bool> config;
+
+  /// Creates the session on the backend when one is configured (in-memory
+  /// mode just opens the workspace), then opens it.
+  Future<void> _start(BuildContext context) async {
+    final router = GoRouter.of(context);
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final api = ProviderScope.containerOf(context, listen: false).read(octoNotesApiProvider);
+    var target = '/notes/session';
+    if (api != null) {
+      try {
+        final session = await api.createSession(workspaceMode: workspaceMode, config: config);
+        target = '/notes/session?id=${session.id}';
+      } on Object catch (e) {
+        messenger?.showSnackBar(SnackBar(content: Text('Could not start the session: $e')));
+        return;
+      }
+    }
+    navigator.pop();
+    router.go(target);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -545,11 +586,7 @@ class _Footer extends StatelessWidget {
           ),
           const SizedBox(width: CockpitSpacing.sm),
           FilledButton(
-            onPressed: () {
-              final router = GoRouter.of(context);
-              Navigator.of(context).pop();
-              router.go('/notes/session');
-            },
+            onPressed: () => _start(context),
             child: const Text('Start Session'),
           ),
         ],
