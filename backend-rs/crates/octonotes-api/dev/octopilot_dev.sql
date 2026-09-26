@@ -24,15 +24,15 @@ VALUES ('dev-user', 'dev@octonotes.local', 'Dev Student', 'Pro Monthly', 5000)
 ON CONFLICT (firebase_uid) DO NOTHING;
 
 -- Ledger, keys and settings, shaped like the octopilot-api models
--- (_backend_snapshot/models.py). The unique index on source_ref is what the
--- shared charging protocol relies on; production needs it added too.
+-- LIVE octopilot DB (checked 2026-09-26): ledger id has no default and
+-- source_ref is indexed but not unique (3 duplicates exist in production).
 CREATE TABLE IF NOT EXISTS credit_ledger (
-    id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    id                uuid PRIMARY KEY,   -- no default, like production
     user_id           uuid NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     credit_type       varchar(20) NOT NULL,
     entry_type        varchar(50) NOT NULL,
     amount            integer NOT NULL,
-    available_amount  integer NOT NULL DEFAULT 0,
+    available_amount  integer NOT NULL,
     expires_at        timestamptz,
     source_ref        varchar(255),
     reason            text,
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS credit_ledger (
     created_at        timestamptz NOT NULL DEFAULT now(),
     updated_at        timestamptz NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS ux_credit_ledger_source_ref ON credit_ledger (source_ref) WHERE source_ref IS NOT NULL;
+CREATE INDEX IF NOT EXISTS ix_credit_ledger_source_ref ON credit_ledger (source_ref);
 
 CREATE TABLE IF NOT EXISTS api_keys (
     id           serial PRIMARY KEY,

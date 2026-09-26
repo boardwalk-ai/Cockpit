@@ -50,5 +50,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- The shared charging protocol needs source_ref unique (every app relies on it):
 -- CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS ux_credit_ledger_source_ref
 --     ON credit_ledger (source_ref) WHERE source_ref IS NOT NULL;
--- Check first that no duplicates exist:
+-- Production already has 3 duplicate source_refs (2026-09-26): resolve them with
+-- the octopilot-api owners first. OctoNotes does not depend on this index (it
+-- checks under the user row lock); the index is extra safety.
+-- Check duplicates:
 --   SELECT source_ref, count(*) FROM credit_ledger WHERE source_ref IS NOT NULL GROUP BY 1 HAVING count(*) > 1;

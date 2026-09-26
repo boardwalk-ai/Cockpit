@@ -10,7 +10,8 @@
 //! 4. insert the `credit_ledger` row (`source_ref` = `{app}:{action}:{id}`,
 //!    unique) and decrement `users.octo_credits`; commit.
 //!
-//! Refunds are a positive entry with `source_ref = '{original}:refund'`.
+//! Refunds are a grant-like `usage_refund` entry with `source_ref = '{original}:refund'`.
+//! Matches the live schema and octopilot-api's `charge_octo` (checked 2026-09-26).
 //! ⚠ Verify the live post-migration `credit_ledger` columns before enabling in
 //! production (the repo only has the pre-migration snapshot).
 
@@ -122,13 +123,16 @@ impl Credits {
         if balance < amount {
             return Err(insufficient(amount, balance));
         }
+        // Live octo convention (octopilot-api `charge_octo`): usage_deduction
+        // rows carry a POSITIVE amount and available_amount 0; the balance
+        // itself is users.octo_credits. The id is app-generated (no default).
         sqlx::query(
-            "INSERT INTO credit_ledger (user_id, credit_type, entry_type, amount, available_amount, source_ref, reason, metadata_json) \
-             VALUES ($1, $2, 'usage_deduction', $3, 0, $4, $5, $6)",
+            "INSERT INTO credit_ledger (id, user_id, credit_type, entry_type, amount, available_amount, source_ref, reason, metadata_json) \
+             VALUES (gen_random_uuid(), $1, $2, 'usage_deduction', $3, 0, $4, $5, $6)",
         )
         .bind(user_id)
         .bind(&self.ledger_type)
-        .bind(-amount)
+        .bind(amount)
         .bind(source_ref)
         .bind(reason)
         .bind(metadata.to_string())
@@ -180,7 +184,7 @@ impl Credits {
                 balance: None,
             });
         };
-        let amount = -original.get::<i32, _>("amount");
+        let amount = original.get::<i32, _>("amount").abs();
         let refund_ref = format!("{original_ref}:refund");
         let done: Option<Uuid> =
             sqlx::query_scalar("SELECT id FROM credit_ledger WHERE source_ref = $1")
@@ -194,9 +198,11 @@ impl Credits {
                 balance: None,
             });
         }
+        // Recorded like a grant (octopilot-api never reverses a charge), so it
+        // is never counted as spending.
         sqlx::query(
-            "INSERT INTO credit_ledger (user_id, credit_type, entry_type, amount, available_amount, source_ref, reason) \
-             VALUES ($1, $2, 'usage_refund', $3, 0, $4, $5)",
+            "INSERT INTO credit_ledger (id, user_id, credit_type, entry_type, amount, available_amount, source_ref, reason) \
+             VALUES (gen_random_uuid(), $1, $2, 'usage_refund', $3, $3, $4, $5)",
         )
         .bind(user_id)
         .bind(&self.ledger_type)
