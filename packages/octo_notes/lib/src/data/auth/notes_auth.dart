@@ -12,6 +12,11 @@ abstract interface class NotesAuth {
 
   /// Emits whenever sign-in state changes (sign in, sign out, token restored).
   Stream<bool> authStateChanges();
+
+  /// Starts the host's sign-in (Google popup on web).
+  Future<void> signIn();
+
+  Future<void> signOut();
 }
 
 /// Default when the host provides no auth: always signed out. Against a dev
@@ -27,4 +32,10 @@ class SignedOutNotesAuth implements NotesAuth {
 
   @override
   Stream<bool> authStateChanges() => Stream<bool>.value(false);
+
+  @override
+  Future<void> signIn() => Future.error(UnsupportedError('Sign-in is not configured in this build'));
+
+  @override
+  Future<void> signOut() async {}
 }

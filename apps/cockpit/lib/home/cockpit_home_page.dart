@@ -2,10 +2,28 @@ import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../modules/registered_modules.dart';
 import '../widgets/account_button.dart';
 import '../widgets/responsive.dart';
+
+/// Where each app lives when it is hosted on its own subdomain
+/// (`--dart-define=OCTONOTES_URL=https://notes.octopilothub.com` …). Unset =
+/// open the module inside this app (local dev).
+const _appUrls = <String, String>{
+  'octo_notes': String.fromEnvironment('OCTONOTES_URL'),
+  'study_studio': String.fromEnvironment('STUDY_STUDIO_URL'),
+};
+
+void _open(BuildContext context, String moduleId, String rootPath) {
+  final url = _appUrls[moduleId] ?? '';
+  if (url.isEmpty) {
+    context.go(rootPath);
+  } else {
+    launchUrl(Uri.parse(url), webOnlyWindowName: '_self');
+  }
+}
 
 /// Cockpit Home — the super-app launcher. One tile per active module.
 class CockpitHomePage extends ConsumerWidget {
@@ -69,7 +87,7 @@ class CockpitHomePage extends ConsumerWidget {
                         itemBuilder: (context, index) {
                           final m = modules[index];
                           return CockpitCard(
-                            onTap: () => context.go(m.rootPath),
+                            onTap: () => _open(context, m.id, m.rootPath),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [

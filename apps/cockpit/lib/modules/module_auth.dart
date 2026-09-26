@@ -22,4 +22,10 @@ class _SharedNotesAuth implements NotesAuth {
 
   @override
   Stream<bool> authStateChanges() => _auth.authStateChanges();
+
+  @override
+  Future<void> signIn() => _auth.signIn();
+
+  @override
+  Future<void> signOut() => _auth.signOut();
 }

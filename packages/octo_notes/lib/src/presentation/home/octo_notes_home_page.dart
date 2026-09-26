@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/account_providers.dart';
 import '../../application/session_providers.dart';
+import '../../data/auth/notes_auth.dart';
 import '../../domain/account.dart';
 import '../../domain/notes_session.dart';
 import '../../theme/octo_notes_theme.dart';
@@ -187,6 +188,16 @@ class _AccountPill extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final auth = ref.watch(notesAuthProvider);
+    final signedIn = ref.watch(notesAuthStateProvider).valueOrNull ?? auth.isSignedIn;
+    // A host with real sign-in (not the in-memory default) and nobody signed in.
+    if (!signedIn && auth is! SignedOutNotesAuth) {
+      return OutlinedButton.icon(
+        onPressed: () => _signIn(context, auth),
+        icon: const _GoogleMark(),
+        label: const Text('Sign in with Google'),
+      );
+    }
     final me = ref.watch(notesMeProvider);
 
     return me.when(
@@ -222,17 +233,27 @@ class _AccountPill extends ConsumerWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
+class _Avatar extends ConsumerWidget {
   const _Avatar({required this.account});
 
   final NotesAccount account;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final photo = account.photoUrl;
-    return Tooltip(
-      message: account.email ?? account.displayName,
+    final auth = ref.watch(notesAuthProvider);
+    return PopupMenuButton<String>(
+      tooltip: account.email ?? account.displayName,
+      position: PopupMenuPosition.under,
+      enabled: auth is! SignedOutNotesAuth,
+      onSelected: (v) async {
+        if (v == 'signOut') await auth.signOut();
+      },
+      itemBuilder: (_) => [
+        PopupMenuItem<String>(enabled: false, child: Text(account.email ?? account.displayName)),
+        const PopupMenuItem<String>(value: 'signOut', child: Text('Sign out')),
+      ],
       child: CircleAvatar(
         radius: 16,
         backgroundColor: scheme.surfaceContainerHighest,
@@ -242,6 +263,30 @@ class _Avatar extends StatelessWidget {
           style: Theme.of(context).textTheme.labelLarge,
         ),
       ),
+    );
+  }
+}
+
+Future<void> _signIn(BuildContext context, NotesAuth auth) async {
+  final messenger = ScaffoldMessenger.maybeOf(context);
+  try {
+    await auth.signIn();
+  } on Object catch (e) {
+    messenger?.showSnackBar(SnackBar(content: Text('Sign-in failed: $e')));
+  }
+}
+
+/// The Google "G" in its brand colours, drawn with text (no asset).
+class _GoogleMark extends StatelessWidget {
+  const _GoogleMark();
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      shaderCallback: (r) => const SweepGradient(
+        colors: [Color(0xFF4285F4), Color(0xFF34A853), Color(0xFFFBBC05), Color(0xFFEA4335), Color(0xFF4285F4)],
+      ).createShader(r),
+      child: const Text('G', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
     );
   }
 }
