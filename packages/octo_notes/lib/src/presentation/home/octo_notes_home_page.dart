@@ -1,6 +1,10 @@
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+
+import '../../application/account_providers.dart';
+import '../../domain/account.dart';
 
 import '../../theme/octo_notes_theme.dart';
 import '../new_session/new_session_dialog.dart';
@@ -136,7 +140,17 @@ class _HeaderBar extends StatelessWidget {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [Flexible(child: title), newSession],
+            children: [
+              Flexible(child: title),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  newSession,
+                  const SizedBox(width: CockpitSpacing.md),
+                  const _AccountPill(),
+                ],
+              ),
+            ],
           ),
           const SizedBox(height: CockpitSpacing.lg),
           const _SearchField(),
@@ -155,9 +169,91 @@ class _HeaderBar extends StatelessWidget {
         const _DevicesStatus(),
         const SizedBox(width: CockpitSpacing.lg),
         newSession,
+        const SizedBox(width: CockpitSpacing.lg),
+        const _AccountPill(),
       ],
     );
   }
+}
+
+/// OctoCredits balance + avatar (`GET /v1/me`). One central balance shared by
+/// OctoNotes, Study Studio and OctopilotWeb. Borderless: icon + number +
+/// initial, no outlined chip.
+class _AccountPill extends ConsumerWidget {
+  const _AccountPill();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final me = ref.watch(notesMeProvider);
+
+    return me.when(
+      loading: () => const SizedBox(width: 24, height: 24),
+      error: (_, _) => Tooltip(
+        message: 'Account unavailable',
+        child: Icon(Icons.cloud_off_rounded, size: 20, color: scheme.onSurfaceVariant),
+      ),
+      data: (account) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (account.octoCredits != null) ...[
+            Tooltip(
+              message: 'OctoCredits',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.bolt_rounded, size: 18, color: scheme.onSurfaceVariant),
+                  const SizedBox(width: CockpitSpacing.xs),
+                  Text(
+                    _formatCredits(account.octoCredits!),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: CockpitSpacing.md),
+          ],
+          _Avatar(account: account),
+        ],
+      ),
+    );
+  }
+}
+
+class _Avatar extends StatelessWidget {
+  const _Avatar({required this.account});
+
+  final NotesAccount account;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final photo = account.photoUrl;
+    return Tooltip(
+      message: account.email ?? account.displayName,
+      child: CircleAvatar(
+        radius: 16,
+        backgroundColor: scheme.surfaceContainerHighest,
+        foregroundImage: photo == null ? null : NetworkImage(photo),
+        child: Text(
+          account.initial,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+      ),
+    );
+  }
+}
+
+/// 5000 → "5,000".
+String _formatCredits(int value) {
+  final digits = value.abs().toString();
+  final out = StringBuffer(value < 0 ? '-' : '');
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) out.write(',');
+    out.write(digits[i]);
+  }
+  return out.toString();
 }
 
 class _SearchField extends StatelessWidget {

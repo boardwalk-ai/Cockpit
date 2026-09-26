@@ -1035,12 +1035,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "octo-common"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "jsonwebtoken",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "octonotes-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chrono",
+ "http-body-util",
+ "octo-common",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
 name = "octopilot-rs"
 version = "0.1.0"
 dependencies = [
  "axum",
  "chrono",
- "jsonwebtoken",
+ "octo-common",
  "reqwest",
  "serde",
  "serde_json",

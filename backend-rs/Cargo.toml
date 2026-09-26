@@ -1,10 +1,10 @@
-[package]
-name = "octopilot-rs"
-version = "0.1.0"
-edition = "2021"
-description = "Octopilot Rust backend — stateless tools, source search, outline (ported from the FastAPI side). Firebase-auth, no credits yet."
+[workspace]
+resolver = "2"
+members = ["crates/octo-common", "crates/octopilot-rs", "crates/octonotes-api"]
 
-[dependencies]
+# Versions shared by every crate, so Doc Oct (octopilot-rs) and OctoNotes
+# (octonotes-api) always build against the same auth / DB / HTTP stack.
+[workspace.dependencies]
 axum = "0.7"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
@@ -15,9 +15,10 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 jsonwebtoken = "9"
 urlencoding = "2"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json", "macros", "migrate"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+octo-common = { path = "crates/octo-common" }
 
 [profile.release]
 opt-level = 2

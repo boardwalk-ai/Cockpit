@@ -1,42 +1,58 @@
-# octopilot-rs
+# backend-rs — Octopilot Rust services
 
-The Octopilot backend, in Rust (axum). A separate service from the FastAPI
-`Backend/` — it takes over the **stateless tools**, **source search**, and
-**outline** work, reusing the same Firebase auth. No credits are charged yet.
+A Cargo workspace. Each app has its own binary; auth, errors, identity and DB
+helpers are written once in `octo-common`.
 
-## Run
+| Crate | Kind | Serves | Port |
+|---|---|---|---|
+| `crates/octo-common` | library | Firebase auth (`AuthedUser` extractor), `ApiError`, identity + OctoCredits from the shared `users` table, Postgres helpers | — |
+| `crates/octopilot-rs` | binary | Doc Oct (octopilotai.app): tools, sources, OctoBot, outline, essays | 8787 |
+| `crates/octonotes-api` | binary | OctoNotes: owns `notes_db`, reads the octopilot + Study Studio DBs | 8790 |
 
 ```bash
-cd backend-rs
-cp .env.example .env   # optional; sensible defaults are built in
-cargo run
+cargo build --workspace
+cargo run -p octopilot-rs      # Doc Oct API
+cargo run -p octonotes-api     # OctoNotes API
 ```
 
-Listens on `http://0.0.0.0:8787`.
+## octonotes-api (local)
 
-## Endpoints (v1)
+1. Postgres: the native Postgres 17 (`createdb octonotes`), or
+   `docker compose -f docker-compose.dev.yml up -d` (pgvector on 5435).
+2. Local stand-in for the shared users table (dev only):
+   `createdb octopilot_dev && psql -d octopilot_dev -f crates/octonotes-api/dev/octopilot_dev.sql`
+3. Copy `crates/octonotes-api/.env.example` values into your environment, then
+   `FIREBASE_PROJECT_ID= cargo run -p octonotes-api` (empty project = dev auth,
+   `X-User-Id` header trusted; default user `dev-user`).
 
-| Method | Path              | Notes                                             |
-|--------|-------------------|---------------------------------------------------|
-| GET    | `/health`         | liveness                                          |
-| GET    | `/v1/dictionary?word=` | dictionaryapi.dev → `DictResult`             |
-| GET    | `/v1/thesaurus?word=`  | datamuse → `ThesResult`                      |
-| POST   | `/v1/paraphrase`  | `{text}` → `{text}` (undetectable.ai; passthrough without a key) |
-| GET    | `/v1/scrape?url=` | upstream page scrape → `Source`                   |
-| POST   | `/v1/sources/search` | `{topic, outlines?, keyword?, targetCount?}` → `Source[]` (OpenRouter + scrape; 503 without `OPENROUTER_API_KEY`) |
-| GET    | `/v1/me`          | Firebase-authed whoami                             |
+`notes_db` migrations live in `crates/octonotes-api/migrations/` and run
+automatically at startup (`sqlx migrate`). This service never runs migrations
+on the octopilot or Study Studio databases.
 
-JSON shapes match the Flutter `DictResult` / `ThesResult` models, so the client
-deserializes them directly.
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/health` | liveness |
+| GET | `/ready` | pings notes_db + configured shared DBs; 503 if any is down |
+| GET | `/v1/me` | token identity + central OctoCredits balance; `registered:false` if no octopilot account |
+
+## octopilot-rs
+
+Endpoints are listed in `crates/octopilot-rs/src/main.rs`; env in
+`crates/octopilot-rs/.env.example`.
+
+**Deploy change:** the server build now runs from the workspace root, so the
+tarball must include the workspace, not just one crate:
+
+```bash
+tar czf backend-rs.tgz --force-local Cargo.toml Cargo.lock crates
+# on the server, in /opt/octopilot-rs:
+docker run --rm -v /opt/octopilot-rs:/app -v octo-cargo:/usr/local/cargo/registry \
+  -w /app rust:1-slim-bookworm cargo build --release -p octopilot-rs
+# binary path is unchanged: target/release/octopilot-rs
+```
 
 ## Auth
 
 Send a Firebase ID token as `Authorization: Bearer <token>` — verified against
-Google's public keys for project `FIREBASE_PROJECT_ID` (RS256, `aud`/`iss`), the
-same way the FastAPI does. With `FIREBASE_PROJECT_ID` empty, auth is disabled and
-the `X-User-Id` header is trusted (local dev). The free tools are public.
-
-## Next
-
-- Source search + scrape (`/v1/sources/search`, streaming) — from `searchAndScrape`.
-- Outline / assignment analysis (OpenRouter).
+Google's public keys for `FIREBASE_PROJECT_ID` (RS256, `aud`/`iss`). With the
+project empty, auth is disabled and `X-User-Id` is trusted (local dev only).

@@ -24,14 +24,13 @@ use axum::{Json, Router};
 use serde_json::json;
 use sqlx::PgPool;
 use tokio::net::TcpListener;
-use tokio::sync::RwLock;
 use tower_http::cors::CorsLayer;
 
 #[derive(Clone)]
 pub struct AppState {
     pub http: reqwest::Client,
     pub config: Arc<config::Config>,
-    pub jwks: auth::SharedJwks,
+    pub firebase: octo_common::FirebaseAuth,
     pub db: PgPool,
 }
 
@@ -52,14 +51,15 @@ async fn main() {
         .expect("connect to Postgres");
     tracing::info!("connected to Postgres");
 
+    let http = reqwest::Client::builder()
+        .user_agent("octopilot-rs/0.1")
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("http client");
     let state = AppState {
-        http: reqwest::Client::builder()
-            .user_agent("octopilot-rs/0.1")
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .expect("http client"),
+        firebase: octo_common::FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
+        http,
         config: Arc::new(config),
-        jwks: Arc::new(RwLock::new(auth::JwksCache::default())),
         db: pool,
     };
 
@@ -83,6 +83,12 @@ async fn main() {
     let listener = TcpListener::bind(addr).await.expect("bind");
     tracing::info!("octopilot-rs listening on http://0.0.0.0:{port}");
     axum::serve(listener, app).await.expect("serve");
+}
+
+impl octo_common::HasFirebase for AppState {
+    fn firebase(&self) -> &octo_common::FirebaseAuth {
+        &self.firebase
+    }
 }
 
 async fn health() -> Json<serde_json::Value> {

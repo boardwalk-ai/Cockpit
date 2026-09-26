@@ -1,0 +1,43 @@
+# Local dependencies for octonotes-api (for machines with Docker; the native
+# Postgres 17 works too for Phase 0). Everything binds to loopback only.
+#   docker compose -f docker-compose.dev.yml up -d
+services:
+  octonotes-db:
+    image: pgvector/pgvector:pg17
+    container_name: octonotes-db
+    environment:
+      POSTGRES_DB: octonotes
+      POSTGRES_USER: octonotes
+      POSTGRES_PASSWORD: octonotes
+    ports:
+      - "127.0.0.1:5435:5432"
+    volumes:
+      - octonotes-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U octonotes -d octonotes"]
+      interval: 5s
+      retries: 10
+
+  # Live fan-out + job wake-ups (from Phase 2).
+  octonotes-redis:
+    image: redis:7-alpine
+    container_name: octonotes-redis
+    ports:
+      - "127.0.0.1:6380:6379"
+
+  # Audio chunks, materials, exports (from Phase 2).
+  octonotes-minio:
+    image: minio/minio:latest
+    container_name: octonotes-minio
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: octonotes
+      MINIO_ROOT_PASSWORD: octonotes-dev-secret
+    ports:
+      - "127.0.0.1:9010:9000"
+    volumes:
+      - octonotes-minio:/data
+
+volumes:
+  octonotes-pg:
+  octonotes-minio:
