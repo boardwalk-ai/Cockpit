@@ -127,8 +127,11 @@ pub async fn job_embed_session(st: AppState, job: Job) -> JobResult {
     let Some(user) = user else { return Ok(()) };
     let docs = collect(&st, sid).await.map_err(|e| e.to_string())?;
 
-    let existing: HashMap<(String, String), String> = sqlx::query(
-        "SELECT source_kind, source_id, content_hash FROM note_chunks WHERE session_id = $1",
+    // Keyed by source; value = (content hash, embedder). A source is
+    // re-embedded when its text changed OR it was embedded by another model
+    // (e.g. the offline embedder before the BGE-m3 service came back).
+    let existing: HashMap<(String, String), (String, String)> = sqlx::query(
+        "SELECT source_kind, source_id, content_hash, embedder FROM note_chunks WHERE session_id = $1",
     )
     .bind(sid)
     .fetch_all(&st.notes)
@@ -137,18 +140,18 @@ pub async fn job_embed_session(st: AppState, job: Job) -> JobResult {
     .into_iter()
     .map(|r| {
         (
-            (
-                r.get::<String, _>("source_kind"),
-                r.get::<String, _>("source_id"),
-            ),
-            r.get::<String, _>("content_hash"),
+            (r.get::<String, _>("source_kind"), r.get::<String, _>("source_id")),
+            (r.get::<String, _>("content_hash"), r.get::<String, _>("embedder")),
         )
     })
     .collect();
     let embedder = Embedder::from_state(&st);
     let changed: Vec<&Doc> = docs
         .iter()
-        .filter(|d| existing.get(&(d.kind.to_string(), d.id.clone())) != Some(&hash(&d.content)))
+        .filter(|d| {
+            existing.get(&(d.kind.to_string(), d.id.clone()))
+                != Some(&(hash(&d.content), embedder.name().to_string()))
+        })
         .collect();
     let vectors = embedder
         .embed(

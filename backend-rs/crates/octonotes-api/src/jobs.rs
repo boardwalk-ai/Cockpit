@@ -187,6 +187,14 @@ pub fn spawn(st: AppState, n: usize) {
 
 /// Periodic work: requeue stuck jobs, daily purge, outbox publishing.
 async fn scheduler(st: AppState) {
+    // After an embedder change (offline ↔ BGE-m3), re-index affected sessions.
+    let current = crate::retrieval::Embedder::from_state(&st).name();
+    let _ = sqlx::query(
+        "INSERT INTO jobs (user_id, kind, payload, dedupe_key)          SELECT DISTINCT ON (session_id) user_id, 'embed.session', json_build_object('sessionId', session_id),                 'reembed:' || session_id || ':' || $1          FROM note_chunks WHERE embedder <> $1          ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING",
+    )
+    .bind(current)
+    .execute(&st.notes)
+    .await;
     let mut tick = tokio::time::interval(Duration::from_secs(30));
     loop {
         tick.tick().await;
