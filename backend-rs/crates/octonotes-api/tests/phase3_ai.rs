@@ -280,7 +280,7 @@ async fn materials_research_and_relevant_data() {
     let rid = result["researchId"].as_str().unwrap();
     let (s, b) = t.post(&format!("/v1/research/{rid}/apply"), "alice", json!({ "mode": "insertBelow" })).await;
     assert_eq!(s, StatusCode::CREATED);
-    assert!(b["aiSources"].as_array().unwrap().len() >= 1);
+    assert!(!b["aiSources"].as_array().unwrap().is_empty());
     let (s, _) = t.post(&format!("/v1/research/{rid}/save"), "alice", json!({})).await;
     assert_eq!(s, StatusCode::NO_CONTENT);
     let (_, list) = t.get(&format!("/v1/sessions/{sid}/research"), "alice").await;

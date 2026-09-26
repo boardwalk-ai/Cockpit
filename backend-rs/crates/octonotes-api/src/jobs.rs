@@ -42,6 +42,17 @@ pub async fn enqueue(pool: &PgPool, user_id: Option<Uuid>, kind: &str, payload: 
     .await
 }
 
+/// A job that runs `delay_secs` from now (polling follow-ups).
+pub async fn enqueue_at(pool: &PgPool, user_id: Option<Uuid>, kind: &str, payload: Value, delay_secs: i64) -> Result<Uuid, sqlx::Error> {
+    sqlx::query_scalar("INSERT INTO jobs (user_id, kind, payload, run_after) VALUES ($1, $2, $3, now() + make_interval(secs => $4)) RETURNING id")
+        .bind(user_id)
+        .bind(kind)
+        .bind(payload)
+        .bind(delay_secs as f64)
+        .fetch_one(pool)
+        .await
+}
+
 /// Same, inside an open transaction (job appears only if the tx commits).
 pub async fn enqueue_tx(conn: &mut sqlx::PgConnection, user_id: Option<Uuid>, kind: &str, payload: Value, dedupe_key: Option<&str>) -> Result<Option<Uuid>, sqlx::Error> {
     sqlx::query_scalar(
@@ -66,6 +77,10 @@ fn handler(kind: &str) -> Option<Handler> {
         "material.process" => |st, job| Box::pin(crate::routes::materials::job_process(st, job)),
         "embed.session" => |st, job| Box::pin(crate::retrieval::job_embed_session(st, job)),
         "system.meter" => |st, job| Box::pin(crate::pricing::job_meter(st, job)),
+        "review.prepare" => |st, job| Box::pin(crate::routes::review::job_prepare(st, job)),
+        "recommendations.build" => |st, job| Box::pin(crate::routes::recommendations::job_build(st, job)),
+        "conversion.follow" => |st, job| Box::pin(crate::routes::conversions::job_follow(st, job)),
+        "export.render" => |st, job| Box::pin(crate::routes::final_notes::job_export(st, job)),
         // PHASE-HANDLERS
         _ => return None,
     })

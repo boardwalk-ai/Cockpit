@@ -62,6 +62,6 @@ pub async fn home(State(st): State<AppState>, caller: Caller) -> Result<Json<Hom
     .bind(caller.user_id)
     .fetch_one(&st.notes)
     .await?;
-    let recommended = Value::Array(Vec::new()); // HOME-RECOMMENDED
+    let recommended = crate::routes::recommendations::home_items(&st, &caller).await?;
     Ok(Json(Home { live, continue_, recent, processing, recommended }))
 }

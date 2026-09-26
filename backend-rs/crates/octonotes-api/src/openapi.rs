@@ -30,6 +30,11 @@ use crate::routes::*;
         research::run, research::apply, research::save, research::list,
         organize::preview, organize::apply, organize::undo, organize::dismiss,
         ink_ai::recognize, ink_ai::review,
+        review::prepare, review::get, review::latest, review::decide, review::save_draft,
+        final_notes::summary, final_notes::finalize, final_notes::get, final_notes::list, final_notes::export, final_notes::export_status,
+        recommendations::get, recommendations::select,
+        conversions::create, conversions::get, conversions::update, conversions::generate, conversions::progress, conversions::links,
+        deck::search,
         // PHASE-PATHS
     ),
     tags(

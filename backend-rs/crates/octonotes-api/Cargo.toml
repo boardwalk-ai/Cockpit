@@ -31,6 +31,8 @@ pdf-extract.workspace = true
 zip.workspace = true
 quick-xml.workspace = true
 tiny-skia.workspace = true
+genpdf.workspace = true
+docx-rs.workspace = true
 tower = { version = "0.5", features = ["util"] }
 
 [dev-dependencies]

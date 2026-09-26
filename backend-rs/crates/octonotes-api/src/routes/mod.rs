@@ -14,4 +14,8 @@ pub mod ink_ai;
 pub mod materials;
 pub mod organize;
 pub mod research;
+pub mod conversions;
+pub mod final_notes;
+pub mod recommendations;
+pub mod review;
 // PHASE-MODULES

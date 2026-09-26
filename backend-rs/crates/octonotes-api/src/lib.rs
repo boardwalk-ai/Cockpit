@@ -1,4 +1,6 @@
 pub mod access;
+pub mod export;
+pub mod studio_client;
 pub mod ai;
 pub mod pricing;
 pub mod retrieval;
@@ -206,6 +208,26 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/organize/:id/dismiss", post(organize::dismiss))
         .route("/v1/ink/pages/:id/recognize", post(ink_ai::recognize))
         .route("/v1/ink/recognitions/:id", patch(ink_ai::review))
+        // Review, finalize, Study Studio, The Deck (Phase 4)
+        .route("/v1/sessions/:id/review", get(review::latest))
+        .route("/v1/sessions/:id/review/prepare", post(review::prepare))
+        .route("/v1/reviews/:id", get(review::get))
+        .route("/v1/reviews/:id/decisions", post(review::decide))
+        .route("/v1/reviews/:id/draft", axum::routing::put(review::save_draft))
+        .route("/v1/sessions/:id/finalize/summary", get(final_notes::summary))
+        .route("/v1/sessions/:id/finalize", post(final_notes::finalize))
+        .route("/v1/final-notes", get(final_notes::list))
+        .route("/v1/final-notes/:id", get(final_notes::get))
+        .route("/v1/final-notes/:id/export", post(final_notes::export))
+        .route("/v1/exports/:id", get(final_notes::export_status))
+        .route("/v1/final-notes/:id/recommendations", get(recommendations::get))
+        .route("/v1/final-notes/:id/recommendations/selection", axum::routing::put(recommendations::select))
+        .route("/v1/conversions", post(conversions::create))
+        .route("/v1/conversions/:id", get(conversions::get).patch(conversions::update))
+        .route("/v1/conversions/:id/generate", post(conversions::generate))
+        .route("/v1/conversions/:id/progress", get(conversions::progress))
+        .route("/v1/links", get(conversions::links))
+        .route("/v1/deck/search", post(deck::search))
         // PHASE-ROUTES
         .layer(DefaultBodyLimit::max(52 * 1024 * 1024))
         .layer(cors(&state.config))
