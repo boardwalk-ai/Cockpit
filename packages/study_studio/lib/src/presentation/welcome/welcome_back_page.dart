@@ -43,109 +43,138 @@ void _soon(BuildContext context, String label) {
 
 class _WelcomeBody extends StatelessWidget {
   const _WelcomeBody({required this.data});
-
   final WelcomeMockData data;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final base = '/study/${data.studioId}';
     final teach = '$base/teach/${data.topicId}';
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: const Alignment(0, -0.35),
-          colors: [
-            Theme.of(context).colorScheme.primary.withValues(alpha: 0.055),
-            Theme.of(context).colorScheme.surface,
-          ],
-        ),
+    final tools = <(IconData, String, VoidCallback)>[
+      (Icons.school, 'Teach Me', () => context.go(teach)),
+      (
+        Icons.quiz,
+        'Quiz Me',
+        () => context.go('$base/quiz?topicId=${data.topicId}'),
       ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(
-          CockpitSpacing.md,
-          CockpitSpacing.sm,
-          CockpitSpacing.md,
-          CockpitSpacing.sm,
-        ),
-        child: Column(
+      (
+        Icons.bolt,
+        'Lightning Recall',
+        () => _soon(context, 'Lightning Recall'),
+      ),
+      (
+        Icons.style,
+        'Flashcards',
+        () => context.go('$base/flashcards?topicId=${data.topicId}'),
+      ),
+      (
+        Icons.track_changes,
+        'Scenario Mode',
+        () => _soon(context, 'Scenario Mode'),
+      ),
+      (Icons.hub, 'Knowledge Graph', () => _soon(context, 'Knowledge Graph')),
+      (Icons.chat_bubble_outline, 'Ask AI', () => _soon(context, 'Ask AI')),
+      (
+        Icons.event_note,
+        'AI Study Plan',
+        () => _soon(context, 'AI Study Plan'),
+      ),
+      (Icons.insights, 'Study Analytics', () => context.go('$base/analytics')),
+    ];
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Welcome Back', style: theme.textTheme.headlineSmall),
+        Wrap(
+          spacing: 8,
           children: [
-            _WelcomeHeader(
-              data: data,
-              onNotifications: () => _soon(context, 'Notifications'),
-              onCompanion: () => _soon(context, 'AI Companion'),
+            TextButton.icon(
+              onPressed: () => _soon(context, 'Notifications'),
+              icon: const Icon(Icons.notifications_outlined),
+              label: const Text('Notifications'),
             ),
-            const SizedBox(height: CockpitSpacing.sm),
-            _BriefingCard(data: data, onContinue: () => context.go(teach)),
-            const SizedBox(height: CockpitSpacing.sm),
-            _TodaysPlanCard(data: data),
-            const SizedBox(height: CockpitSpacing.sm),
-            _StudioGlanceCard(
-              onSeeAll: () => context.go(base),
-              onTeach: () => context.go(teach),
-              onQuiz: () => context.go('$base/quiz?topicId=${data.topicId}'),
-              onLightning: () => _soon(context, 'Lightning Recall'),
-              onFlashcards: () =>
-                  context.go('$base/flashcards?topicId=${data.topicId}'),
-              onScenario: () => _soon(context, 'Scenario Mode'),
-              onKnowledge: () => _soon(context, 'Knowledge Graph'),
-              onAskAi: () => _soon(context, 'Ask AI'),
-              onStudyPlan: () => _soon(context, 'AI Study Plan'),
-              onAnalytics: () => context.go('$base/analytics'),
-            ),
-            const SizedBox(height: CockpitSpacing.sm),
-            const SizedBox(
-              height: 105,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(flex: 11, child: _LearningMilestonesCard()),
-                  SizedBox(width: CockpitSpacing.sm),
-                  Expanded(flex: 9, child: _AiNoticedCard()),
-                ],
-              ),
-            ),
-            const SizedBox(height: CockpitSpacing.sm),
-            const SizedBox(
-              height: 110,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Expanded(flex: 11, child: _KnowledgeEvolutionCard()),
-                  SizedBox(width: CockpitSpacing.sm),
-                  Expanded(flex: 9, child: _WhatsNewCard()),
-                ],
-              ),
-            ),
-            const SizedBox(height: CockpitSpacing.sm),
-            SizedBox(
-              height: 37,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _WelcomeActionButton(
-                      title: 'Continue Learning',
-                      subtitle: "Resume today's AI-planned session",
-                      icon: Icons.play_arrow_rounded,
-                      filled: true,
-                      onTap: () => context.go(teach),
-                    ),
-                  ),
-                  const SizedBox(width: CockpitSpacing.sm),
-                  Expanded(
-                    child: _WelcomeActionButton(
-                      title: 'Explore Study Studio',
-                      subtitle: 'Browse tools and topics freely',
-                      icon: Icons.grid_view_rounded,
-                      onTap: () => context.go(base),
-                    ),
-                  ),
-                ],
-              ),
+            TextButton.icon(
+              onPressed: () => _soon(context, 'AI Companion'),
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('AI Companion'),
             ),
           ],
         ),
-      ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text("Today's Briefing", style: theme.textTheme.titleLarge),
+                const SizedBox(height: 12),
+                Text(
+                  'Your next session is ${data.sessionMinutes} minutes. Keep your ${data.streak}-day streak going.',
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 20,
+                  runSpacing: 12,
+                  children: [
+                    StatTile(value: '${data.mastery}%', label: 'Mastery'),
+                    StatTile(value: '${data.retention}%', label: 'Retention'),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: () => context.go(teach),
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Continue Learning'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text("Here's today's plan", style: theme.textTheme.titleLarge),
+        const ListTile(
+          leading: Icon(Icons.looks_one_outlined),
+          title: Text('Begin with Routing'),
+        ),
+        const ListTile(
+          leading: Icon(Icons.looks_two_outlined),
+          title: Text('Review WAN Design'),
+        ),
+        const ListTile(
+          leading: Icon(Icons.looks_3_outlined),
+          title: Text('Finish with Scenario Mode'),
+        ),
+        Text('Estimated mastery after session: ${data.estimatedMastery}%'),
+        const SizedBox(height: 24),
+        Text(
+          'Your Study Studio at a Glance',
+          style: theme.textTheme.titleLarge,
+        ),
+        for (final tool in tools)
+          Card(
+            child: ListTile(
+              minTileHeight: 56,
+              leading: Icon(tool.$1),
+              title: Text(tool.$2),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: tool.$3,
+            ),
+          ),
+        const SizedBox(height: 16),
+        const _LearningMilestonesCard(desktop: true),
+        const SizedBox(height: 16),
+        const _AiNoticedCard(desktop: true),
+        const SizedBox(height: 16),
+        const _KnowledgeEvolutionCard(desktop: true),
+        const SizedBox(height: 16),
+        const _WhatsNewCard(desktop: true),
+        const SizedBox(height: 16),
+        OutlinedButton.icon(
+          onPressed: () => context.go(base),
+          icon: const Icon(Icons.grid_view),
+          label: const Text('Explore Study Studio'),
+        ),
+      ],
     );
   }
 }
@@ -1315,10 +1344,12 @@ class _KnowledgeEvolutionCard extends StatelessWidget {
               height: 90,
               child: Row(
                 children: [
-                  const _GraphCount(
-                    label: 'Before',
-                    value: '126',
-                    desktop: true,
+                  const Flexible(
+                    child: _GraphCount(
+                      label: 'Before',
+                      value: '126',
+                      desktop: true,
+                    ),
                   ),
                   Expanded(
                     child: CustomPaint(
@@ -1344,7 +1375,13 @@ class _KnowledgeEvolutionCard extends StatelessWidget {
                       child: const SizedBox.expand(),
                     ),
                   ),
-                  const _GraphCount(label: 'Now', value: '148', desktop: true),
+                  const Flexible(
+                    child: _GraphCount(
+                      label: 'Now',
+                      value: '148',
+                      desktop: true,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1854,23 +1891,25 @@ class _PlanStep extends StatelessWidget {
           ),
         ),
         const SizedBox(width: CockpitSpacing.sm),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _WelcomeTinyText(action, desktop: desktop),
-            Text(
-              topic,
-              style:
-                  (desktop
-                          ? Theme.of(context).textTheme.bodyMedium
-                          : Theme.of(context).textTheme.labelMedium)
-                      ?.copyWith(
-                        fontSize: desktop ? null : 7,
-                        fontWeight: FontWeight.w700,
-                        height: desktop ? null : 1,
-                      ),
-            ),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _WelcomeTinyText(action, desktop: desktop),
+              Text(
+                topic,
+                style:
+                    (desktop
+                            ? Theme.of(context).textTheme.bodyMedium
+                            : Theme.of(context).textTheme.labelMedium)
+                        ?.copyWith(
+                          fontSize: desktop ? null : 7,
+                          fontWeight: FontWeight.w700,
+                          height: desktop ? null : 1,
+                        ),
+              ),
+            ],
+          ),
         ),
       ],
     );

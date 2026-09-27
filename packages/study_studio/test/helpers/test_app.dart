@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:study_studio/src/application/providers.dart';
+import 'package:study_studio/src/data/ai/ai_service.dart';
 import 'package:study_studio/src/domain/entities/studio.dart';
 
 import 'fake_studio_repository.dart';
@@ -14,6 +15,7 @@ Future<void> pumpTestApp(
   Object? error,
   Duration delay = Duration.zero,
   bool signedIn = true,
+  AiService? aiService,
 }) async {
   final repository = FakeStudioRepository(
     studios: studios,
@@ -24,12 +26,9 @@ Future<void> pumpTestApp(
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
+        if (aiService != null) aiServiceProvider.overrideWithValue(aiService),
         studioRepositoryProvider.overrideWithValue(repository),
-        // Study Home gates on auth: signed out shows the Sign-in screen, so
-        // sign in by default to exercise the studio-list states.
-        authStateProvider.overrideWith(
-          (ref) => Stream<bool>.value(signedIn),
-        ),
+        authStateProvider.overrideWith((ref) => Stream<bool>.value(signedIn)),
       ],
       child: MaterialApp(
         theme: CockpitTheme.build(

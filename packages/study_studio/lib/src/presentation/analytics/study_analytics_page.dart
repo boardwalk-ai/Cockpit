@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/mock/mock_data.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 16 — Study Analytics.
@@ -161,25 +162,69 @@ class _StudyAnalyticsPageState extends State<StudyAnalyticsPage> {
                       footer,
                     ],
                   )
-                : Column(
-                    children: [
-                      header,
-                      gap,
-                      selector,
-                      gap,
-                      mastery,
-                      gap,
-                      activityTrends,
-                      gap,
-                      retentionTime,
-                      gap,
-                      achievements,
-                      gap,
-                      insightsReadiness,
-                      gap,
-                      footer,
-                    ],
-                  );
+                : (constraints.maxWidth >= 375
+                      ? Column(
+                          children: [
+                            header,
+                            gap,
+                            selector,
+                            gap,
+                            mastery,
+                            gap,
+                            activityTrends,
+                            gap,
+                            retentionTime,
+                            gap,
+                            achievements,
+                            gap,
+                            insightsReadiness,
+                            gap,
+                            footer,
+                          ],
+                        )
+                      : Column(
+                          children: [
+                            header,
+                            gap,
+                            selector,
+                            gap,
+                            mastery,
+                            gap,
+                            SizedBox(
+                              height: 330,
+                              child: _StudyActivityCard(data: data),
+                            ),
+                            gap,
+                            SizedBox(
+                              height: 330,
+                              child: _PerformanceTrendsCard(data: data),
+                            ),
+                            gap,
+                            SizedBox(
+                              height: 330,
+                              child: _RetentionCard(data: data),
+                            ),
+                            gap,
+                            SizedBox(
+                              height: 330,
+                              child: _TimeSpentCard(data: data),
+                            ),
+                            gap,
+                            achievements,
+                            gap,
+                            const SizedBox(
+                              height: 240,
+                              child: _AiInsightsCard(),
+                            ),
+                            gap,
+                            SizedBox(
+                              height: 280,
+                              child: _ReadinessCard(mastery: data.mastery),
+                            ),
+                            gap,
+                            footer,
+                          ],
+                        ));
 
             return SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(
@@ -236,7 +281,7 @@ class _AnalyticsHeader extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: CockpitSpacing.xs),
-                Row(
+                MobileWrap(
                   children: [
                     Icon(Icons.auto_awesome, size: 13, color: scheme.primary),
                     const SizedBox(width: CockpitSpacing.xs),
@@ -414,7 +459,7 @@ class _OverallMasteryCard extends StatelessWidget {
                       color: scheme.primary.withValues(alpha: 0.08),
                     ),
                   ),
-                  child: Row(
+                  child: MobileWrap(
                     children: [
                       Image.asset(
                         'assets/images/ai_study_companion.png',
@@ -1022,7 +1067,7 @@ class _ReadinessCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
+                      MobileWrap(
                         children: [
                           const Expanded(child: _TinyText('Confidence Level')),
                           Container(
@@ -1155,7 +1200,7 @@ class _CardTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Row(
+    return MobileWrap(
       mainAxisSize: MainAxisSize.min,
       children: [
         Flexible(

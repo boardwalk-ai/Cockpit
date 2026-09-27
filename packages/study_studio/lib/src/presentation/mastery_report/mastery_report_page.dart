@@ -8,6 +8,7 @@ import '../../domain/entities/flashcard.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -138,7 +139,9 @@ class _MasteryReportBody extends StatelessWidget {
                       weak: weak,
                     );
                     final skills = _SkillsRow(strong: strong, weak: weak);
-                    final wide = constraints.maxWidth >= 400;
+                    final wide =
+                        !isMobilePlatform(context) &&
+                        constraints.maxWidth >= 400;
                     if (wide) {
                       return Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -373,7 +376,7 @@ class _MasteryOverview extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: CockpitSpacing.xs),
-              Row(
+              MobileWrap(
                 children: [
                   Text(
                     label,
@@ -676,6 +679,22 @@ class _LearningJourneyRowState extends State<_LearningJourneyRow> {
       ),
     ];
 
+    if (isMobilePlatform(context)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Column(
+          children: [
+            for (final item in items)
+              ListTile(
+                leading: Icon(item.icon, color: item.iconColor),
+                title: Text(item.title),
+                subtitle: Text(item.detail ?? ''),
+                trailing: Text(item.subtitle),
+              ),
+          ],
+        ),
+      );
+    }
     return SizedBox(
       height: 108,
       child: Scrollbar(
@@ -1185,7 +1204,7 @@ class _StudyPlanCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          MobileWrap(
             children: [
               Icon(
                 Icons.calendar_today_outlined,
@@ -1386,13 +1405,15 @@ class _GradientButton extends StatelessWidget {
                   Icon(icon, color: Colors.white, size: 18),
                   const SizedBox(width: CockpitSpacing.sm),
                 ],
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
                 if (trailing) ...[

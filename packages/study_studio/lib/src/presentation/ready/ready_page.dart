@@ -189,7 +189,8 @@ class _SuccessHeader extends StatelessWidget {
                 ),
               ),
               const TextSpan(
-                text: ' has been transformed into your personalized '
+                text:
+                    ' has been transformed into your personalized '
                     'AI learning environment.',
               ),
             ],
@@ -230,10 +231,9 @@ class _EcosystemHero extends StatelessWidget {
           Positioned.fill(
             child: CustomPaint(
               painter: _OrbitPainter(
-                color: Theme.of(context)
-                    .colorScheme
-                    .outlineVariant
-                    .withValues(alpha: 0.8),
+                color: Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: 0.8),
               ),
             ),
           ),
@@ -283,7 +283,11 @@ class _CalmOrb extends StatelessWidget {
 }
 
 class _ToolNode extends StatelessWidget {
-  const _ToolNode({required this.icon, required this.color, required this.label});
+  const _ToolNode({
+    required this.icon,
+    required this.color,
+    required this.label,
+  });
   final IconData icon;
   final Color color;
   final String label;
@@ -373,11 +377,36 @@ class _StatGrid extends StatelessWidget {
 
   static const _stats = <(IconData, Color, int, String)>[
     (Icons.menu_book_rounded, Color(0xFF8B5CF6), BuildPreview.topics, 'Topics'),
-    (Icons.bookmark_rounded, Color(0xFF30A46C), BuildPreview.definitions, 'Definitions'),
-    (Icons.style_rounded, Color(0xFFF76808), BuildPreview.flashcards, 'Flashcards'),
-    (Icons.help_rounded, Color(0xFFE5484D), BuildPreview.quizQuestions, 'Quiz Questions'),
-    (Icons.hub_rounded, Color(0xFF6366F1), BuildPreview.connections, 'Connections'),
-    (Icons.insights_rounded, Color(0xFF3B82F6), BuildPreview.studyPaths, 'Study Paths'),
+    (
+      Icons.bookmark_rounded,
+      Color(0xFF30A46C),
+      BuildPreview.definitions,
+      'Definitions',
+    ),
+    (
+      Icons.style_rounded,
+      Color(0xFFF76808),
+      BuildPreview.flashcards,
+      'Flashcards',
+    ),
+    (
+      Icons.help_rounded,
+      Color(0xFFE5484D),
+      BuildPreview.quizQuestions,
+      'Quiz Questions',
+    ),
+    (
+      Icons.hub_rounded,
+      Color(0xFF6366F1),
+      BuildPreview.connections,
+      'Connections',
+    ),
+    (
+      Icons.insights_rounded,
+      Color(0xFF3B82F6),
+      BuildPreview.studyPaths,
+      'Study Paths',
+    ),
   ];
 
   @override
@@ -445,15 +474,17 @@ class _StatCard extends StatelessWidget {
           const SizedBox(height: CockpitSpacing.xs),
           Text(
             '$value',
-            style: theme.textTheme.titleLarge
-                ?.copyWith(fontWeight: FontWeight.w800),
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           Text(
             label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: CockpitSpacing.xs),
           Container(
@@ -507,8 +538,9 @@ class _AiSummaryCard extends StatelessWidget {
           const SizedBox(height: CockpitSpacing.sm),
           Text(
             "We've identified the most important topics:",
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
           const SizedBox(height: CockpitSpacing.sm),
           Wrap(
@@ -716,12 +748,14 @@ class _EnterBar extends StatelessWidget {
                     children: [
                       Icon(Icons.auto_awesome, color: Colors.white, size: 20),
                       SizedBox(width: CockpitSpacing.sm),
-                      Text(
-                        'Enter Study Studio',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                      Flexible(
+                        child: Text(
+                          'Enter Study Studio',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                       SizedBox(width: CockpitSpacing.sm),

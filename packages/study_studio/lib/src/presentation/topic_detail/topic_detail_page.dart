@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
+import '../widgets/studio_scaffold.dart';
 
 class TopicDetailPage extends ConsumerWidget {
   const TopicDetailPage({
@@ -50,7 +51,8 @@ class _Body extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final base = '/study/${studio.id}';
-    final isDesktop = MediaQuery.of(context).size.width >= 1000;
+    final isDesktop =
+        !isMobilePlatform(context) && MediaQuery.sizeOf(context).width >= 1000;
 
     Topic? byId(String id) {
       for (final t in studio.topics) {

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
 class KnowledgeGraphPage extends ConsumerStatefulWidget {
@@ -315,7 +316,7 @@ class _Header extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Row(
+                MobileWrap(
                   children: [
                     Icon(Icons.hub_rounded, size: 14, color: scheme.primary),
                     const SizedBox(width: CockpitSpacing.xs),
@@ -897,7 +898,7 @@ class _DetailSheet extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    MobileWrap(
                       children: [
                         Flexible(
                           child: Text(

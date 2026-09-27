@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/quiz_question.dart';
 import '../../domain/entities/studio.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 7 — Quiz Me.
@@ -47,7 +48,9 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
   Future<void> _submit(QuizQuestion q) async {
     if (_submitted.contains(_index)) return;
     final correct = q.isCorrect(_selected[_index] ?? '');
-    await ref.read(studioRepositoryProvider).recordQuizResult(
+    await ref
+        .read(studioRepositoryProvider)
+        .recordQuizResult(
           studioId: widget.studioId,
           topicId: q.topicId,
           correct: correct,
@@ -124,7 +127,11 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
       );
       return Column(
         children: [
-          _Header(studioTitle: studio.title, topicTitle: topicTitle, onBack: close),
+          _Header(
+            studioTitle: studio.title,
+            topicTitle: topicTitle,
+            onBack: close,
+          ),
           Expanded(
             child: desktop
                 ? Center(
@@ -243,8 +250,11 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
       ],
     );
 
-    final header =
-        _Header(studioTitle: studio.title, topicTitle: topicTitle, onBack: close);
+    final header = _Header(
+      studioTitle: studio.title,
+      topicTitle: topicTitle,
+      onBack: close,
+    );
 
     if (desktop) {
       return Column(
@@ -272,7 +282,12 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 480),
-        child: Column(children: [header, Expanded(child: center)]),
+        child: Column(
+          children: [
+            header,
+            Expanded(child: center),
+          ],
+        ),
       ),
     );
   }
@@ -286,7 +301,10 @@ class _QuizMePageState extends ConsumerState<QuizMePage> {
   }
 
   String _topicTitleFor(Studio studio, String topicId) =>
-      studio.topics.where((t) => t.id == topicId).map((t) => t.title).firstOrNull ??
+      studio.topics
+          .where((t) => t.id == topicId)
+          .map((t) => t.title)
+          .firstOrNull ??
       'this topic';
 
   List<String> _confusedTopics(Studio studio, List<QuizQuestion> qs) {
@@ -318,8 +336,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    void soon(String l) => ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('$l — coming soon')));
+    void soon(String l) => ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$l — coming soon')));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -340,8 +359,9 @@ class _Header extends StatelessWidget {
                   studioTitle,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 Row(
                   children: [
@@ -359,8 +379,9 @@ class _Header extends StatelessWidget {
                         '  •  $topicTitle',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: scheme.onSurfaceVariant),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ],
@@ -368,7 +389,10 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
-          _CircleButton(icon: Icons.bookmark_border, onTap: () => soon('Bookmark')),
+          _CircleButton(
+            icon: Icons.bookmark_border,
+            onTap: () => soon('Bookmark'),
+          ),
           const SizedBox(width: CockpitSpacing.xs),
           _CircleButton(icon: Icons.more_horiz, onTap: () => soon('More')),
         ],
@@ -407,8 +431,9 @@ class _ProgressRow extends StatelessWidget {
                   'Question ${index + 1} of $total',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
               const SizedBox(width: CockpitSpacing.sm),
@@ -515,8 +540,9 @@ class _QuizReadyBanner extends StatelessWidget {
                 child: Text(
                   'Questions become harder or easier depending on your '
                   'performance.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],
@@ -552,8 +578,10 @@ class _MiniMeta extends StatelessWidget {
           children: [
             Text(
               label,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant, fontSize: 10),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontSize: 10,
+              ),
             ),
             Text(
               value,
@@ -639,8 +667,10 @@ class _QuestionCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   q.question,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700, height: 1.25),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
                 ),
               ),
               const SizedBox(width: CockpitSpacing.sm),
@@ -652,8 +682,9 @@ class _QuestionCard extends StatelessWidget {
                     const SizedBox(width: 3),
                     Text(
                       typeLabel,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: scheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -838,14 +869,15 @@ class _ConfidenceRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          MobileWrap(
             children: [
               Icon(Icons.public, size: 15, color: scheme.onSurfaceVariant),
               const SizedBox(width: CockpitSpacing.xs),
               Text(
                 'How confident are you?',
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -899,7 +931,9 @@ class _ConfidenceChip extends StatelessWidget {
           horizontal: CockpitSpacing.xs,
         ),
         decoration: BoxDecoration(
-          color: selected ? scheme.primary.withValues(alpha: 0.10) : scheme.surface,
+          color: selected
+              ? scheme.primary.withValues(alpha: 0.10)
+              : scheme.surface,
           borderRadius: BorderRadius.circular(CockpitRadii.md),
           border: Border.all(
             color: selected ? scheme.primary : scheme.outlineVariant,
@@ -966,8 +1000,11 @@ class _AiStudyAssistant extends StatelessWidget {
                       color: scheme.primary.withValues(alpha: 0.14),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(Icons.smart_toy_rounded,
-                        size: 20, color: scheme.primary),
+                    child: Icon(
+                      Icons.smart_toy_rounded,
+                      size: 20,
+                      color: scheme.primary,
+                    ),
                   ),
                   const SizedBox(width: CockpitSpacing.md),
                   Expanded(
@@ -976,21 +1013,25 @@ class _AiStudyAssistant extends StatelessWidget {
                       children: [
                         Text(
                           'AI Study Assistant',
-                          style: theme.textTheme.titleSmall
-                              ?.copyWith(fontWeight: FontWeight.w700),
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         Text(
                           "I'll explain the answer and help you understand why.",
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  Icon(open ? Icons.expand_less : Icons.expand_more,
-                      color: scheme.onSurfaceVariant),
+                  Icon(
+                    open ? Icons.expand_less : Icons.expand_more,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ],
               ),
             ),
@@ -1061,13 +1102,18 @@ class _Feedback extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(correct ? Icons.check_circle : Icons.cancel,
-                  color: accent, size: 22),
+              Icon(
+                correct ? Icons.check_circle : Icons.cancel,
+                color: accent,
+                size: 22,
+              ),
               const SizedBox(width: CockpitSpacing.sm),
               Text(
                 correct ? 'Correct! 🎉' : 'Not quite',
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w800, color: accent),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: accent,
+                ),
               ),
               const Spacer(),
               Row(
@@ -1102,14 +1148,17 @@ class _Feedback extends StatelessWidget {
             ),
             const SizedBox(height: CockpitSpacing.xs),
           ],
-          Text(q.explanation,
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.4)),
+          Text(
+            q.explanation,
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
+          ),
           if (others.isNotEmpty) ...[
             const SizedBox(height: CockpitSpacing.md),
             Text(
               'Other options',
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.labelMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: CockpitSpacing.xs),
             Wrap(
@@ -1128,8 +1177,9 @@ class _Feedback extends StatelessWidget {
                     ),
                     child: Text(
                       o,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: scheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
               ],
@@ -1145,11 +1195,17 @@ class _Feedback extends StatelessWidget {
               decoration: BoxDecoration(
                 color: scheme.primary.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(CockpitRadii.md),
-                border: Border.all(color: scheme.primary.withValues(alpha: 0.14)),
+                border: Border.all(
+                  color: scheme.primary.withValues(alpha: 0.14),
+                ),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.menu_book_outlined, size: 18, color: scheme.primary),
+                  Icon(
+                    Icons.menu_book_outlined,
+                    size: 18,
+                    color: scheme.primary,
+                  ),
                   const SizedBox(width: CockpitSpacing.sm),
                   Expanded(
                     child: Column(
@@ -1168,8 +1224,9 @@ class _Feedback extends StatelessWidget {
                               : '$topicTitle  ›  ${q.relatedConcept}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -1206,10 +1263,12 @@ class _AiInsight extends StatelessWidget {
 
     final String message;
     if (!correct && selected != null && selected!.isNotEmpty) {
-      message = "You picked $selected — the answer is $answer. We'll add extra "
+      message =
+          "You picked $selected — the answer is $answer. We'll add extra "
           'practice on $topicTitle to your next review session.';
     } else if (!correct) {
-      message = "We'll add extra practice on $topicTitle to your next review "
+      message =
+          "We'll add extra practice on $topicTitle to your next review "
           'session.';
     } else {
       message = 'Strong recall on $topicTitle. Keep the streak going!';
@@ -1239,8 +1298,10 @@ class _AiInsight extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(message,
-                    style: theme.textTheme.bodySmall?.copyWith(height: 1.35)),
+                Text(
+                  message,
+                  style: theme.textTheme.bodySmall?.copyWith(height: 1.35),
+                ),
               ],
             ),
           ),
@@ -1299,23 +1360,28 @@ class _Completion extends StatelessWidget {
               color: scheme.tertiary.withValues(alpha: 0.14),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.emoji_events_rounded,
-                size: 42, color: scheme.tertiary),
+            child: Icon(
+              Icons.emoji_events_rounded,
+              size: 42,
+              color: scheme.tertiary,
+            ),
           ),
         ),
         const SizedBox(height: CockpitSpacing.lg),
         Text(
           'Great work.',
           textAlign: TextAlign.center,
-          style: theme.textTheme.headlineSmall
-              ?.copyWith(fontWeight: FontWeight.w800),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+          ),
         ),
         const SizedBox(height: CockpitSpacing.xs),
         Text.rich(
           textAlign: TextAlign.center,
           TextSpan(
-            style: theme.textTheme.bodyLarge
-                ?.copyWith(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.bodyLarge?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
             children: [
               const TextSpan(text: 'You answered '),
               TextSpan(
@@ -1355,7 +1421,8 @@ class _Completion extends StatelessWidget {
                     onPressed: onWeakAreas,
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: CockpitSpacing.sm),
+                        horizontal: CockpitSpacing.sm,
+                      ),
                       visualDensity: VisualDensity.compact,
                     ),
                     icon: const Icon(Icons.insights, size: 15),
@@ -1367,9 +1434,9 @@ class _Completion extends StatelessWidget {
               Text(
                 confusedTopics.isEmpty
                     ? 'The concepts you recalled most slowly would benefit from '
-                        'rapid-fire practice.'
+                          'rapid-fire practice.'
                     : 'You were slower on ${confusedTopics.join(', ')}. '
-                        'Rapid-fire practice will lock these in.',
+                          'Rapid-fire practice will lock these in.',
                 style: theme.textTheme.bodyMedium?.copyWith(height: 1.4),
               ),
             ],
@@ -1542,8 +1609,9 @@ class _QuizRail extends StatelessWidget {
           children: [
             Text(
               'Your Progress',
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: CockpitSpacing.md),
             Row(
@@ -1568,8 +1636,9 @@ class _QuizRail extends StatelessWidget {
             const SizedBox(height: CockpitSpacing.lg),
             Text(
               'Questions',
-              style: theme.textTheme.labelLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: CockpitSpacing.sm),
             Wrap(
@@ -1594,7 +1663,11 @@ class _QuizRail extends StatelessWidget {
 }
 
 class _RailStat extends StatelessWidget {
-  const _RailStat({required this.label, required this.value, required this.color});
+  const _RailStat({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
   final String label;
   final String value;
   final Color color;
@@ -1612,12 +1685,19 @@ class _RailStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value,
-              style: theme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w800, color: color)),
-          Text(label,
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          Text(
+            value,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -1731,12 +1811,15 @@ class _GradientButton extends StatelessWidget {
             child: SizedBox(
               height: 50,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: CockpitSpacing.lg,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    if (!trailingIcon) Icon(icon, color: Colors.white, size: 20),
+                    if (!trailingIcon)
+                      Icon(icon, color: Colors.white, size: 20),
                     if (!trailingIcon) const SizedBox(width: CockpitSpacing.sm),
                     Flexible(
                       child: Text(

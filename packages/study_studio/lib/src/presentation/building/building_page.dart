@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 import 'build_preview.dart';
 
@@ -104,9 +105,9 @@ class _BuildingPageState extends ConsumerState<BuildingPage>
       await upload.watchBuild(studioId: studioId, jobId: widget.jobId);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ingestion issue: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Ingestion issue: $e')));
       }
     }
     if (!mounted) return;
@@ -147,10 +148,9 @@ class _BuildingPageState extends ConsumerState<BuildingPage>
             final active = _activeStep(p);
             final liveLabel = Text(
               'Live Preview',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             );
 
             if (desktop) {
@@ -219,7 +219,11 @@ class _BuildingPageState extends ConsumerState<BuildingPage>
                     const SizedBox(height: CockpitSpacing.lg),
                     _CoreStage(pulse: _pulse),
                     const SizedBox(height: CockpitSpacing.xl),
-                    _TimelineCard(progress: p, activeStep: active, pulse: _pulse),
+                    _TimelineCard(
+                      progress: p,
+                      activeStep: active,
+                      pulse: _pulse,
+                    ),
                     const SizedBox(height: CockpitSpacing.xl),
                     liveLabel,
                     const SizedBox(height: CockpitSpacing.md),
@@ -265,8 +269,11 @@ class _Header extends StatelessWidget {
                   color: theme.colorScheme.surfaceContainerHighest,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.arrow_back_ios_new,
-                    size: 18, color: theme.colorScheme.onSurface),
+                child: Icon(
+                  Icons.arrow_back_ios_new,
+                  size: 18,
+                  color: theme.colorScheme.onSurface,
+                ),
               ),
             ),
             const SizedBox(width: CockpitSpacing.sm),
@@ -334,7 +341,9 @@ class _CoreStage extends StatelessWidget {
           // Faint light trails behind everything.
           Positioned.fill(
             child: CustomPaint(
-              painter: _TrailsPainter(color: scheme.primary.withValues(alpha: 0.20)),
+              painter: _TrailsPainter(
+                color: scheme.primary.withValues(alpha: 0.20),
+              ),
             ),
           ),
           // The glowing AI core, centered.
@@ -413,8 +422,11 @@ class _Orb extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.auto_awesome,
-                    color: Colors.white, size: 42),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  color: Colors.white,
+                  size: 42,
+                ),
               ),
             ],
           ),
@@ -474,8 +486,9 @@ class _FloatingFileCard extends StatelessWidget {
                   name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 Text(
                   meta,
@@ -597,14 +610,15 @@ class _TimelineCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          MobileWrap(
             children: [
               Icon(Icons.auto_awesome, size: 18, color: scheme.primary),
               const SizedBox(width: CockpitSpacing.sm),
               Text(
                 'AI is building your study studio',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -615,8 +629,8 @@ class _TimelineCard extends StatelessWidget {
               status: progress >= steps[i].$2
                   ? _StepStatus.completed
                   : (i == activeStep
-                      ? _StepStatus.inProgress
-                      : _StepStatus.pending),
+                        ? _StepStatus.inProgress
+                        : _StepStatus.pending),
               isLast: i == steps.length - 1,
               pulse: pulse,
             ),
@@ -656,7 +670,10 @@ class _TimelineRow extends StatelessWidget {
         marker = Container(
           width: 24,
           height: 24,
-          decoration: BoxDecoration(color: scheme.tertiary, shape: BoxShape.circle),
+          decoration: BoxDecoration(
+            color: scheme.tertiary,
+            shape: BoxShape.circle,
+          ),
           child: const Icon(Icons.check, size: 15, color: Colors.white),
         );
         trailing = 'Completed';
@@ -722,8 +739,10 @@ class _TimelineRow extends StatelessWidget {
                   Expanded(
                     child: Text(
                       label,
-                      style: theme.textTheme.bodyMedium
-                          ?.copyWith(color: labelColor, fontWeight: labelWeight),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: labelColor,
+                        fontWeight: labelWeight,
+                      ),
                     ),
                   ),
                   Text(
@@ -756,15 +775,58 @@ class _LivePreviewRow extends StatelessWidget {
   final double progress;
 
   static const _stats = <(IconData, Color, int, String, String)>[
-    (Icons.menu_book_rounded, Color(0xFF3B82F6), BuildPreview.topics, 'Topics', 'Identified'),
-    (Icons.bookmark_rounded, Color(0xFF30A46C), BuildPreview.definitions, 'Key Definitions', 'Extracted'),
-    (Icons.style_rounded, Color(0xFFF76808), BuildPreview.flashcards, 'Flashcards', 'Generated'),
-    (Icons.help_rounded, Color(0xFFE5484D), BuildPreview.quizQuestions, 'Quiz Questions', 'Created'),
-    (Icons.hub_rounded, Color(0xFF3B82F6), BuildPreview.connections, 'Connections', 'Mapped'),
+    (
+      Icons.menu_book_rounded,
+      Color(0xFF3B82F6),
+      BuildPreview.topics,
+      'Topics',
+      'Identified',
+    ),
+    (
+      Icons.bookmark_rounded,
+      Color(0xFF30A46C),
+      BuildPreview.definitions,
+      'Key Definitions',
+      'Extracted',
+    ),
+    (
+      Icons.style_rounded,
+      Color(0xFFF76808),
+      BuildPreview.flashcards,
+      'Flashcards',
+      'Generated',
+    ),
+    (
+      Icons.help_rounded,
+      Color(0xFFE5484D),
+      BuildPreview.quizQuestions,
+      'Quiz Questions',
+      'Created',
+    ),
+    (
+      Icons.hub_rounded,
+      Color(0xFF3B82F6),
+      BuildPreview.connections,
+      'Connections',
+      'Mapped',
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
+    if (isMobilePlatform(context)) {
+      return Column(
+        children: [
+          for (final s in _stats)
+            ListTile(
+              leading: Icon(s.$1, color: s.$2),
+              title: Text(s.$4),
+              subtitle: Text(s.$5),
+              trailing: Text('${(s.$3 * progress).round()}'),
+            ),
+        ],
+      );
+    }
     return SizedBox(
       height: 146,
       child: ListView.separated(
@@ -835,16 +897,18 @@ class _StatCard extends StatelessWidget {
           const SizedBox(height: CockpitSpacing.sm),
           Text(
             '$value',
-            style: theme.textTheme.headlineSmall
-                ?.copyWith(fontWeight: FontWeight.w800),
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           Text(
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
-            style: theme.textTheme.labelMedium
-                ?.copyWith(fontWeight: FontWeight.w600),
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
           ),
           Text(
             subtitle,
@@ -910,8 +974,9 @@ class _ProgressSection extends StatelessWidget {
             Expanded(
               child: Text(
                 'Building Study Studio...',
-                style: theme.textTheme.titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
             Text(
@@ -938,10 +1003,7 @@ class _ProgressSection extends StatelessWidget {
           borderRadius: BorderRadius.circular(CockpitRadii.pill),
           child: Stack(
             children: [
-              Container(
-                height: 10,
-                color: scheme.surfaceContainerHighest,
-              ),
+              Container(height: 10, color: scheme.surfaceContainerHighest),
               FractionallySizedBox(
                 widthFactor: progress.clamp(0, 1).toDouble(),
                 child: Container(
@@ -962,8 +1024,9 @@ class _ProgressSection extends StatelessWidget {
             Expanded(
               child: Text(
                 statusText,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
             ),
           ],

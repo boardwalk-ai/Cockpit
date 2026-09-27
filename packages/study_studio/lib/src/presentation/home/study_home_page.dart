@@ -7,6 +7,7 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 1 — Study Studio Home. A dark, editorial "learning cockpit": one red
@@ -41,7 +42,8 @@ class StudyHomePage extends ConsumerWidget {
 
   Widget _build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authStateProvider);
-    final signedIn = auth.valueOrNull ?? ref.watch(authServiceProvider).isSignedIn;
+    final signedIn =
+        auth.valueOrNull ?? ref.watch(authServiceProvider).isSignedIn;
 
     // Don't flash a raw API 401 before the user has a session — gate first.
     if (auth.isLoading) {
@@ -160,86 +162,84 @@ class _HomeDesktop extends StatelessWidget {
     final byRecent = _byRecent(studios);
 
     return Padding(
-        padding: const EdgeInsets.fromLTRB(40, 26, 40, 26),
-        child: ContentColumn(
-          maxWidth: 1600,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const _Masthead(),
-              const SizedBox(height: CockpitSpacing.md),
-              _NewStudioHero(onTap: () => context.go('/study/upload')),
-              const SizedBox(height: CockpitSpacing.xl),
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (byRecent.isNotEmpty) ...[
-                            const _SectionLabel(
-                              index: '01',
-                              title: 'Continue learning',
-                              action: 'View all',
-                            ),
-                            const SizedBox(height: CockpitSpacing.md),
-                            _ContinueFeature(studio: _latestCreated(studios)),
-                            const SizedBox(height: CockpitSpacing.lg),
-                          ],
-                          _SectionLabel(
-                            index: byRecent.isNotEmpty ? '02' : '01',
-                            title: 'Your studios',
-                            trailingText: '${studios.length}',
-                          ),
-                          const SizedBox(height: CockpitSpacing.md),
-                          Expanded(
-                            child: studios.isEmpty
-                                ? const _EmptyStudios()
-                                : GridView.builder(
-                                    padding: const EdgeInsets.only(
-                                        bottom: CockpitSpacing.sm),
-                                    itemCount: studios.length,
-                                    gridDelegate:
-                                        const SliverGridDelegateWithMaxCrossAxisExtent(
-                                      maxCrossAxisExtent: 420,
-                                      mainAxisSpacing: CockpitSpacing.md,
-                                      crossAxisSpacing: CockpitSpacing.md,
-                                      mainAxisExtent: 96,
-                                    ),
-                                    itemBuilder: (_, i) => _StudioRow(
-                                      studio: studios[i],
-                                      index: i + 1,
-                                    ),
-                                  ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: CockpitSpacing.xl),
-                    SizedBox(
-                      width: 340,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _StatsPanel(studios: studios),
-                          const SizedBox(height: CockpitSpacing.lg),
+      padding: const EdgeInsets.fromLTRB(40, 26, 40, 26),
+      child: ContentColumn(
+        maxWidth: 1600,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const _Masthead(),
+            const SizedBox(height: CockpitSpacing.md),
+            _NewStudioHero(onTap: () => context.go('/study/upload')),
+            const SizedBox(height: CockpitSpacing.xl),
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (byRecent.isNotEmpty) ...[
                           const _SectionLabel(
-                            index: '·',
-                            title: 'Recommended',
+                            index: '01',
+                            title: 'Continue learning',
+                            action: 'View all',
                           ),
                           const SizedBox(height: CockpitSpacing.md),
-                          _RecommendationCard(studios: studios, padded: false),
+                          _ContinueFeature(studio: _latestCreated(studios)),
+                          const SizedBox(height: CockpitSpacing.lg),
                         ],
-                      ),
+                        _SectionLabel(
+                          index: byRecent.isNotEmpty ? '02' : '01',
+                          title: 'Your studios',
+                          trailingText: '${studios.length}',
+                        ),
+                        const SizedBox(height: CockpitSpacing.md),
+                        Expanded(
+                          child: studios.isEmpty
+                              ? const _EmptyStudios()
+                              : GridView.builder(
+                                  padding: const EdgeInsets.only(
+                                    bottom: CockpitSpacing.sm,
+                                  ),
+                                  itemCount: studios.length,
+                                  gridDelegate:
+                                      const SliverGridDelegateWithMaxCrossAxisExtent(
+                                        maxCrossAxisExtent: 420,
+                                        mainAxisSpacing: CockpitSpacing.md,
+                                        crossAxisSpacing: CockpitSpacing.md,
+                                        mainAxisExtent: 96,
+                                      ),
+                                  itemBuilder: (_, i) => _StudioRow(
+                                    studio: studios[i],
+                                    index: i + 1,
+                                  ),
+                                ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: CockpitSpacing.xl),
+                  SizedBox(
+                    width: 340,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _StatsPanel(studios: studios),
+                        const SizedBox(height: CockpitSpacing.lg),
+                        const _SectionLabel(index: '·', title: 'Recommended'),
+                        const SizedBox(height: CockpitSpacing.md),
+                        _RecommendationCard(studios: studios, padded: false),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
     );
   }
 }
@@ -338,14 +338,15 @@ class _Masthead extends StatelessWidget {
         const SizedBox(height: CockpitSpacing.xs),
         Text(
           'Turn notes into mastery',
-          style: (desktop
-                  ? theme.textTheme.headlineMedium
-                  : theme.textTheme.headlineSmall)
-              ?.copyWith(
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.8,
-            height: 1.0,
-          ),
+          style:
+              (desktop
+                      ? theme.textTheme.headlineMedium
+                      : theme.textTheme.headlineSmall)
+                  ?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                    height: 1.0,
+                  ),
         ),
         const SizedBox(height: CockpitSpacing.xs),
         Text(
@@ -421,8 +422,9 @@ class _NewStudioHero extends StatelessWidget {
               borderRadius: BorderRadius.circular(CockpitRadii.xl),
               boxShadow: [
                 BoxShadow(
-                  color: scheme.primary
-                      .withValues(alpha: hovered ? 0.38 : 0.20),
+                  color: scheme.primary.withValues(
+                    alpha: hovered ? 0.38 : 0.20,
+                  ),
                   blurRadius: hovered ? 28 : 16,
                   offset: const Offset(0, 8),
                 ),
@@ -437,8 +439,11 @@ class _NewStudioHero extends StatelessWidget {
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(CockpitRadii.md),
                   ),
-                  child: Icon(Icons.add_rounded,
-                      color: scheme.primary, size: 30),
+                  child: Icon(
+                    Icons.add_rounded,
+                    color: scheme.primary,
+                    size: 30,
+                  ),
                 ),
                 const SizedBox(width: CockpitSpacing.lg),
                 const Expanded(
@@ -474,11 +479,15 @@ class _NewStudioHero extends StatelessWidget {
                   height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white
-                        .withValues(alpha: hovered ? 0.30 : 0.16),
+                    color: Colors.white.withValues(
+                      alpha: hovered ? 0.30 : 0.16,
+                    ),
                   ),
-                  child: const Icon(Icons.arrow_forward_rounded,
-                      color: Colors.white, size: 20),
+                  child: const Icon(
+                    Icons.arrow_forward_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
                 ),
               ],
             ),
@@ -502,8 +511,9 @@ class _ContinueCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final pct = (studio.overallMastery.clamp(0, 1) * 100).round();
-    final subtitle =
-        studio.topics.isNotEmpty ? studio.topics.first.title : studio.subject;
+    final subtitle = studio.topics.isNotEmpty
+        ? studio.topics.first.title
+        : studio.subject;
 
     return _Hoverable(
       builder: (hovered) => GestureDetector(
@@ -534,8 +544,11 @@ class _ContinueCard extends StatelessWidget {
                       color: scheme.primary.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(CockpitRadii.sm),
                     ),
-                    child: Icon(_iconFor(studio.subject),
-                        color: scheme.primary, size: 19),
+                    child: Icon(
+                      _iconFor(studio.subject),
+                      color: scheme.primary,
+                      size: 19,
+                    ),
                   ),
                   const Spacer(),
                   Text(
@@ -567,8 +580,7 @@ class _ContinueCard extends StatelessWidget {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: scheme.onSurfaceVariant, fontSize: 12),
+                style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
               ),
               const SizedBox(height: CockpitSpacing.md),
               ClipRRect(
@@ -596,6 +608,20 @@ class _ContinueFeature extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isMobilePlatform(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ContinueAnalytics(studio: studio),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () => context.go('/study/${studio.id}'),
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Continue learning'),
+          ),
+        ],
+      );
+    }
     return SizedBox(
       height: 168,
       child: Row(
@@ -621,36 +647,43 @@ class _ContinueAnalytics extends StatelessWidget {
     final pct = (studio.overallMastery.clamp(0, 1) * 100).round();
 
     Widget line(IconData icon, String label, String value) => Padding(
-          padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
-          child: Row(
-            children: [
-              Icon(icon, size: 16, color: scheme.onSurfaceVariant),
-              const SizedBox(width: CockpitSpacing.sm),
-              Text(label,
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: scheme.onSurfaceVariant)),
-              const Spacer(),
-              Text(value,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
-            ],
+      padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
+      child: MobileWrap(
+        children: [
+          Icon(icon, size: 16, color: scheme.onSurfaceVariant),
+          const SizedBox(width: CockpitSpacing.sm),
+          Text(
+            label,
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
-        );
+          const Spacer(),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(studio.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleMedium),
+        Text(
+          studio.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleMedium,
+        ),
         const SizedBox(height: CockpitSpacing.md),
         line(Icons.topic_outlined, 'Topics', '${studio.topicCount}'),
         line(Icons.style_outlined, 'Flashcards', '${studio.flashcardCount}'),
         line(Icons.insights_outlined, 'Mastery', '$pct%'),
-        line(Icons.schedule, 'Last studied',
-            relativeDay(studio.lastStudied)),
+        line(Icons.schedule, 'Last studied', relativeDay(studio.lastStudied)),
       ],
     );
   }
@@ -714,8 +747,11 @@ class _StudioRow extends StatelessWidget {
                       color: scheme.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(CockpitRadii.md),
                     ),
-                    child: Icon(_iconFor(studio.subject),
-                        color: scheme.onSurface, size: 21),
+                    child: Icon(
+                      _iconFor(studio.subject),
+                      color: scheme.onSurface,
+                      size: 21,
+                    ),
                   ),
                   const SizedBox(width: CockpitSpacing.md),
                   Expanded(
@@ -739,8 +775,9 @@ class _StudioRow extends StatelessWidget {
                           '${relativeDay(studio.lastStudied).toLowerCase()}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant),
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ],
                     ),
@@ -777,9 +814,9 @@ class _StatsPanel extends StatelessWidget {
     final avg = studios.isEmpty
         ? 0
         : (studios.fold<double>(0, (n, s) => n + s.overallMastery) /
-                studios.length *
-                100)
-            .round();
+                  studios.length *
+                  100)
+              .round();
 
     return Container(
       padding: const EdgeInsets.all(CockpitSpacing.lg),
@@ -842,11 +879,11 @@ class _Stat extends StatelessWidget {
 class _StatDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
-        width: 1,
-        height: 34,
-        margin: const EdgeInsets.symmetric(horizontal: CockpitSpacing.md),
-        color: Theme.of(context).colorScheme.outlineVariant,
-      );
+    width: 1,
+    height: 34,
+    margin: const EdgeInsets.symmetric(horizontal: CockpitSpacing.md),
+    color: Theme.of(context).colorScheme.outlineVariant,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -898,7 +935,9 @@ class _RecommendationCard extends StatelessWidget {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: CockpitSpacing.sm, vertical: 3),
+                    horizontal: CockpitSpacing.sm,
+                    vertical: 3,
+                  ),
                   decoration: BoxDecoration(
                     color: scheme.primary.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(CockpitRadii.pill),
@@ -906,8 +945,7 @@ class _RecommendationCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.auto_awesome,
-                          size: 12, color: scheme.primary),
+                      Icon(Icons.auto_awesome, size: 12, color: scheme.primary),
                       const SizedBox(width: 4),
                       Text(
                         'AI RECOMMENDATION',
@@ -936,8 +974,10 @@ class _RecommendationCard extends StatelessWidget {
             const SizedBox(height: 2),
             Text(
               'This topic is your weakest — a quick review will move the needle.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant, height: 1.35),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                height: 1.35,
+              ),
             ),
             const SizedBox(height: CockpitSpacing.md),
             Row(
@@ -946,14 +986,14 @@ class _RecommendationCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Text(
                   '${topic.estimatedStudyTimeMinutes} min',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
                 const Spacer(),
                 FilledButton(
-                  onPressed: () => context.go(
-                    '/study/${pick.studio.id}/teach/${topic.id}',
-                  ),
+                  onPressed: () =>
+                      context.go('/study/${pick.studio.id}/teach/${topic.id}'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(
                       horizontal: CockpitSpacing.lg,
@@ -1062,24 +1102,25 @@ class _EmptyStudios extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.auto_stories_outlined,
-              size: 40, color: scheme.onSurfaceVariant),
+          Icon(
+            Icons.auto_stories_outlined,
+            size: 40,
+            color: scheme.onSurfaceVariant,
+          ),
           const SizedBox(height: CockpitSpacing.md),
           Text(
             'No studios yet',
-            style: Theme.of(context)
-                .textTheme
-                .titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
           Text(
             'Build your first one from the panel above.',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
           ),
         ],
       ),
@@ -1114,11 +1155,12 @@ class _HoverableState extends State<_Hoverable> {
   }
 }
 
-List<Studio> _byRecent(List<Studio> studios) => [...studios]..sort((a, b) {
-      final da = a.lastStudied ?? a.updatedAt;
-      final db = b.lastStudied ?? b.updatedAt;
-      return db.compareTo(da);
-    });
+List<Studio> _byRecent(List<Studio> studios) => [...studios]
+  ..sort((a, b) {
+    final da = a.lastStudied ?? a.updatedAt;
+    final db = b.lastStudied ?? b.updatedAt;
+    return db.compareTo(da);
+  });
 
 IconData _iconFor(String subject) {
   final s = subject.toLowerCase();
@@ -1127,6 +1169,8 @@ IconData _iconFor(String subject) {
   if (s.contains('history')) return Icons.account_balance_outlined;
   if (s.contains('math') || s.contains('calc')) return Icons.functions;
   if (s.contains('baggage') || s.contains('bag')) return Icons.luggage_outlined;
-  if (s.contains('network') || s.contains('computer')) return Icons.hub_outlined;
+  if (s.contains('network') || s.contains('computer')) {
+    return Icons.hub_outlined;
+  }
   return Icons.menu_book_outlined;
 }

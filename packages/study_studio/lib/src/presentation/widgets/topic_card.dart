@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/entities/topic.dart';
+import 'mobile_layout.dart';
 
 class TopicCard extends StatefulWidget {
   const TopicCard({super.key, required this.topic});
@@ -72,28 +73,19 @@ class _TopicCardState extends State<TopicCard> {
                   ],
                 ),
                 const SizedBox(height: CockpitSpacing.sm),
-                Row(
+                MobileWrap(
                   children: [
-                    Text(
-                      'Difficulty',
-                      style: theme.textTheme.labelSmall,
-                    ),
+                    Text('Difficulty', style: theme.textTheme.labelSmall),
                     const SizedBox(width: CockpitSpacing.xs),
                     StarMeter(value: topic.difficulty),
                     const SizedBox(width: CockpitSpacing.lg),
-                    Text(
-                      'Importance',
-                      style: theme.textTheme.labelSmall,
-                    ),
+                    Text('Importance', style: theme.textTheme.labelSmall),
                     const SizedBox(width: CockpitSpacing.xs),
                     StarMeter(value: topic.importance),
                   ],
                 ),
                 const SizedBox(height: CockpitSpacing.md),
-                MasteryBar(
-                  value: topic.mastery,
-                  label: 'Mastery',
-                ),
+                MasteryBar(value: topic.mastery, label: 'Mastery'),
                 if (topic.relatedTopicIds.isNotEmpty) ...[
                   const SizedBox(height: CockpitSpacing.sm),
                   Text(

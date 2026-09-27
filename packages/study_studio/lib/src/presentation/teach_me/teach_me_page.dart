@@ -6,13 +6,9 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
-/// Screen 6 — Teach Me.
-///
-/// Not a chatbot with a PDF: an interactive AI *textbook* built from the Study
-/// Object. Structured lesson cards and callouts present the topic; a grounded
-/// chat is woven in for clarification. Calm, spacious, Outfit typography.
 class TeachMePage extends ConsumerStatefulWidget {
   const TeachMePage({super.key, required this.studioId, required this.topicId});
   final String studioId;
@@ -36,7 +32,6 @@ class _TeachMePageState extends ConsumerState<TeachMePage> {
   bool _lessonOpen = true;
   final _lessonKey = GlobalKey();
 
-  /// "Start Lesson" — reveal the lesson content and scroll it into focus.
   void _startLesson() {
     setState(() => _lessonOpen = true);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,21 +91,15 @@ class _TeachMePageState extends ConsumerState<TeachMePage> {
             if (i < 0) {
               return const Center(child: Text('Topic not found'));
             }
-            return isDesktop(context)
-                ? _buildDesktop(context, studio, i)
-                : Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 480),
-                      child: _buildLesson(context, studio, i),
-                    ),
-                  );
+            return isMobilePlatform(context)
+                ? StudyMobileSurface(child: _buildMobile(context, studio, i))
+                : _buildDesktop(context, studio, i);
           },
         ),
       ),
     );
   }
 
-  /// Desktop / web: three panes — lesson list · lesson · AI assistant.
   Widget _buildDesktop(BuildContext context, Studio studio, int index) {
     final topics = studio.topics;
     final topic = topics[index];
@@ -212,89 +201,152 @@ class _TeachMePageState extends ConsumerState<TeachMePage> {
     );
   }
 
-  Widget _buildLesson(BuildContext context, Studio studio, int index) {
+  Widget _buildMobile(BuildContext context, Studio studio, int index) {
     final topics = studio.topics;
     final topic = topics[index];
     final total = topics.length;
     final base = '/study/${studio.id}';
     final prev = index > 0 ? topics[index - 1] : null;
     final next = index < total - 1 ? topics[index + 1] : null;
-    final related = [
-      for (final id in topic.relatedTopicIds)
-        ...topics.where((t) => t.id == id),
-    ];
+    final related = <Topic>[];
+    for (final id in topic.relatedTopicIds) {
+      for (final item in topics) {
+        if (item.id == id) {
+          related.add(item);
+        }
+      }
+    }
 
-    return Column(
-      children: [
-        _Header(
-          studioTitle: studio.title,
-          lessonNumber: index + 1,
-          total: total,
-          onBack: () => context.go(base),
-        ),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(
-              CockpitSpacing.lg,
-              CockpitSpacing.md,
-              CockpitSpacing.lg,
-              CockpitSpacing.xxl,
-            ),
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      key: const ValueKey('teach-mobile'),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _Header(
+            studioTitle: studio.title,
+            lessonNumber: index + 1,
+            total: total,
+            onBack: () => context.go(base),
+          ),
+          const SizedBox(height: 16),
+          Text('Current Topic', style: theme.textTheme.labelLarge),
+          Text(topic.title, style: theme.textTheme.headlineMedium),
+          const SizedBox(height: 8),
+          Text(topic.simpleExplanation),
+          const SizedBox(height: 12),
+          MobileWrap(
             children: [
-              _Hero(
-                topic: topic,
-                onStart: _startLesson,
-                onAsk: () => _askFocus.requestFocus(),
-              ),
-              const SizedBox(height: CockpitSpacing.xl),
-              _LessonCard(
-                key: _lessonKey,
-                topic: topic,
-                open: _lessonOpen,
-                onToggle: () => setState(() => _lessonOpen = !_lessonOpen),
-              ),
-              const SizedBox(height: CockpitSpacing.xl),
-              _AskAi(
-                controller: _controller,
-                focusNode: _askFocus,
-                suggestions: _suggestions,
-                messages: _messages,
-                thinking: _thinking,
-                onSend: (t) => _send(topic, t),
-              ),
-              const SizedBox(height: CockpitSpacing.xl),
-              _ReadyToTest(
-                onStart: () => context.go('$base/quiz?topicId=${topic.id}'),
-              ),
-              if (related.isNotEmpty) ...[
-                const SizedBox(height: CockpitSpacing.xl),
-                _RelatedConcepts(
-                  related: related,
-                  onTap: (t) => context.go('$base/teach/${t.id}'),
-                ),
-              ],
+              Text('${topic.estimatedStudyTimeMinutes} minutes'),
+              Text('Difficulty: ${_difficultyLabel(topic.difficulty)}'),
             ],
           ),
-        ),
-        _LessonNav(
-          current: topic.title,
-          index: index,
-          total: total,
-          onPrev: prev == null
-              ? null
-              : () => context.go('$base/teach/${prev.id}'),
-          onNext: next == null
-              ? null
-              : () => context.go('$base/teach/${next.id}'),
-        ),
-      ],
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _startLesson,
+            icon: const Icon(Icons.play_circle_outline),
+            label: const Text('Start Lesson'),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => _askFocus.requestFocus(),
+            icon: const Icon(Icons.chat_bubble_outline),
+            label: const Text('Ask Anything'),
+          ),
+          const SizedBox(height: 16),
+          _LessonCard(
+            key: _lessonKey,
+            topic: topic,
+            open: _lessonOpen,
+            onToggle: () => setState(() => _lessonOpen = !_lessonOpen),
+          ),
+          const SizedBox(height: 24),
+          Text('Ask AI', style: theme.textTheme.titleLarge),
+          for (final message in _messages) _ChatLine(msg: message),
+          if (_thinking) const _ChatLine(msg: null),
+          TextField(
+            controller: _controller,
+            focusNode: _askFocus,
+            minLines: 1,
+            maxLines: 4,
+            scrollPadding: const EdgeInsets.all(80),
+            decoration: const InputDecoration(
+              labelText: 'Ask about this topic',
+              border: OutlineInputBorder(),
+            ),
+            onSubmitted: (text) => _send(topic, text),
+          ),
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Voice input',
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Voice input — coming soon')),
+                ),
+                icon: const Icon(Icons.mic_none),
+              ),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _thinking
+                      ? null
+                      : () => _send(topic, _controller.text),
+                  icon: const Icon(Icons.send),
+                  label: Text(_thinking ? 'Thinking…' : 'Send'),
+                ),
+              ),
+            ],
+          ),
+          for (final suggestion in _suggestions)
+            OutlinedButton(
+              onPressed: _thinking ? null : () => _send(topic, suggestion),
+              child: Text(suggestion, textAlign: TextAlign.center),
+            ),
+          const SizedBox(height: 24),
+          Text('Ready to test yourself?', style: theme.textTheme.titleMedium),
+          const Text('Check what stuck with a quick quiz.'),
+          FilledButton.icon(
+            onPressed: () => context.go('$base/quiz?topicId=${topic.id}'),
+            icon: const Icon(Icons.quiz_outlined),
+            label: const Text('Start Quiz'),
+          ),
+          if (related.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text('Related Concepts', style: theme.textTheme.titleMedium),
+            for (final item in related)
+              TextButton(
+                onPressed: () => context.go('$base/teach/${item.id}'),
+                child: Text(item.title),
+              ),
+          ],
+          const SizedBox(height: 16),
+          Text('Lesson ${index + 1} of $total', textAlign: TextAlign.center),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: prev == null
+                      ? null
+                      : () => context.go('$base/teach/${prev.id}'),
+                  child: const Text('Previous'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FilledButton(
+                  onPressed: next == null
+                      ? null
+                      : () => context.go('$base/teach/${next.id}'),
+                  child: const Text('Next'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Header
-// ---------------------------------------------------------------------------
 
 class _Header extends StatelessWidget {
   const _Header({
@@ -312,9 +364,9 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    void soon(String l) => ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('$l — coming soon')));
+    void soon(String l) =>
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$l — coming soon')));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -401,10 +453,6 @@ class _Header extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Hero
-// ---------------------------------------------------------------------------
 
 class _Hero extends StatelessWidget {
   const _Hero({
@@ -550,10 +598,6 @@ class _MetaChip extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Lesson card
-// ---------------------------------------------------------------------------
-
 class _LessonCard extends StatelessWidget {
   const _LessonCard({
     super.key,
@@ -581,21 +625,26 @@ class _LessonCard extends StatelessWidget {
         children: [
           InkWell(
             onTap: onToggle,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    topic.title,
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: isMobilePlatform(context) ? 48 : 0,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      topic.title,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                ),
-                Icon(
-                  open ? Icons.expand_less : Icons.expand_more,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ],
+                  Icon(
+                    open ? Icons.expand_less : Icons.expand_more,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
             ),
           ),
           if (open) ...[
@@ -611,7 +660,6 @@ class _LessonCard extends StatelessWidget {
               style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
             ),
             const SizedBox(height: CockpitSpacing.lg),
-            // "How it works" — detailed explanation + key points in a framed box.
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(CockpitSpacing.md),
@@ -669,7 +717,6 @@ class _LessonCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: CockpitSpacing.lg),
-            // Callouts.
             _Callout(
               icon: Icons.lightbulb_outline,
               color: scheme.primary,
@@ -768,7 +815,7 @@ class _Callout extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          MobileWrap(
             children: [
               Icon(icon, size: 15, color: color),
               const SizedBox(width: CockpitSpacing.sm),
@@ -788,10 +835,6 @@ class _Callout extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Ask AI (woven-in chat)
-// ---------------------------------------------------------------------------
 
 class _AskAi extends StatelessWidget {
   const _AskAi({
@@ -960,10 +1003,6 @@ class _SendButton extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Ready to test
-// ---------------------------------------------------------------------------
-
 class _ReadyToTest extends StatelessWidget {
   const _ReadyToTest({required this.onStart});
   final VoidCallback onStart;
@@ -1018,138 +1057,6 @@ class _ReadyToTest extends StatelessWidget {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// Related concepts
-// ---------------------------------------------------------------------------
-
-class _RelatedConcepts extends StatelessWidget {
-  const _RelatedConcepts({required this.related, required this.onTap});
-  final List<Topic> related;
-  final ValueChanged<Topic> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Related Concepts',
-          style: theme.textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: CockpitSpacing.md),
-        SizedBox(
-          height: 132,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.zero,
-            itemCount: related.length,
-            separatorBuilder: (_, _) =>
-                const SizedBox(width: CockpitSpacing.md),
-            itemBuilder: (context, i) => _RelatedCard(
-              topic: related[i],
-              nextUp: i == 0,
-              onTap: () => onTap(related[i]),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RelatedCard extends StatelessWidget {
-  const _RelatedCard({
-    required this.topic,
-    required this.nextUp,
-    required this.onTap,
-  });
-  final Topic topic;
-  final bool nextUp;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(CockpitRadii.md),
-      child: Container(
-        width: 120,
-        padding: const EdgeInsets.all(CockpitSpacing.md),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(CockpitRadii.md),
-          border: Border.all(
-            color: nextUp
-                ? scheme.primary.withValues(alpha: 0.4)
-                : scheme.outlineVariant,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (nextUp)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: scheme.primary,
-                  borderRadius: BorderRadius.circular(CockpitRadii.sm),
-                ),
-                child: Text(
-                  'Next Up',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: scheme.onPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 9,
-                  ),
-                ),
-              )
-            else
-              Container(
-                width: 34,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: scheme.primary.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.account_tree_outlined,
-                  size: 18,
-                  color: scheme.primary,
-                ),
-              ),
-            const Spacer(),
-            Text(
-              topic.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                height: 1.1,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              '${topic.estimatedStudyTimeMinutes} min',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Lesson navigation
-// ---------------------------------------------------------------------------
 
 class _LessonNav extends StatelessWidget {
   const _LessonNav({
@@ -1270,10 +1177,6 @@ class _NavButton extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Shared bits
-// ---------------------------------------------------------------------------
-
 class _CircleButton extends StatelessWidget {
   const _CircleButton({required this.icon, required this.onTap});
   final IconData icon;
@@ -1286,8 +1189,8 @@ class _CircleButton extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(CockpitRadii.pill),
       child: Container(
-        width: 40,
-        height: 40,
+        width: isMobilePlatform(context) ? 48 : 40,
+        height: isMobilePlatform(context) ? 48 : 40,
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
           shape: BoxShape.circle,
@@ -1410,10 +1313,6 @@ String _difficultyLabel(int difficulty) {
   if (difficulty == 3) return 'Intermediate';
   return 'Advanced';
 }
-
-// ---------------------------------------------------------------------------
-// Desktop panes
-// ---------------------------------------------------------------------------
 
 class _TopicListPane extends StatelessWidget {
   const _TopicListPane({
@@ -1679,7 +1578,6 @@ class _RelatedTile extends StatelessWidget {
   }
 }
 
-/// Rotates a color's hue to build a same-family gradient companion.
 Color _shiftHue(Color base, double degrees) {
   final hsl = HSLColor.fromColor(base);
   final h = (hsl.hue + degrees) % 360;

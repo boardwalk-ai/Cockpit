@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -458,7 +459,9 @@ class _LightningRecallBody extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: CockpitSpacing.xl),
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg),
+              padding: const EdgeInsets.symmetric(
+                horizontal: CockpitSpacing.lg,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -550,10 +553,7 @@ class _LightningRecallBody extends StatelessWidget {
           ),
           const SizedBox(width: 24),
           // Right — session summary + weak topics.
-          Expanded(
-            flex: 4,
-            child: SingleChildScrollView(child: summary),
-          ),
+          Expanded(flex: 4, child: SingleChildScrollView(child: summary)),
         ],
       ),
     );
@@ -744,6 +744,9 @@ class _SessionSummaryCard extends StatelessWidget {
           const SizedBox(height: CockpitSpacing.lg),
           LayoutBuilder(
             builder: (context, constraints) {
+              if (isMobilePlatform(context)) {
+                return Wrap(spacing: 24, runSpacing: 16, children: stats);
+              }
               if (constraints.maxWidth < 360) {
                 return SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -801,7 +804,7 @@ class _SessionSummaryCard extends StatelessWidget {
                 spacing: CockpitSpacing.sm,
                 runSpacing: CockpitSpacing.xs,
                 children: [
-                  Row(
+                  MobileWrap(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
@@ -941,7 +944,7 @@ class _QuestionProgress extends StatelessWidget {
 
     return Column(
       children: [
-        Row(
+        MobileWrap(
           children: [
             Text.rich(
               TextSpan(

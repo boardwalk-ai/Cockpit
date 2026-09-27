@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -55,7 +56,8 @@ class _AskAiPageState extends ConsumerState<AskAiPage> {
         bottom: false,
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final desktop = constraints.maxWidth >= 1000;
+            final desktop =
+                !isMobilePlatform(context) && constraints.maxWidth >= 1000;
 
             return Padding(
               padding: EdgeInsets.fromLTRB(
@@ -69,6 +71,27 @@ class _AskAiPageState extends ConsumerState<AskAiPage> {
                 child: Column(
                   children: [
                     _Header(studioId: widget.studioId, title: studioTitle),
+                    if (!desktop)
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.info_outline),
+                          label: const Text('Study context'),
+                          onPressed: () => showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            useSafeArea: true,
+                            showDragHandle: true,
+                            builder: (context) => SizedBox(
+                              height: MediaQuery.sizeOf(context).height * .7,
+                              child: const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: _ContextSidebar(),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: CockpitSpacing.md),
                     Expanded(
                       child: desktop
@@ -481,7 +504,7 @@ class _AiAnswerCard extends StatelessWidget {
           const SizedBox(height: CockpitSpacing.lg),
           const _PracticeGrid(),
           const Divider(height: CockpitSpacing.xl),
-          Row(
+          MobileWrap(
             children: [
               Text(
                 '9:41 AM',
@@ -1146,7 +1169,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return MobileWrap(
       children: [
         Icon(icon, size: 18, color: color),
         const SizedBox(width: CockpitSpacing.sm),

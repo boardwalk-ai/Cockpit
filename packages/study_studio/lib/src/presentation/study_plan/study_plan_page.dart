@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
 class StudyPlanPage extends ConsumerWidget {
@@ -283,7 +284,7 @@ class _Header extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 2),
-                Row(
+                MobileWrap(
                   children: [
                     Icon(Icons.auto_awesome, size: 14, color: scheme.primary),
                     const SizedBox(width: CockpitSpacing.xs),
@@ -513,7 +514,7 @@ class _PrioritySectionHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                MobileWrap(
                   children: [
                     Text(
                       'Priority Topics',
@@ -616,7 +617,7 @@ class _PriorityTopicCard extends StatelessWidget {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
+                                  MobileWrap(
                                     children: [
                                       Flexible(
                                         child: Text(
@@ -1095,6 +1096,25 @@ class _AdaptiveSchedule extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final days = _buildDays(ranked);
+
+    if (isMobilePlatform(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Adaptive Schedule', style: theme.textTheme.titleLarge),
+          Text('Your personalized roadmap', style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 16),
+          for (final day in days)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.event_outlined),
+                title: Text(day.title),
+                subtitle: Text('${day.label} · ${day.minutes} min'),
+              ),
+            ),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

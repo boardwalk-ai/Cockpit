@@ -1,4 +1,5 @@
 import 'package:cockpit_ui/cockpit_ui.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -9,8 +10,14 @@ import 'account_bar.dart';
 const double kStudioDesktop = 900;
 
 /// True when the current view should use the desktop/web layout.
-bool isDesktop(BuildContext context) =>
-    MediaQuery.sizeOf(context).width >= kStudioDesktop;
+bool isMobilePlatform(BuildContext context) =>
+    defaultTargetPlatform == TargetPlatform.android ||
+    defaultTargetPlatform == TargetPlatform.iOS ||
+    MediaQuery.sizeOf(context).width < kStudioDesktop;
+
+/// Wide desktop browsers keep their existing layout. Native phones retain the
+/// independent mobile layout when rotated; narrow browsers use it as well.
+bool isDesktop(BuildContext context) => !isMobilePlatform(context);
 
 /// The five persistent destinations, shared by the phone bottom nav and the
 /// desktop rail.
@@ -30,13 +37,13 @@ void handleStudioNav(BuildContext context, int i) {
     case 1:
       context.go('/study');
     case 3:
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Calendar — coming soon')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Calendar — coming soon')));
     case 4:
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile — coming soon')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profile — coming soon')));
   }
 }
 
@@ -44,11 +51,7 @@ void handleStudioNav(BuildContext context, int i) {
 /// renders a left navigation rail beside the content; on phones it falls back
 /// to the bottom navigation bar. The content itself is provided by each screen.
 class StudioShell extends StatelessWidget {
-  const StudioShell({
-    super.key,
-    required this.child,
-    this.selectedIndex = 1,
-  });
+  const StudioShell({super.key, required this.child, this.selectedIndex = 1});
 
   final Widget child;
   final int selectedIndex;
@@ -104,8 +107,9 @@ class _MobileTopBar extends StatelessWidget {
               'Study Studio',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const SizedBox(width: CockpitSpacing.sm),
@@ -346,4 +350,3 @@ class ContentColumn extends StatelessWidget {
     );
   }
 }
-

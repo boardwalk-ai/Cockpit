@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
 import '../../domain/entities/topic.dart';
+import '../widgets/studio_scaffold.dart';
 import '../widgets/topic_card.dart';
 
 enum _Filter { all, weak, mastered, highImportance, hard }
@@ -76,7 +77,9 @@ class _TopicLibraryPageState extends ConsumerState<TopicLibraryPage> {
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (studio) {
           final topics = _apply(studio.topics);
-          final isDesktop = MediaQuery.of(context).size.width >= 1000;
+          final isDesktop =
+              !isMobilePlatform(context) &&
+              MediaQuery.sizeOf(context).width >= 1000;
 
           return Center(
             child: ConstrainedBox(
@@ -223,11 +226,16 @@ class _EnumDropdown<T> extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InputDecorator(
-      decoration: const InputDecoration(isDense: true),
+      decoration: InputDecoration(
+        isDense: true,
+        labelText: isMobilePlatform(context) ? label : null,
+      ),
       child: Row(
         children: [
-          Text(label),
-          const SizedBox(width: CockpitSpacing.sm),
+          if (!isMobilePlatform(context)) ...[
+            Text(label),
+            const SizedBox(width: CockpitSpacing.sm),
+          ],
           Expanded(
             child: DropdownButtonHideUnderline(
               child: DropdownButton<T>(
@@ -235,7 +243,10 @@ class _EnumDropdown<T> extends StatelessWidget {
                 value: value,
                 items: [
                   for (final v in values)
-                    DropdownMenuItem(value: v, child: Text(naming(v))),
+                    DropdownMenuItem(
+                      value: v,
+                      child: Text(naming(v), overflow: TextOverflow.ellipsis),
+                    ),
                 ],
                 onChanged: (v) => onChanged(v ?? value),
               ),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../widgets/studio_scaffold.dart';
 
 class ProgressPage extends ConsumerWidget {
   const ProgressPage({super.key, required this.studioId});
@@ -35,6 +36,78 @@ class ProgressPage extends ConsumerWidget {
         data: (studio) {
           final sorted = [...studio.topics]
             ..sort((a, b) => a.mastery.compareTo(b.mastery));
+          if (isMobilePlatform(context)) {
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                Text('Your progress', style: theme.textTheme.headlineSmall),
+                const SizedBox(height: 16),
+                CockpitCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Overall mastery',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 16),
+                      MasteryBar(value: studio.overallMastery),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 24,
+                        runSpacing: 16,
+                        children: [
+                          StatTile(
+                            value: '${studio.topicCount}',
+                            label: 'Topics',
+                          ),
+                          StatTile(
+                            value: '${studio.weakTopics.length}',
+                            label: 'Weak',
+                          ),
+                          StatTile(
+                            value:
+                                '${studio.topics.where((t) => t.mastery >= .8).length}',
+                            label: 'Strong',
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const SectionHeader(title: 'By topic (weakest first)'),
+                for (final topic in sorted)
+                  Card(
+                    child: InkWell(
+                      onTap: () =>
+                          context.go('/study/$studioId/topics/${topic.id}'),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              topic.title,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                            if (topic.isWeak)
+                              Text(
+                                'Weak',
+                                style: TextStyle(
+                                  color: theme.colorScheme.error,
+                                ),
+                              ),
+                            const SizedBox(height: 12),
+                            MasteryBar(value: topic.mastery),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            );
+          }
           return ListView(
             padding: const EdgeInsets.all(CockpitSpacing.lg),
             children: [

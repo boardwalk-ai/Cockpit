@@ -22,6 +22,7 @@ import 'presentation/topic_detail/topic_detail_page.dart';
 import 'presentation/topic_library/topic_library_page.dart';
 import 'presentation/upload/upload_page.dart';
 import 'presentation/welcome/welcome_back_page.dart';
+import 'presentation/widgets/mobile_layout.dart';
 
 /// Study Studio as a pluggable Cockpit module. The shell mounts this only when
 /// `study_studio_enabled` is on.
@@ -51,115 +52,125 @@ class StudyStudioModule extends CockpitModule {
 
   @override
   List<RouteBase> routes() => [
-    GoRoute(
-      path: '/study',
-      builder: (_, _) => const StudyHomePage(),
+    ShellRoute(
+      builder: (context, state, child) => StudyMobileSurface(child: child),
       routes: [
-        // Static siblings declared before the `:studioId` param route.
-        GoRoute(path: 'upload', builder: (_, _) => const UploadPage()),
         GoRoute(
-          path: 'build/:jobId',
-          builder: (_, state) => BuildingPage(
-            jobId: state.pathParameters['jobId']!,
-            studioId: state.uri.queryParameters['studioId'],
-          ),
-        ),
-        GoRoute(path: 'welcome', builder: (_, _) => const WelcomeBackPage()),
-        GoRoute(
-          path: ':studioId',
-          builder: (_, state) => DashboardPage(
-            studioId: state.pathParameters['studioId']!,
-            buildId: state.uri.queryParameters['building'],
-          ),
+          path: '/study',
+          builder: (_, _) => const StudyHomePage(),
           routes: [
+            // Static siblings declared before the `:studioId` param route.
+            GoRoute(path: 'upload', builder: (_, _) => const UploadPage()),
             GoRoute(
-              path: 'ready',
-              builder: (_, state) =>
-                  ReadyPage(studioId: state.pathParameters['studioId']!),
-            ),
-            GoRoute(
-              path: 'topics',
-              builder: (_, state) =>
-                  TopicLibraryPage(studioId: state.pathParameters['studioId']!),
-            ),
-            GoRoute(
-              path: 'topics/:topicId',
-              builder: (_, state) => TopicDetailPage(
-                studioId: state.pathParameters['studioId']!,
-                topicId: state.pathParameters['topicId']!,
+              path: 'build/:jobId',
+              builder: (_, state) => BuildingPage(
+                jobId: state.pathParameters['jobId']!,
+                studioId: state.uri.queryParameters['studioId'],
               ),
             ),
             GoRoute(
-              path: 'teach/:topicId',
-              builder: (_, state) => TeachMePage(
+              path: 'welcome',
+              builder: (_, _) => const WelcomeBackPage(),
+            ),
+            GoRoute(
+              path: ':studioId',
+              builder: (_, state) => DashboardPage(
                 studioId: state.pathParameters['studioId']!,
-                topicId: state.pathParameters['topicId']!,
+                buildId: state.uri.queryParameters['building'],
               ),
-            ),
-            GoRoute(
-              path: 'quiz',
-              builder: (_, state) => QuizMePage(
-                studioId: state.pathParameters['studioId']!,
-                topicId: state.uri.queryParameters['topicId'],
-              ),
-            ),
-            GoRoute(
-              path: 'flashcards',
-              builder: (_, state) => FlashcardsPage(
-                studioId: state.pathParameters['studioId']!,
-                topicId: state.uri.queryParameters['topicId'],
-              ),
-            ),
-            GoRoute(
-              path: 'progress',
-              builder: (_, state) =>
-                  ProgressPage(studioId: state.pathParameters['studioId']!),
-            ),
-            GoRoute(
-              path: 'mastery-report',
-              builder: (_, state) => MasteryReportPage(
-                studioId: state.pathParameters['studioId']!,
-              ),
-            ),
-            GoRoute(
-              path: 'study-plan',
-              builder: (_, state) =>
-                  StudyPlanPage(studioId: state.pathParameters['studioId']!),
-            ),
-            GoRoute(
-              path: 'knowledge-graph',
-              builder: (_, state) => KnowledgeGraphPage(
-                studioId: state.pathParameters['studioId']!,
-              ),
-            ),
-            GoRoute(
-              path: 'recall',
-              builder: (_, state) => LightningRecallPage(
-                studioId: state.pathParameters['studioId']!,
-              ),
-            ),
-            GoRoute(
-              path: 'scenario',
-              builder: (_, state) => ScenarioModePage(
-                studioId: state.pathParameters['studioId']!,
-              ),
-            ),
-            GoRoute(
-              path: 'analytics',
-              builder: (_, state) => StudyAnalyticsPage(
-                studioId: state.pathParameters['studioId']!,
-              ),
-            ),
-            GoRoute(
-              path: 'ask-ai',
-              builder: (_, state) =>
-                  AskAiPage(studioId: state.pathParameters['studioId']!),
-            ),
-            GoRoute(
-              path: 'manage',
-              builder: (_, state) => ManageStudyStudioPage(
-                studioId: state.pathParameters['studioId']!,
-              ),
+              routes: [
+                GoRoute(
+                  path: 'ready',
+                  builder: (_, state) =>
+                      ReadyPage(studioId: state.pathParameters['studioId']!),
+                ),
+                GoRoute(
+                  path: 'topics',
+                  builder: (_, state) => TopicLibraryPage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'topics/:topicId',
+                  builder: (_, state) => TopicDetailPage(
+                    studioId: state.pathParameters['studioId']!,
+                    topicId: state.pathParameters['topicId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'teach/:topicId',
+                  builder: (_, state) => TeachMePage(
+                    studioId: state.pathParameters['studioId']!,
+                    topicId: state.pathParameters['topicId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'quiz',
+                  builder: (_, state) => QuizMePage(
+                    studioId: state.pathParameters['studioId']!,
+                    topicId: state.uri.queryParameters['topicId'],
+                  ),
+                ),
+                GoRoute(
+                  path: 'flashcards',
+                  builder: (_, state) => FlashcardsPage(
+                    studioId: state.pathParameters['studioId']!,
+                    topicId: state.uri.queryParameters['topicId'],
+                  ),
+                ),
+                GoRoute(
+                  path: 'progress',
+                  builder: (_, state) =>
+                      ProgressPage(studioId: state.pathParameters['studioId']!),
+                ),
+                GoRoute(
+                  path: 'mastery-report',
+                  builder: (_, state) => MasteryReportPage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'study-plan',
+                  builder: (_, state) => StudyPlanPage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'knowledge-graph',
+                  builder: (_, state) => KnowledgeGraphPage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'recall',
+                  builder: (_, state) => LightningRecallPage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'scenario',
+                  builder: (_, state) => ScenarioModePage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'analytics',
+                  builder: (_, state) => StudyAnalyticsPage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+                GoRoute(
+                  path: 'ask-ai',
+                  builder: (_, state) =>
+                      AskAiPage(studioId: state.pathParameters['studioId']!),
+                ),
+                GoRoute(
+                  path: 'manage',
+                  builder: (_, state) => ManageStudyStudioPage(
+                    studioId: state.pathParameters['studioId']!,
+                  ),
+                ),
+              ],
             ),
           ],
         ),

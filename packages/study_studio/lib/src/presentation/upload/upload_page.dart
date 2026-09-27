@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
 import '../../domain/entities/source.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 2 — Create a New Study Studio.
@@ -57,17 +58,21 @@ class _UploadPageState extends ConsumerState<UploadPage> {
   }
 
   Future<void> _addFile() async {
-    final result =
-        await FilePicker.platform.pickFiles(withData: true, allowMultiple: true);
+    final result = await FilePicker.platform.pickFiles(
+      withData: true,
+      allowMultiple: true,
+    );
     if (result == null) return;
     setState(() {
       for (final f in result.files) {
-        _files.add(_UploadedFile(
-          name: f.name,
-          type: _typeForExtension(f.extension),
-          meta: _formatBytes(f.size),
-          bytes: f.bytes,
-        ));
+        _files.add(
+          _UploadedFile(
+            name: f.name,
+            type: _typeForExtension(f.extension),
+            meta: _formatBytes(f.size),
+            bytes: f.bytes,
+          ),
+        );
       }
     });
   }
@@ -76,8 +81,9 @@ class _UploadPageState extends ConsumerState<UploadPage> {
   /// back to the mock build route when there's no API backend (offline dev).
   Future<void> _build() async {
     final upload = ref.read(uploadApiProvider);
-    final title =
-        _nameController.text.trim().isEmpty ? 'New Study Studio' : _nameController.text.trim();
+    final title = _nameController.text.trim().isEmpty
+        ? 'New Study Studio'
+        : _nameController.text.trim();
 
     if (upload == null) {
       context.go('/study/build/job1'); // offline/mock: no real backend
@@ -86,7 +92,9 @@ class _UploadPageState extends ConsumerState<UploadPage> {
 
     setState(() => _building = true);
     try {
-      final studio = await ref.read(studioRepositoryProvider).createStudio(title: title);
+      final studio = await ref
+          .read(studioRepositoryProvider)
+          .createStudio(title: title);
       // Upload only — ingest + generation progress runs on the studio Home
       // banner. The API build waits for ingest so we don't race an empty store.
       var uploaded = 0;
@@ -110,8 +118,9 @@ class _UploadPageState extends ConsumerState<UploadPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _building = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
     }
   }
 
@@ -130,9 +139,7 @@ class _UploadPageState extends ConsumerState<UploadPage> {
 
     final filesHeader = Row(
       children: [
-        Expanded(
-          child: _SectionLabel('Uploaded Files (${_files.length})'),
-        ),
+        Expanded(child: _SectionLabel('Uploaded Files (${_files.length})')),
         TextButton(
           onPressed: () => setState(_files.clear),
           child: const Text('Clear All'),
@@ -230,11 +237,7 @@ class _UploadPageState extends ConsumerState<UploadPage> {
           children: [
             _TopBar(onBack: () => context.go('/study')),
             Expanded(child: body),
-            _BuildBar(
-              enabled: canBuild,
-              wide: desktop,
-              onBuild: _build,
-            ),
+            _BuildBar(enabled: canBuild, wide: desktop, onBuild: _build),
           ],
         ),
       ),
@@ -305,8 +308,9 @@ class _TopBar extends StatelessWidget {
                 child: Text(
                   'Create Study Studio',
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.titleLarge
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               const SizedBox(width: 44), // balances the back button
@@ -394,7 +398,13 @@ class _StudioNameField extends StatelessWidget {
             child: TextField(
               controller: controller,
               maxLength: 100,
-              buildCounter: (_, {required currentLength, required isFocused, maxLength}) => null,
+              buildCounter:
+                  (
+                    _, {
+                    required currentLength,
+                    required isFocused,
+                    maxLength,
+                  }) => null,
               decoration: const InputDecoration(
                 isCollapsed: true,
                 filled: false,
@@ -407,8 +417,9 @@ class _StudioNameField extends StatelessWidget {
           const SizedBox(width: CockpitSpacing.sm),
           Text(
             '${controller.text.characters.length}/100',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -522,12 +533,36 @@ class _OrbCluster extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          const Positioned(left: 4, top: 6, child: _SatIcon(Icons.picture_as_pdf, Color(0xFFE5484D))),
-          const Positioned(left: 18, bottom: 4, child: _SatIcon(Icons.image, Color(0xFF30A46C))),
-          const Positioned(left: 0, top: 54, child: _SatIcon(Icons.description, Color(0xFF3B82F6))),
-          const Positioned(right: 4, top: 6, child: _SatIcon(Icons.slideshow, Color(0xFFF76808))),
-          const Positioned(right: 0, top: 54, child: _SatIcon(Icons.graphic_eq, Color(0xFF8B5CF6))),
-          const Positioned(right: 18, bottom: 4, child: _SatIcon(Icons.videocam, Color(0xFF3B82F6))),
+          const Positioned(
+            left: 4,
+            top: 6,
+            child: _SatIcon(Icons.picture_as_pdf, Color(0xFFE5484D)),
+          ),
+          const Positioned(
+            left: 18,
+            bottom: 4,
+            child: _SatIcon(Icons.image, Color(0xFF30A46C)),
+          ),
+          const Positioned(
+            left: 0,
+            top: 54,
+            child: _SatIcon(Icons.description, Color(0xFF3B82F6)),
+          ),
+          const Positioned(
+            right: 4,
+            top: 6,
+            child: _SatIcon(Icons.slideshow, Color(0xFFF76808)),
+          ),
+          const Positioned(
+            right: 0,
+            top: 54,
+            child: _SatIcon(Icons.graphic_eq, Color(0xFF8B5CF6)),
+          ),
+          const Positioned(
+            right: 18,
+            bottom: 4,
+            child: _SatIcon(Icons.videocam, Color(0xFF3B82F6)),
+          ),
           // The AI core.
           Container(
             width: 74,
@@ -547,7 +582,11 @@ class _OrbCluster extends StatelessWidget {
                 ),
               ],
             ),
-            child: const Icon(Icons.auto_awesome, color: Colors.white, size: 34),
+            child: const Icon(
+              Icons.auto_awesome,
+              color: Colors.white,
+              size: 34,
+            ),
           ),
         ],
       ),
@@ -652,14 +691,16 @@ class _FileCard extends StatelessWidget {
                   file.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w600),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   file.meta,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -669,7 +710,9 @@ class _FileCard extends StatelessWidget {
           const SizedBox(width: 2),
           Text(
             'Ready',
-            style: theme.textTheme.labelMedium?.copyWith(color: scheme.tertiary),
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: scheme.tertiary,
+            ),
           ),
           IconButton(
             visualDensity: VisualDensity.compact,
@@ -698,16 +741,66 @@ class _AiWillBuildGrid extends StatelessWidget {
   const _AiWillBuildGrid();
 
   static const _features = <_AiFeature>[
-    _AiFeature(Icons.menu_book_rounded, Color(0xFF3B82F6), 'Topics', 'Organized into key topics'),
-    _AiFeature(Icons.bookmark_rounded, Color(0xFF30A46C), 'Definitions', 'Clear explanations and key terms'),
-    _AiFeature(Icons.forum_rounded, Color(0xFF8B5CF6), 'AI Tutor', 'Ask anything, get answers'),
-    _AiFeature(Icons.style_rounded, Color(0xFFF76808), 'Flashcards', 'Smart flashcards for retention'),
-    _AiFeature(Icons.help_rounded, Color(0xFFE5484D), 'Quizzes', 'Practice with AI-generated questions'),
-    _AiFeature(Icons.view_in_ar_rounded, Color(0xFF30A46C), 'Scenarios', 'Real-world application practice'),
-    _AiFeature(Icons.hub_rounded, Color(0xFF8B5CF6), 'Knowledge Graph', 'Visual connections between concepts'),
-    _AiFeature(Icons.psychology_rounded, Color(0xFFF5A623), 'Memory Hooks', 'Mnemonics & memory aids'),
-    _AiFeature(Icons.gps_fixed_rounded, Color(0xFFE5484D), 'Weak Topic Detection', 'AI identifies what you need to review'),
-    _AiFeature(Icons.insights_rounded, Color(0xFF3B82F6), 'Visual Explanations', 'Diagrams, charts & visuals'),
+    _AiFeature(
+      Icons.menu_book_rounded,
+      Color(0xFF3B82F6),
+      'Topics',
+      'Organized into key topics',
+    ),
+    _AiFeature(
+      Icons.bookmark_rounded,
+      Color(0xFF30A46C),
+      'Definitions',
+      'Clear explanations and key terms',
+    ),
+    _AiFeature(
+      Icons.forum_rounded,
+      Color(0xFF8B5CF6),
+      'AI Tutor',
+      'Ask anything, get answers',
+    ),
+    _AiFeature(
+      Icons.style_rounded,
+      Color(0xFFF76808),
+      'Flashcards',
+      'Smart flashcards for retention',
+    ),
+    _AiFeature(
+      Icons.help_rounded,
+      Color(0xFFE5484D),
+      'Quizzes',
+      'Practice with AI-generated questions',
+    ),
+    _AiFeature(
+      Icons.view_in_ar_rounded,
+      Color(0xFF30A46C),
+      'Scenarios',
+      'Real-world application practice',
+    ),
+    _AiFeature(
+      Icons.hub_rounded,
+      Color(0xFF8B5CF6),
+      'Knowledge Graph',
+      'Visual connections between concepts',
+    ),
+    _AiFeature(
+      Icons.psychology_rounded,
+      Color(0xFFF5A623),
+      'Memory Hooks',
+      'Mnemonics & memory aids',
+    ),
+    _AiFeature(
+      Icons.gps_fixed_rounded,
+      Color(0xFFE5484D),
+      'Weak Topic Detection',
+      'AI identifies what you need to review',
+    ),
+    _AiFeature(
+      Icons.insights_rounded,
+      Color(0xFF3B82F6),
+      'Visual Explanations',
+      'Diagrams, charts & visuals',
+    ),
   ];
 
   @override
@@ -758,8 +851,9 @@ class _FeatureCard extends StatelessWidget {
             feature.title,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.labelLarge
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 2),
           Expanded(
@@ -831,12 +925,14 @@ class _BuildBar extends StatelessWidget {
                 children: [
                   Icon(Icons.auto_awesome, color: Colors.white, size: 20),
                   SizedBox(width: CockpitSpacing.sm),
-                  Text(
-                    'Build Study Studio',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                  Flexible(
+                    child: Text(
+                      'Build Study Studio',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -847,8 +943,10 @@ class _BuildBar extends StatelessWidget {
       ),
     );
 
-    final caption = Row(
-      mainAxisAlignment: wide ? MainAxisAlignment.start : MainAxisAlignment.center,
+    final caption = MobileWrap(
+      mainAxisAlignment: wide
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.center,
       children: [
         Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
         const SizedBox(width: CockpitSpacing.xs),
@@ -856,8 +954,9 @@ class _BuildBar extends StatelessWidget {
           enabled
               ? 'Estimated build time: 30–90 seconds'
               : 'Add at least one file to build',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -914,23 +1013,22 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: Theme.of(context)
-          .textTheme
-          .titleMedium
-          ?.copyWith(fontWeight: FontWeight.w700),
+      style: Theme.of(
+        context,
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
     );
   }
 }
 
 (IconData, Color) _fileVisual(SourceFileType type) => switch (type) {
-      SourceFileType.pdf => (Icons.picture_as_pdf, const Color(0xFFE5484D)),
-      SourceFileType.docx => (Icons.description, const Color(0xFF3B82F6)),
-      SourceFileType.pptx => (Icons.slideshow, const Color(0xFFF76808)),
-      SourceFileType.txt => (Icons.notes, const Color(0xFF6B7280)),
-      SourceFileType.image => (Icons.image, const Color(0xFF30A46C)),
-      SourceFileType.audio => (Icons.graphic_eq, const Color(0xFF8B5CF6)),
-      SourceFileType.video => (Icons.videocam, const Color(0xFF3B82F6)),
-    };
+  SourceFileType.pdf => (Icons.picture_as_pdf, const Color(0xFFE5484D)),
+  SourceFileType.docx => (Icons.description, const Color(0xFF3B82F6)),
+  SourceFileType.pptx => (Icons.slideshow, const Color(0xFFF76808)),
+  SourceFileType.txt => (Icons.notes, const Color(0xFF6B7280)),
+  SourceFileType.image => (Icons.image, const Color(0xFF30A46C)),
+  SourceFileType.audio => (Icons.graphic_eq, const Color(0xFF8B5CF6)),
+  SourceFileType.video => (Icons.videocam, const Color(0xFF3B82F6)),
+};
 
 /// Rotates a color's hue to build a same-family gradient companion.
 Color _shiftHue(Color base, double degrees) {

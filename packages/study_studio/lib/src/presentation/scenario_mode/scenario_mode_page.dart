@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/scenario.dart';
 import '../../domain/entities/studio.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -54,7 +55,10 @@ class _ScenarioModePageState extends ConsumerState<ScenarioModePage> {
             final scenarios = studio.scenarios;
             final base = '/study/${studio.id}';
             if (scenarios.isEmpty) {
-              return _Empty(title: studio.title, onBack: () => context.go(base));
+              return _Empty(
+                title: studio.title,
+                onBack: () => context.go(base),
+              );
             }
             final i = _index.clamp(0, scenarios.length - 1);
             final scenario = scenarios[i];
@@ -272,9 +276,7 @@ class _Body extends StatelessWidget {
           top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
       ),
-      child: wide
-          ? ContentColumn(maxWidth: 1100, child: actions)
-          : actions,
+      child: wide ? ContentColumn(maxWidth: 1100, child: actions) : actions,
     );
   }
 }
@@ -320,14 +322,18 @@ class _Header extends StatelessWidget {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w800),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
                 const SizedBox(height: 2),
-                Row(
+                MobileWrap(
                   children: [
-                    Icon(Icons.track_changes_rounded,
-                        size: 14, color: StudyPalette.success),
+                    Icon(
+                      Icons.track_changes_rounded,
+                      size: 14,
+                      color: StudyPalette.success,
+                    ),
                     const SizedBox(width: CockpitSpacing.xs),
                     Text(
                       'Scenario Mode',
@@ -344,8 +350,9 @@ class _Header extends StatelessWidget {
           const SizedBox(width: CockpitSpacing.sm),
           Text(
             'Scenario ${index + 1} of $total',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -365,13 +372,19 @@ class _ProgressBar extends StatelessWidget {
       children: [
         Row(
           children: [
-            Text('Progress',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
+            Text(
+              'Progress',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
             const Spacer(),
-            Text('${(progress * 100).round()}% Complete',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
+            Text(
+              '${(progress * 100).round()}% Complete',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: CockpitSpacing.xs),
@@ -406,14 +419,19 @@ class _BriefCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.assignment_outlined,
-                  size: 18, color: StudyPalette.success),
+              Icon(
+                Icons.assignment_outlined,
+                size: 18,
+                color: StudyPalette.success,
+              ),
               const SizedBox(width: CockpitSpacing.xs),
-              Text('Scenario Brief',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    color: StudyPalette.success,
-                    fontWeight: FontWeight.w800,
-                  )),
+              Text(
+                'Scenario Brief',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: StudyPalette.success,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: CockpitSpacing.md),
@@ -450,7 +468,11 @@ class _BriefCard extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.smart_toy_rounded, size: 18, color: scheme.primary),
+                  Icon(
+                    Icons.smart_toy_rounded,
+                    size: 18,
+                    color: scheme.primary,
+                  ),
                   const SizedBox(width: CockpitSpacing.sm),
                   Expanded(
                     child: Text(
@@ -491,15 +513,21 @@ class _Brief extends StatelessWidget {
             children: [
               Icon(icon, size: 15, color: scheme.onSurfaceVariant),
               const SizedBox(width: CockpitSpacing.xs),
-              Text(label,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant)),
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 2),
-          Text(value,
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            value,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
@@ -532,16 +560,21 @@ class _ProblemCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Scenario',
-              style: theme.textTheme.titleSmall?.copyWith(
-                color: scheme.primary,
-                fontWeight: FontWeight.w800,
-              )),
+          Text(
+            'Scenario',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: scheme.primary,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: CockpitSpacing.sm),
           if (scenario.title.isNotEmpty) ...[
-            Text(scenario.title,
-                style: theme.textTheme.titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w800)),
+            Text(
+              scenario.title,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w800,
+              ),
+            ),
             const SizedBox(height: CockpitSpacing.sm),
           ],
           Text(
@@ -560,7 +593,11 @@ class _ProblemCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.help_outline_rounded, size: 18, color: scheme.primary),
+                Icon(
+                  Icons.help_outline_rounded,
+                  size: 18,
+                  color: scheme.primary,
+                ),
                 const SizedBox(width: CockpitSpacing.sm),
                 Expanded(
                   child: Text(
@@ -611,21 +648,29 @@ class _InvestigationPanel extends StatelessWidget {
               Icon(Icons.search_rounded, size: 18, color: scheme.primary),
               const SizedBox(width: CockpitSpacing.xs),
               Expanded(
-                child: Text('Investigation Tools',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                child: Text(
+                  'Investigation Tools',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
-              Text('Clues found: $found / ${scenario.clues.length}',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: scheme.primary,
-                    fontWeight: FontWeight.w700,
-                  )),
+              Text(
+                'Clues found: $found / ${scenario.clues.length}',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 2),
-          Text('Gather clues to help you solve the problem.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(
+            'Gather clues to help you solve the problem.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: CockpitSpacing.md),
           for (final clue in scenario.clues) ...[
             _ClueTile(
@@ -684,29 +729,38 @@ class _ClueTile extends StatelessWidget {
                         ? Icons.check_circle_rounded
                         : Icons.lock_outline_rounded,
                     size: 16,
-                    color: revealed ? StudyPalette.success : scheme.onSurfaceVariant,
+                    color: revealed
+                        ? StudyPalette.success
+                        : scheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: CockpitSpacing.sm),
                   Expanded(
-                    child: Text(clue.label,
-                        style: theme.textTheme.labelLarge
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    child: Text(
+                      clue.label,
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                   if (!revealed)
-                    Text('Inspect',
-                        style: theme.textTheme.labelMedium?.copyWith(
-                          color: scheme.primary,
-                          fontWeight: FontWeight.w700,
-                        )),
+                    Text(
+                      'Inspect',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                 ],
               ),
               if (revealed) ...[
                 const SizedBox(height: CockpitSpacing.xs),
-                Text(clue.detail,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      height: 1.35,
-                    )),
+                Text(
+                  clue.detail,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
               ],
             ],
           ),
@@ -743,18 +797,27 @@ class _DecisionPanel extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.lightbulb_outline_rounded,
-                  size: 18, color: scheme.primary),
+              Icon(
+                Icons.lightbulb_outline_rounded,
+                size: 18,
+                color: scheme.primary,
+              ),
               const SizedBox(width: CockpitSpacing.xs),
-              Text('What would you do first?',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w800)),
+              Text(
+                'What would you do first?',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 2),
-          Text('Choose the best initial action.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(
+            'Choose the best initial action.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: CockpitSpacing.md),
           for (final option in scenario.options) ...[
             _OptionTile(
@@ -833,16 +896,22 @@ class _OptionTile extends StatelessWidget {
           padding: const EdgeInsets.all(CockpitSpacing.md),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(CockpitRadii.md),
-            border: Border.all(color: border, width: selected || (answered && isCorrect) ? 1.5 : 1),
+            border: Border.all(
+              color: border,
+              width: selected || (answered && isCorrect) ? 1.5 : 1,
+            ),
           ),
           child: Row(
             children: [
               Icon(marker, size: 20, color: markerColor),
               const SizedBox(width: CockpitSpacing.md),
               Expanded(
-                child: Text(option.label,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600)),
+                child: Text(
+                  option.label,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ],
           ),
@@ -887,8 +956,10 @@ class _FeedbackCard extends StatelessWidget {
               const SizedBox(width: CockpitSpacing.sm),
               Text(
                 correct ? 'Excellent! 🎉' : "Good thinking — here's why",
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(color: accent, fontWeight: FontWeight.w800),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: accent,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ],
           ),
@@ -915,9 +986,12 @@ class _FeedbackCard extends StatelessWidget {
                   Icon(Icons.flag_rounded, size: 15, color: accent),
                   const SizedBox(width: CockpitSpacing.xs),
                   Flexible(
-                    child: Text(scenario.outcomeLabel,
-                        style: theme.textTheme.labelMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    child: Text(
+                      scenario.outcomeLabel,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -948,12 +1022,18 @@ class _ReflectionCard extends StatelessWidget {
           if (scenario.skills.isNotEmpty) ...[
             Row(
               children: [
-                Icon(Icons.track_changes_rounded,
-                    size: 16, color: scheme.primary),
+                Icon(
+                  Icons.track_changes_rounded,
+                  size: 16,
+                  color: scheme.primary,
+                ),
                 const SizedBox(width: CockpitSpacing.xs),
-                Text('What you practiced',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  'What you practiced',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: CockpitSpacing.sm),
@@ -962,8 +1042,11 @@ class _ReflectionCard extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: CockpitSpacing.xs),
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle_rounded,
-                        size: 15, color: StudyPalette.success),
+                    Icon(
+                      Icons.check_circle_rounded,
+                      size: 15,
+                      color: StudyPalette.success,
+                    ),
                     const SizedBox(width: CockpitSpacing.xs),
                     Expanded(child: Text(s, style: theme.textTheme.bodySmall)),
                   ],
@@ -976,9 +1059,12 @@ class _ReflectionCard extends StatelessWidget {
               children: [
                 Icon(Icons.menu_book_rounded, size: 16, color: scheme.primary),
                 const SizedBox(width: CockpitSpacing.xs),
-                Text('Related lessons',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                  'Related lessons',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: CockpitSpacing.sm),
@@ -998,13 +1084,17 @@ class _ReflectionCard extends StatelessWidget {
                         color: scheme.secondary.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(CockpitRadii.pill),
                         border: Border.all(
-                            color: scheme.secondary.withValues(alpha: 0.35)),
+                          color: scheme.secondary.withValues(alpha: 0.35),
+                        ),
                       ),
-                      child: Text(t,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.labelMedium
-                              ?.copyWith(color: scheme.secondary)),
+                      child: Text(
+                        t,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: scheme.secondary,
+                        ),
+                      ),
                     ),
                   ),
               ],
@@ -1086,19 +1176,26 @@ class _Empty extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.track_changes_rounded,
-                      size: 48, color: scheme.onSurfaceVariant),
+                  Icon(
+                    Icons.track_changes_rounded,
+                    size: 48,
+                    color: scheme.onSurfaceVariant,
+                  ),
                   const SizedBox(height: CockpitSpacing.md),
-                  Text('No scenarios yet',
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w800)),
+                  Text(
+                    'No scenarios yet',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   const SizedBox(height: CockpitSpacing.xs),
                   Text(
                     'This studio has no application scenarios yet. Upload '
                     'material and rebuild to generate them.',
                     textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -1191,11 +1288,14 @@ class _OutlineButton extends StatelessWidget {
                 Icon(icon, size: 18, color: scheme.onSurface),
                 const SizedBox(width: CockpitSpacing.xs),
                 Flexible(
-                  child: Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.labelLarge
-                          ?.copyWith(fontWeight: FontWeight.w700)),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1237,11 +1337,15 @@ class _GradientButton extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Flexible(
-                  child: Text(label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.w700)),
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: CockpitSpacing.xs),
                 Icon(icon, size: 18, color: Colors.white),

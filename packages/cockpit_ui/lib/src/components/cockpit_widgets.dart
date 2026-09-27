@@ -16,13 +16,15 @@ class ThemeSwitcher extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
 
     Widget btn(IconData icon, ThemeMode m, String tip) => IconButton(
-          tooltip: tip,
-          visualDensity: VisualDensity.compact,
-          onPressed: () => ctrl.setMode(m),
-          icon: Icon(icon,
-              size: 18,
-              color: mode == m ? scheme.primary : scheme.onSurfaceVariant),
-        );
+      tooltip: tip,
+      visualDensity: VisualDensity.compact,
+      onPressed: () => ctrl.setMode(m),
+      icon: Icon(
+        icon,
+        size: 18,
+        color: mode == m ? scheme.primary : scheme.onSurfaceVariant,
+      ),
+    );
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -65,7 +67,12 @@ class CockpitCard extends StatelessWidget {
 
 /// Small labelled metric (e.g. "58 Topics").
 class StatTile extends StatelessWidget {
-  const StatTile({super.key, required this.value, required this.label, this.icon});
+  const StatTile({
+    super.key,
+    required this.value,
+    required this.label,
+    this.icon,
+  });
 
   final String value;
   final String label;
@@ -86,8 +93,9 @@ class StatTile extends StatelessWidget {
         Text(value, style: theme.textTheme.titleLarge),
         Text(
           label,
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
@@ -223,7 +231,13 @@ class ProgressRing extends StatelessWidget {
 
 /// A small rounded tag (related topics, difficulty, etc.).
 class TagChip extends StatelessWidget {
-  const TagChip({super.key, required this.label, this.onTap, this.color, this.icon});
+  const TagChip({
+    super.key,
+    required this.label,
+    this.onTap,
+    this.color,
+    this.icon,
+  });
 
   final String label;
   final VoidCallback? onTap;
@@ -254,7 +268,12 @@ class TagChip extends StatelessWidget {
               Icon(icon, size: 14, color: c),
               const SizedBox(width: CockpitSpacing.xs),
             ],
-            Text(label, style: theme.textTheme.labelMedium?.copyWith(color: c)),
+            Flexible(
+              child: Text(
+                label,
+                style: theme.textTheme.labelMedium?.copyWith(color: c),
+              ),
+            ),
           ],
         ),
       ),
@@ -277,8 +296,11 @@ class StarMeter extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         for (var i = 0; i < max; i++)
-          Icon(i < value ? Icons.star_rounded : Icons.star_outline_rounded,
-              size: 16, color: c),
+          Icon(
+            i < value ? Icons.star_rounded : Icons.star_outline_rounded,
+            size: 16,
+            color: c,
+          ),
       ],
     );
   }
@@ -310,14 +332,19 @@ class EmptyState extends StatelessWidget {
           children: [
             Icon(icon, size: 56, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: CockpitSpacing.lg),
-            Text(title, style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
+            Text(
+              title,
+              style: theme.textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
             if (message != null) ...[
               const SizedBox(height: CockpitSpacing.sm),
               Text(
                 message!,
                 textAlign: TextAlign.center,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
             if (action != null) ...[

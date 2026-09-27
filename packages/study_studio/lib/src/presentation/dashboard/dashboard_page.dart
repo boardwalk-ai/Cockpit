@@ -10,6 +10,7 @@ import '../../data/api/upload_api.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 5 — Inside Your Study Studio.
@@ -81,8 +82,10 @@ class _DashboardDesktop extends StatelessWidget {
         : topics.reduce((a, b) => a.mastery >= b.mastery ? a : b);
     final connected = topics.isEmpty
         ? null
-        : topics.reduce((a, b) =>
-            a.relatedTopicIds.length >= b.relatedTopicIds.length ? a : b);
+        : topics.reduce(
+            (a, b) =>
+                a.relatedTopicIds.length >= b.relatedTopicIds.length ? a : b,
+          );
     final base = '/study/${studio.id}';
     final modes = _modesFor(context, studio, weakest);
 
@@ -132,7 +135,8 @@ class _DashboardDesktop extends StatelessWidget {
                     child: Column(
                       children: [
                         Expanded(
-                          child: (weakest != null &&
+                          child:
+                              (weakest != null &&
                                   strongest != null &&
                                   connected != null)
                               ? _KnowledgePanelVertical(
@@ -171,14 +175,14 @@ class _ModeBento extends StatelessWidget {
   final List<_Mode> modes;
 
   Widget _row(List<_Mode> row) => Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < row.length; i++) ...[
-            if (i > 0) const SizedBox(width: CockpitSpacing.md),
-            Expanded(child: _ModeCard(mode: row[i])),
-          ],
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (var i = 0; i < row.length; i++) ...[
+        if (i > 0) const SizedBox(width: CockpitSpacing.md),
+        Expanded(child: _ModeCard(mode: row[i])),
+      ],
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -211,10 +215,9 @@ class _EmptyPanel extends StatelessWidget {
         child: Text(
           'Topics appear here as your\nstudio finishes building.',
           textAlign: TextAlign.center,
-          style: Theme.of(context)
-              .textTheme
-              .bodySmall
-              ?.copyWith(color: scheme.onSurfaceVariant),
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
         ),
       ),
     );
@@ -239,8 +242,10 @@ class _DashboardBody extends StatelessWidget {
         : topics.reduce((a, b) => a.mastery >= b.mastery ? a : b);
     final connected = topics.isEmpty
         ? null
-        : topics.reduce((a, b) =>
-            a.relatedTopicIds.length >= b.relatedTopicIds.length ? a : b);
+        : topics.reduce(
+            (a, b) =>
+                a.relatedTopicIds.length >= b.relatedTopicIds.length ? a : b,
+          );
 
     return ListView(
       padding: EdgeInsets.zero,
@@ -305,16 +310,18 @@ class _Header extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final desktop = isDesktop(context);
-    TextSpan meta(String value, String label) => TextSpan(children: [
-          TextSpan(
-            text: '$value ',
-            style: TextStyle(
-              color: scheme.onSurface,
-              fontWeight: FontWeight.w700,
-            ),
+    TextSpan meta(String value, String label) => TextSpan(
+      children: [
+        TextSpan(
+          text: '$value ',
+          style: TextStyle(
+            color: scheme.onSurface,
+            fontWeight: FontWeight.w700,
           ),
-          TextSpan(text: label),
-        ]);
+        ),
+        TextSpan(text: label),
+      ],
+    );
     return Padding(
       padding: EdgeInsets.fromLTRB(
         CockpitSpacing.xs,
@@ -332,27 +339,30 @@ class _Header extends StatelessWidget {
           const SizedBox(width: CockpitSpacing.md),
           Expanded(
             child: Column(
-              crossAxisAlignment:
-                  desktop ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+              crossAxisAlignment: desktop
+                  ? CrossAxisAlignment.start
+                  : CrossAxisAlignment.center,
               children: [
                 Text(
                   studio.title,
                   textAlign: desktop ? TextAlign.start : TextAlign.center,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: (desktop
-                          ? theme.textTheme.headlineSmall
-                          : theme.textTheme.titleLarge)
-                      ?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  ),
+                  style:
+                      (desktop
+                              ? theme.textTheme.headlineSmall
+                              : theme.textTheme.titleLarge)
+                          ?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
                 ),
                 const SizedBox(height: 1),
                 Text.rich(
                   TextSpan(
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                     children: [
                       meta('${studio.topicCount}', 'topics'),
                       const TextSpan(text: '   ·   '),
@@ -457,10 +467,8 @@ class _BuildBannerState extends ConsumerState<_BuildBanner> {
     final label = s.isFailed
         ? (s.stage.isNotEmpty ? s.stage : 'Build failed — please try again')
         : s.isDone
-            ? (s.stage.isNotEmpty ? s.stage : 'Your studio is ready')
-            : (s.stage.isNotEmpty
-                ? s.stage
-                : 'Building your study studio…');
+        ? (s.stage.isNotEmpty ? s.stage : 'Your studio is ready')
+        : (s.stage.isNotEmpty ? s.stage : 'Building your study studio…');
 
     return Container(
       margin: const EdgeInsets.fromLTRB(
@@ -484,7 +492,10 @@ class _BuildBannerState extends ConsumerState<_BuildBanner> {
                 SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2.4, color: accent),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.4,
+                    color: accent,
+                  ),
                 )
               else
                 Icon(
@@ -498,15 +509,19 @@ class _BuildBannerState extends ConsumerState<_BuildBanner> {
                   label,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.labelLarge
-                      ?.copyWith(color: accent, fontWeight: FontWeight.w700),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               if (s.inProgress || s.isDone)
                 Text(
                   pctLabel,
-                  style: theme.textTheme.labelMedium
-                      ?.copyWith(color: accent, fontWeight: FontWeight.w700),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: accent,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
             ],
           ),
@@ -522,16 +537,21 @@ class _BuildBannerState extends ConsumerState<_BuildBanner> {
               ),
             ),
             const SizedBox(height: CockpitSpacing.sm),
-            _BuildPhaseRow(status: s.status, lessonsDone: done, lessonsTotal: total),
+            _BuildPhaseRow(
+              status: s.status,
+              lessonsDone: done,
+              lessonsTotal: total,
+            ),
             const SizedBox(height: 4),
             Text(
               s.status == 'extracting' && total > 0
                   ? 'Ingesting files: $done of $total — you can keep browsing.'
                   : total > 0 && s.status == 'generating'
-                      ? 'Lessons ready: $done of $total — keep browsing while AI works.'
-                      : 'You can keep browsing — lessons appear as they’re ready.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+                  ? 'Lessons ready: $done of $total — keep browsing while AI works.'
+                  : 'You can keep browsing — lessons appear as they’re ready.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
           ],
         ],
@@ -596,8 +616,8 @@ class _BuildPhaseRow extends StatelessWidget {
             label: i == 0 && lessonsTotal > 0 && status == 'extracting'
                 ? 'Materials $lessonsDone/$lessonsTotal'
                 : i == 1 && lessonsTotal > 0 && status == 'generating'
-                    ? 'Lessons $lessonsDone/$lessonsTotal'
-                    : _phases[i].$2,
+                ? 'Lessons $lessonsDone/$lessonsTotal'
+                : _phases[i].$2,
             done: i < active,
             current: i == active,
           ),
@@ -630,8 +650,8 @@ class _PhaseChip extends StatelessWidget {
           done
               ? Icons.check_circle
               : current
-                  ? Icons.radio_button_checked
-                  : Icons.radio_button_unchecked,
+              ? Icons.radio_button_checked
+              : Icons.radio_button_unchecked,
           size: 14,
           color: color,
         ),
@@ -664,25 +684,37 @@ class _StudioMenu extends ConsumerWidget {
         border: Border.all(color: Colors.black, width: 1),
       ),
       child: PopupMenuButton<String>(
-        icon: Icon(Icons.more_horiz, size: 20, color: theme.colorScheme.onSurface),
+        icon: Icon(
+          Icons.more_horiz,
+          size: 20,
+          color: theme.colorScheme.onSurface,
+        ),
         onSelected: (v) {
           if (v == 'Delete') {
             _confirmAndDelete(context, ref);
           } else {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('$v — coming soon')),
-            );
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('$v — coming soon')));
           }
         },
         itemBuilder: (context) => [
           const PopupMenuItem(value: 'Rename', child: Text('Rename')),
           const PopupMenuItem(value: 'Duplicate', child: Text('Duplicate')),
-          const PopupMenuItem(value: 'Export notes', child: Text('Export notes')),
           const PopupMenuItem(
-              value: 'Rebuild Studio', child: Text('Rebuild Studio')),
+            value: 'Export notes',
+            child: Text('Export notes'),
+          ),
+          const PopupMenuItem(
+            value: 'Rebuild Studio',
+            child: Text('Rebuild Studio'),
+          ),
           PopupMenuItem(
             value: 'Delete',
-            child: Text('Delete', style: TextStyle(color: theme.colorScheme.error)),
+            child: Text(
+              'Delete',
+              style: TextStyle(color: theme.colorScheme.error),
+            ),
           ),
         ],
       ),
@@ -758,8 +790,9 @@ class _CompanionCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final base = '/study/${studio.id}';
     final rec = recommended;
-    final retention =
-        rec == null ? 70 : (40 + (1 - rec.mastery) * 50).clamp(0, 95).round();
+    final retention = rec == null
+        ? 70
+        : (40 + (1 - rec.mastery) * 50).clamp(0, 95).round();
     final session = rec?.estimatedStudyTimeMinutes ?? 15;
 
     if (compact) {
@@ -804,8 +837,9 @@ class _CompanionCard extends StatelessWidget {
                     'Your Study Studio is ready.',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleLarge
-                        ?.copyWith(fontWeight: FontWeight.w800),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   if (rec != null) ...[
                     const SizedBox(height: 2),
@@ -823,7 +857,9 @@ class _CompanionCard extends StatelessWidget {
                               fontWeight: FontWeight.w700,
                             ),
                           ),
-                          const TextSpan(text: ' likely to improve by reviewing '),
+                          const TextSpan(
+                            text: ' likely to improve by reviewing ',
+                          ),
                           TextSpan(
                             text: rec.title,
                             style: TextStyle(
@@ -887,9 +923,13 @@ class _CompanionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    MobileWrap(
                       children: [
-                        Icon(Icons.auto_awesome, size: 16, color: scheme.primary),
+                        Icon(
+                          Icons.auto_awesome,
+                          size: 16,
+                          color: scheme.primary,
+                        ),
                         const SizedBox(width: CockpitSpacing.xs),
                         Text(
                           'Welcome back 👋',
@@ -903,8 +943,10 @@ class _CompanionCard extends StatelessWidget {
                     const SizedBox(height: CockpitSpacing.sm),
                     Text(
                       'Your Study Studio\nis ready.',
-                      style: theme.textTheme.headlineSmall
-                          ?.copyWith(fontWeight: FontWeight.w800, height: 1.1),
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        height: 1.1,
+                      ),
                     ),
                     const SizedBox(height: CockpitSpacing.sm),
                     if (rec != null)
@@ -924,8 +966,10 @@ class _CompanionCard extends StatelessWidget {
                               ),
                             ),
                             const TextSpan(
-                                text: ' likely to improve retention by '
-                                    'reviewing '),
+                              text:
+                                  ' likely to improve retention by '
+                                  'reviewing ',
+                            ),
                             TextSpan(
                               text: rec.title,
                               style: TextStyle(
@@ -945,14 +989,15 @@ class _CompanionCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: CockpitSpacing.md),
-          Row(
+          MobileWrap(
             children: [
               Icon(Icons.schedule, size: 14, color: scheme.onSurfaceVariant),
               const SizedBox(width: CockpitSpacing.xs),
               Text(
                 'Estimated session: $session minutes',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -1013,7 +1058,11 @@ class _RobotAvatar extends StatelessWidget {
           ),
         ],
       ),
-      child: Icon(Icons.smart_toy_rounded, color: Colors.white, size: size * 0.5),
+      child: Icon(
+        Icons.smart_toy_rounded,
+        color: Colors.white,
+        size: size * 0.5,
+      ),
     );
   }
 }
@@ -1023,10 +1072,7 @@ class _RobotAvatar extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _LearningModeGrid extends StatelessWidget {
-  const _LearningModeGrid({
-    required this.studio,
-    required this.recommended,
-  });
+  const _LearningModeGrid({required this.studio, required this.recommended});
   final Studio studio;
   final Topic? recommended;
 
@@ -1054,9 +1100,9 @@ class _LearningModeGrid extends StatelessWidget {
 List<_Mode> _modesFor(BuildContext context, Studio studio, Topic? recommended) {
   final base = '/study/${studio.id}';
   final recId = (recommended ?? studio.topics.firstOrNull)?.id;
-  void soon(String label) => ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$label — Phase 2')),
-      );
+  void soon(String label) => ScaffoldMessenger.of(
+    context,
+  ).showSnackBar(SnackBar(content: Text('$label — Phase 2')));
   return <_Mode>[
     _Mode(
       icon: Icons.school_rounded,
@@ -1194,8 +1240,11 @@ class _ModeCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Icon(Icons.arrow_outward_rounded,
-                      size: 16, color: theme.colorScheme.onSurfaceVariant),
+                  Icon(
+                    Icons.arrow_outward_rounded,
+                    size: 16,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ],
               ),
             ],
@@ -1236,7 +1285,11 @@ class _ContinueCard extends StatelessWidget {
               color: scheme.primary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(CockpitRadii.sm),
             ),
-            child: Icon(Icons.menu_book_rounded, color: scheme.primary, size: 20),
+            child: Icon(
+              Icons.menu_book_rounded,
+              color: scheme.primary,
+              size: 20,
+            ),
           ),
           const SizedBox(width: CockpitSpacing.md),
           Expanded(
@@ -1245,16 +1298,18 @@ class _ContinueCard extends StatelessWidget {
               children: [
                 Text(
                   'Continue Where You Left Off',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   topic.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: CockpitSpacing.sm),
                 Row(
@@ -1270,20 +1325,28 @@ class _ContinueCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: CockpitSpacing.sm),
-                    Text('$pct%',
-                        style: theme.textTheme.labelMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      '$pct%',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: CockpitSpacing.xs),
-                Row(
+                MobileWrap(
                   children: [
-                    Icon(Icons.schedule, size: 12, color: scheme.onSurfaceVariant),
+                    Icon(
+                      Icons.schedule,
+                      size: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 3),
                     Text(
                       'Last studied ${relativeDay(lastStudied).toLowerCase()}',
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: scheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),
@@ -1328,22 +1391,22 @@ class _KnowledgeSnapshot extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          MobileWrap(
             children: [
               Icon(Icons.insights_rounded, size: 18, color: scheme.primary),
               const SizedBox(width: CockpitSpacing.sm),
               Expanded(
                 child: Text(
                   'Knowledge Snapshot',
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               InkWell(
-                onTap: () => context.go(
-                  '/study/${connected.studioId}/knowledge-graph',
-                ),
-                child: Row(
+                onTap: () =>
+                    context.go('/study/${connected.studioId}/knowledge-graph'),
+                child: MobileWrap(
                   children: [
                     Text(
                       'View Knowledge Graph',
@@ -1440,8 +1503,9 @@ class _SnapshotMetric extends StatelessWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleSmall
-                ?.copyWith(fontWeight: FontWeight.w800),
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
           ),
           Text(
             sub,
@@ -1492,8 +1556,9 @@ class _KnowledgePanelVertical extends StatelessWidget {
               const SizedBox(width: CockpitSpacing.sm),
               Text(
                 'Knowledge Snapshot',
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),
@@ -1624,8 +1689,10 @@ class _SnapRow extends StatelessWidget {
         const SizedBox(width: CockpitSpacing.sm),
         Text(
           sub,
-          style: theme.textTheme.labelMedium
-              ?.copyWith(color: color, fontWeight: FontWeight.w800),
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ],
     );
@@ -1645,14 +1712,18 @@ class _SectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(left: CockpitSpacing.lg, right: CockpitSpacing.sm),
+      padding: const EdgeInsets.only(
+        left: CockpitSpacing.lg,
+        right: CockpitSpacing.sm,
+      ),
       child: Row(
         children: [
           Expanded(
             child: Text(
               title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
           if (trailing != null) trailing!,
@@ -1710,7 +1781,9 @@ class _GradientButton extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(CockpitRadii.pill),
-            gradient: LinearGradient(colors: [scheme.primary, scheme.secondary]),
+            gradient: LinearGradient(
+              colors: [scheme.primary, scheme.secondary],
+            ),
             border: Border.all(color: Colors.black, width: 1),
             boxShadow: [
               BoxShadow(

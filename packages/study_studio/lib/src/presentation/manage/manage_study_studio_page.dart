@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../widgets/mobile_layout.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -794,7 +795,7 @@ class _AiPreview extends StatelessWidget {
                   children: [
                     file,
                     const SizedBox(height: CockpitSpacing.md),
-                    Row(
+                    MobileWrap(
                       children: [
                         Icon(
                           Icons.auto_awesome,
@@ -949,6 +950,23 @@ class _Timeline extends StatelessWidget {
       ('vNext', '', 'Lecture 6\n(Preparing)', 'Estimated Updates'),
     ];
 
+    if (isMobilePlatform(context)) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final version in versions)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.history),
+                title: Text('${version.$1} · ${version.$2}'),
+                subtitle: Text(
+                  '${version.$3.replaceAll('\n', ' ')}\n${version.$4}',
+                ),
+              ),
+            ),
+        ],
+      );
+    }
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
