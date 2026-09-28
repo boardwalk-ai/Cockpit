@@ -6,7 +6,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 
 import '../../application/backend_config.dart';
 import '../../application/pdf_export_app.dart';
-import '../../application/sources.dart';
+import '../../application/wizard_session.dart';
 import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
 import '../widgets/auth_chip.dart';
@@ -57,8 +57,11 @@ class _EditorPageState extends State<EditorPage> {
   double _leftWidth = 340;
   double _rightWidth = 320;
 
-  final _docTitle = TextEditingController(text: 'Untitled document');
-  final _title = TextEditingController();
+  final _docTitle = TextEditingController(
+      text: WizardSession.searchTopic.isEmpty
+          ? 'Untitled document'
+          : WizardSession.searchTopic);
+  final _title = TextEditingController(text: WizardSession.searchTopic);
   final _abstract = TextEditingController();
   final _keywords = TextEditingController();
   late final Map<DocFieldKind, TextEditingController> _fields = {
@@ -72,10 +75,11 @@ class _EditorPageState extends State<EditorPage> {
     ..._fields.values,
   ];
 
-  // Researched sources feeding the references page. Updated by the Tools panel's
-  // Source search (via onSourcesFound); the in-text citation index follows this
-  // order. Seam: results come from our backend. Mock until a search runs.
-  List<Source> _sources = mockSources;
+  // Researched sources feeding the references page. Starts EMPTY — a new document
+  // has no citations until the user adds real sources (Tools → Source search /
+  // Insert, or Manual → Generate Citation). Updated via onSourcesFound; the
+  // in-text citation index follows this order.
+  List<Source> _sources = const [];
 
   // The body prose — flutter_quill (EditableText underneath → works on web).
   final QuillController _body = QuillController.basic();
