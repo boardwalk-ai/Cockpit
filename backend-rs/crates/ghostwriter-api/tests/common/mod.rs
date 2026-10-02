@@ -69,6 +69,8 @@ impl TestApp {
         config.octopilot_database_url = Some(url);
         config.firebase_project_id = String::new();
         config.scripted_step = std::time::Duration::ZERO;
+        // Most scripted tests end at the essay; the humanizer tests turn this on.
+        config.scripted_humanizer = false;
         config.driver = "scripted".into();
         tweak(&mut config);
         let state = AppState::connect(config).await.expect("app state");
@@ -89,6 +91,18 @@ impl TestApp {
         let mut t = Self::with(|config| config.driver = "agent".into()).await;
         t.state.llm = Some(llm);
         t.state.scraper = scraper;
+        t.state.humanizer = std::sync::Arc::new(fakes::FakeHumanizer::default());
+        t.app = app(t.state.clone());
+        t
+    }
+
+    /// [`TestApp::agent`] with a humanizer the test holds on to.
+    pub async fn agent_with_humanizer(
+        llm: std::sync::Arc<dyn ghostwriter_api::llm::Llm>,
+        humanizer: std::sync::Arc<fakes::FakeHumanizer>,
+    ) -> Self {
+        let mut t = Self::agent(llm, std::sync::Arc::new(fakes::FakeScraper)).await;
+        t.state.humanizer = humanizer;
         t.app = app(t.state.clone());
         t
     }

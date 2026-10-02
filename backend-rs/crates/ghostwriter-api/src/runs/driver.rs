@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use super::{append, emit, emit_live, finish, Inbox, Outcome};
 use crate::documents::{self, AgentSave, DocError};
+use crate::humanize::{self, Provider};
 use crate::AppState;
 
 /// Why a driver stopped early.
@@ -434,7 +435,124 @@ async fn scripted(ctx: &mut RunCtx) -> Result<(), RunError> {
     )
     .await?;
 
+    if ctx.st.config.scripted_humanizer {
+        scripted_humanize(ctx).await?;
+    }
+
     Ok(())
+}
+
+/// The scripted run's humanizer step: the same questions the agent asks, and a
+/// canned humanizer. "StealthGPT" merges the paragraphs, as the real one does,
+/// so the paragraph question and its restore can be seen too.
+async fn scripted_humanize(ctx: &mut RunCtx) -> Result<(), RunError> {
+    let choice = ctx
+        .ask(
+            "humanizerChoice",
+            json!({
+                "question": "Your essay is ready. Would you like to humanize it?",
+                "inputType": "select",
+                "allowCustom": false,
+                "options": [option("StealthGPT"), option("UndetectableAI"), option("Skip")],
+            }),
+        )
+        .await?;
+    let Some(provider) = choice.as_str().and_then(Provider::parse) else {
+        return Ok(());
+    };
+
+    let original: String = sqlx::query_scalar("SELECT body FROM documents WHERE project_id = $1")
+        .bind(ctx.project_id)
+        .fetch_one(&ctx.st.db)
+        .await?;
+    let merged = provider == Provider::StealthGpt;
+    let humanized = if merged {
+        humanize::paragraphs(&original).join(" ")
+    } else {
+        original.clone()
+    };
+    let step_id = Uuid::new_v4();
+    let words = scripted_rewrite(
+        ctx,
+        step_id,
+        "humanize_essay",
+        &format!("Humanizing with {}", provider.label()),
+        &humanized,
+    )
+    .await?;
+    ctx.emit(
+        "step_done",
+        json!({ "stepId": step_id, "summary": format!("Humanized with {} · {words} words.", provider.label()) }),
+    )
+    .await?;
+
+    if !merged {
+        return Ok(());
+    }
+    let split = ctx
+        .ask(
+            "paragraphSplitChoice",
+            json!({
+                "question": "The humanizer merged the paragraphs. Should I restore them?",
+                "inputType": "select",
+                "allowCustom": false,
+                "options": [
+                    { "label": "Restore paragraphs", "value": "AI split" },
+                    { "label": "Leave as is", "value": "Skip split" },
+                ],
+            }),
+        )
+        .await?;
+    if split == "AI split" {
+        let step_id = Uuid::new_v4();
+        scripted_rewrite(
+            ctx,
+            step_id,
+            "split_paragraphs",
+            "Restoring the paragraphs",
+            &original,
+        )
+        .await?;
+        ctx.emit(
+            "step_done",
+            json!({ "stepId": step_id, "summary": format!("{} paragraphs restored.", humanize::paragraphs(&original).len()) }),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Replaces the essay body the way the agent's humanizer tools do: locked,
+/// a version kept, saved, unlocked. Emits `step_start`; the caller ends the step.
+async fn scripted_rewrite(
+    ctx: &RunCtx,
+    step_id: Uuid,
+    tool: &str,
+    title: &str,
+    body: &str,
+) -> Result<i64, RunError> {
+    let st = &ctx.st;
+    let (project_id, run_id) = (ctx.project_id, ctx.run_id);
+    ctx.emit(
+        "step_start",
+        json!({ "stepId": step_id, "tool": tool, "title": title }),
+    )
+    .await?;
+    documents::begin_agent_write(&st.db, project_id, run_id, "humanize").await?;
+    st.docs.changed(project_id);
+    ctx.pause().await;
+    let save = AgentSave {
+        body: Some(body),
+        ..AgentSave::default()
+    };
+    let (rev, words) = documents::save_agent(&st.db, project_id, run_id, save).await?;
+    documents::unlock(&st.db, &st.docs, project_id, run_id).await?;
+    ctx.emit(
+        "document_updated",
+        json!({ "rev": rev, "wordCount": words }),
+    )
+    .await?;
+    Ok(words)
 }
 
 /// Writes a canned essay into the document the way the agent does: locked,

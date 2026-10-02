@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::async_trait;
 use futures::StreamExt;
+use ghostwriter_api::humanize::{Humanizer, Provider};
 use ghostwriter_api::llm::{ChatReply, ChatRequest, Llm, TextStream, ToolCall};
 use ghostwriter_api::scrape::{Scraped, Scraper};
 use serde_json::{json, Value};
@@ -98,6 +99,8 @@ pub struct FakeLlm {
     pub essay_output: Mutex<String>,
     /// If set, the writer stream waits here after its first chunk.
     pub hold_writer: Option<Arc<Notify>>,
+    /// Makes the paragraph splitter change a word, which must be refused.
+    pub careless_splitter: Mutex<bool>,
 }
 
 impl FakeLlm {
@@ -117,6 +120,28 @@ impl FakeLlm {
             .last()
             .map(|request| json!(request.messages).to_string())
             .unwrap_or_default()
+    }
+
+    /// The splitter: one paragraph per sentence of the merged essay.
+    fn split(asked: &str, careless: bool) -> Value {
+        let essay = asked
+            .split("merged into one block by the humanizer):\n")
+            .nth(1)
+            .and_then(|rest| rest.split("\n\nSplit the text").next())
+            .unwrap_or_default();
+        let paragraphs: Vec<Value> = essay
+            .split_inclusive("). ")
+            .map(|sentence| {
+                let text = sentence.trim();
+                let text = if careless {
+                    text.replace("tide", "wave")
+                } else {
+                    text.to_string()
+                };
+                json!({ "type": "Body Paragraph", "text": text })
+            })
+            .collect();
+        json!({ "paragraphs": paragraphs })
     }
 
     fn sub_agent(system: &str) -> Value {
@@ -168,7 +193,18 @@ impl Llm for FakeLlm {
                 .as_str()
                 .unwrap_or_default()
                 .to_string();
+            let asked = request.messages[1]["content"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
             self.sub_requests.lock().unwrap().push(request);
+            if system.contains("paragraph-splitting agent") {
+                let careless = *self.careless_splitter.lock().unwrap();
+                return Ok(ChatReply {
+                    content: Self::split(&asked, careless).to_string(),
+                    tool_calls: Vec::new(),
+                });
+            }
             return Ok(ChatReply {
                 content: Self::sub_agent(&system).to_string(),
                 tool_calls: Vec::new(),
@@ -203,6 +239,34 @@ impl Llm for FakeLlm {
             }
         }
         .boxed())
+    }
+}
+
+/// A humanizer that changes one word, and for StealthGPT merges the
+/// paragraphs into one block, as the real one does.
+#[derive(Default)]
+pub struct FakeHumanizer {
+    /// If set, every call fails with this message.
+    pub fail: Mutex<Option<String>>,
+    /// Every call made: the provider and the text it was given.
+    pub calls: Mutex<Vec<(Provider, String)>>,
+}
+
+#[async_trait]
+impl Humanizer for FakeHumanizer {
+    async fn humanize(&self, provider: Provider, text: &str) -> Result<String, String> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((provider, text.to_string()));
+        if let Some(message) = self.fail.lock().unwrap().clone() {
+            return Err(message);
+        }
+        let reworded = text.replace("Coastal cities", "Seaside towns");
+        Ok(match provider {
+            Provider::StealthGpt => reworded.replace("\n\n", " "),
+            Provider::Undetectable => reworded,
+        })
     }
 }
 

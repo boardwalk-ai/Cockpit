@@ -15,6 +15,7 @@ use uuid::Uuid;
 use super::context::{CompactedSource, Outline, ScrapedSource, Source};
 use super::{prompt, Agent};
 use crate::documents::{self, AgentSave, DocError};
+use crate::humanize::{self, Provider};
 use crate::llm::{system, user, ChatRequest};
 use crate::pricing;
 use crate::runs::driver::RunError;
@@ -156,15 +157,31 @@ pub fn specs() -> Vec<Value> {
             "Put the collected title-page details on the document and deliver it. Call after write_essay and after the title-page questions.",
             none,
         ),
+        function(
+            "humanize_essay",
+            "Send the essay in the user's document through a humanizer (StealthGPT or UndetectableAI) and put the result back in the document. Ask the user which one with field=\"humanizerChoice\" first, unless they already named it.",
+            json!({
+                "type": "object", "additionalProperties": false,
+                "properties": { "provider": { "type": "string", "enum": ["StealthGPT", "UndetectableAI"] } },
+            }),
+        ),
+        function(
+            "split_paragraphs",
+            "Restore the paragraph breaks after a humanizer merged the essay into one block, without changing any wording. Call only when humanize_essay reported paragraphsMerged.",
+            json!({ "type": "object", "additionalProperties": false, "properties": {} }),
+        ),
     ]
 }
 
 /// The tools of a revision run: the essay is written, the user wants changes.
 pub fn revision_specs() -> Vec<Value> {
-    let ask = specs()
-        .into_iter()
-        .find(|spec| spec["function"]["name"] == "ask_user")
-        .expect("ask_user is a tool");
+    let shared = |name: &str| {
+        specs()
+            .into_iter()
+            .find(|spec| spec["function"]["name"] == name)
+            .expect("a tool of the first run")
+    };
+    let ask = shared("ask_user");
     vec![
         function(
             "revise_essay",
@@ -175,6 +192,8 @@ pub fn revision_specs() -> Vec<Value> {
             }),
         ),
         ask,
+        shared("humanize_essay"),
+        shared("split_paragraphs"),
     ]
 }
 
@@ -189,6 +208,15 @@ pub fn title(name: &str, args: &Value) -> String {
         "write_essay" => "Writing the essay".into(),
         "revise_essay" => "Revising the essay".into(),
         "finalize_document" => "Finishing the document".into(),
+        "humanize_essay" => format!(
+            "Humanizing with {}",
+            args["provider"]
+                .as_str()
+                .and_then(Provider::parse)
+                .unwrap_or(Provider::StealthGpt)
+                .label()
+        ),
+        "split_paragraphs" => "Restoring the paragraphs".into(),
         other => {
             let _ = args;
             format!("Running {other}")
@@ -202,6 +230,7 @@ pub fn time_limit(name: &str) -> Duration {
         "scrape_sources" => 180,
         "compact_sources" => 240,
         "write_essay" | "revise_essay" => 300,
+        "humanize_essay" => 200,
         _ => 90,
     })
 }
@@ -217,6 +246,8 @@ pub fn exists(name: &str) -> bool {
             | "write_essay"
             | "revise_essay"
             | "finalize_document"
+            | "humanize_essay"
+            | "split_paragraphs"
     )
 }
 
@@ -235,6 +266,8 @@ pub async fn execute(
         "write_essay" => write_essay(agent, args).await,
         "revise_essay" => revise_essay(agent, args).await,
         "finalize_document" => finalize_document(agent).await,
+        "humanize_essay" => humanize_essay(agent, args).await,
+        "split_paragraphs" => split_paragraphs(agent).await,
         other => Err(format!("unknown tool: {other}").into()),
     }
 }
@@ -1137,6 +1170,180 @@ async fn finalize_document(agent: &mut Agent<'_>) -> Result<Done, Failure> {
     agent.ctx.export_ready = true;
 
     Ok((json!({ "delivered": true }), "Your essay is ready.".into()))
+}
+
+/// The essay as it stands in the document (with the user's own edits).
+async fn current_body(agent: &Agent<'_>) -> Result<String, Failure> {
+    let body: String = sqlx::query_scalar("SELECT body FROM documents WHERE project_id = $1")
+        .bind(agent.run.project_id)
+        .fetch_one(&agent.run.st.db)
+        .await?;
+    if body.trim().is_empty() {
+        return Err("the document has no essay yet".into());
+    }
+    Ok(body)
+}
+
+/// Locks the document for a change that is not streamed (the humanizer, the
+/// paragraph split) and keeps a version of it first. Open editors are told, so
+/// they go read-only while it happens.
+async fn lock_for_rewrite(agent: &Agent<'_>) -> Result<(), Failure> {
+    let st = &agent.run.st;
+    documents::begin_agent_write(&st.db, agent.run.project_id, agent.run.run_id, "humanize")
+        .await?;
+    st.docs.changed(agent.run.project_id);
+    Ok(())
+}
+
+/// Saves the rewritten body, unlocks, and announces the new revision.
+async fn save_rewrite(agent: &mut Agent<'_>, body: &str) -> Result<i64, Failure> {
+    let db = agent.run.st.db.clone();
+    let docs = agent.run.st.docs.clone();
+    let (project_id, run_id) = (agent.run.project_id, agent.run.run_id);
+    let save = AgentSave {
+        body: Some(body),
+        ..AgentSave::default()
+    };
+    let (rev, words) = documents::save_agent(&db, project_id, run_id, save).await?;
+    documents::unlock(&db, &docs, project_id, run_id).await?;
+    agent
+        .run
+        .emit(
+            "document_updated",
+            json!({ "rev": rev, "wordCount": words }),
+        )
+        .await?;
+    agent.ctx.words_written = words;
+    Ok(words)
+}
+
+/// `humanize_essay`: sends the essay as it stands through StealthGPT or
+/// UndetectableAI and puts the result in the document. The bibliography is
+/// left alone. A version is kept first, so it can be undone from History.
+async fn humanize_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failure> {
+    let provider = match optional(&args["provider"]) {
+        Some(name) => Provider::parse(&name).ok_or_else(|| {
+            Failure::Tool(format!(
+                "unknown humanizer \"{name}\"; use StealthGPT or UndetectableAI"
+            ))
+        })?,
+        None => Provider::StealthGpt,
+    };
+    let body = current_body(agent).await?;
+    let words = pricing::count_words(&body);
+    let price = pricing::charge(0, words, 0);
+    precheck(agent, price).await?;
+
+    lock_for_rewrite(agent).await?;
+    let humanizer = agent.run.st.humanizer.clone();
+    // The loop unlocks the document if this fails.
+    let humanized = humanizer.humanize(provider, body.trim()).await?;
+    let humanized = humanized.trim();
+    if humanized.is_empty() {
+        return Err(format!("{} returned nothing", provider.label()).into());
+    }
+
+    let before = humanize::paragraphs(&body).len();
+    let after = humanize::paragraphs(humanized).len();
+    let new_words = save_rewrite(agent, humanized).await?;
+
+    agent.ctx.humanizations += 1;
+    agent.ctx.humanized_by = Some(provider.label().to_string());
+    agent.ctx.paragraphs_before_humanize = before;
+    charge(
+        agent,
+        price,
+        &format!("humanize:{}", agent.ctx.humanizations),
+        "Humanizing",
+    )
+    .await?;
+
+    Ok((
+        json!({
+            "provider": provider.label(),
+            "wordCount": new_words,
+            "paragraphsBefore": before,
+            "paragraphs": after,
+            // Some humanizers return one block of text.
+            "paragraphsMerged": after < before,
+        }),
+        format!("Humanized with {} · {new_words} words.", provider.label()),
+    ))
+}
+
+/// `split_paragraphs`: puts the paragraph breaks back after a humanizer merged
+/// them. The model only chooses where the breaks go: a split that changes a
+/// single word is thrown away.
+async fn split_paragraphs(agent: &mut Agent<'_>) -> Result<Done, Failure> {
+    let body = current_body(agent).await?;
+    let target = match agent.ctx.paragraphs_before_humanize {
+        0 => agent.ctx.outlines.len(),
+        before => before,
+    };
+    if target < 2 {
+        return Err("there is no paragraph structure to restore".into());
+    }
+    if humanize::paragraphs(&body).len() >= target {
+        return Err("the essay already has its paragraphs".into());
+    }
+
+    // The outline names each paragraph's job, when it still matches.
+    let structure = if agent.ctx.outlines.len() == target {
+        agent
+            .ctx
+            .outlines
+            .iter()
+            .enumerate()
+            .map(|(i, o)| format!("{}. {} — {}", i + 1, o.kind, o.title))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        format!("{target} paragraphs: an introduction, the body paragraphs, a conclusion")
+    };
+    let message = format!(
+        "Target paragraph structure (in order):\n{structure}\n\n\
+         Essay text (merged into one block by the humanizer):\n{}\n\n\
+         Split the text into exactly {target} paragraphs matching the structure above. \
+         Preserve all wording verbatim.",
+        body.trim(),
+    );
+
+    lock_for_rewrite(agent).await?;
+    let reply = ask_json(
+        agent,
+        &agent.models.secondary,
+        &prompt::splitter(target),
+        message,
+        0.2,
+        true,
+    )
+    .await?;
+    let pieces: Vec<String> = reply["paragraphs"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| match item {
+                    Value::String(text) => text.trim().to_string(),
+                    other => text_of(&other["text"]),
+                })
+                .filter(|text| !text.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    if pieces.len() < 2 {
+        return Err("the model returned no paragraphs".into());
+    }
+    let split = pieces.join("\n\n");
+    if !humanize::same_wording(&split, &body) {
+        return Err("the split changed the wording, so the essay was left as it was".into());
+    }
+
+    save_rewrite(agent, &split).await?;
+    Ok((
+        json!({ "paragraphs": pieces.len() }),
+        format!("{} paragraphs restored.", pieces.len()),
+    ))
 }
 
 #[cfg(test)]

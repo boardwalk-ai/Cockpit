@@ -261,8 +261,8 @@ Fields, in the order the agent asks them:
 | `wordCount` | number | Chips 500 / 800 / 1200 / 2000 / 3000 |
 | `citationStyle` | select | APA / MLA / Chicago / Harvard / IEEE / None |
 | `studentName`, `instructorName`, `institutionName`, `courseInfo`, `essayDate` | text | Only the ones the chosen style needs |
-| `humanizerChoice` | select | StealthGPT / UndetectableAI / Skip (phase 4) |
-| `paragraphSplitChoice` | select | After StealthGPT only (phase 4) |
+| `humanizerChoice` | select | StealthGPT / UndetectableAI / Skip. Asked after the essay is delivered. |
+| `paragraphSplitChoice` | select | `AI split` / `Skip split`. Only when the humanizer merged the paragraphs. |
 
 A chat message sent while `essayFocus` is pending is treated as a direction for
 new focus options, as on the web: the app answers the question with
@@ -285,10 +285,31 @@ OctopilotWeb's loop.
 | `write_essay` | Streams the essay into the document (section 7); charges for generation | writer |
 | `finalize_document` | Puts the title-page answers on the document; the run then ends | — |
 | `revise_essay` | Revision runs only (6.3) | writer |
+| `humanize_essay` | Sends the essay as it stands through StealthGPT or UndetectableAI and puts the result in the document; charges for humanizing | — |
+| `split_paragraphs` | Restores paragraph breaks a humanizer merged. A split that changes any wording is thrown away. | secondary |
 
 A tool that fails is shown as a failed step and its error goes back to the
 model, which retries or tells the user. A run stops after 40 model round-trips.
-Not ported yet: evaluating sources, critique, and the humanizer (phase 4).
+Not ported yet: evaluating sources and critique (phase 4).
+
+### 6.4 Humanizing
+
+After `finalize_document` the agent asks `humanizerChoice`. On StealthGPT or
+UndetectableAI it calls `humanize_essay`, which:
+
+1. reads the essay body from the document (the bibliography is left alone);
+2. pre-checks the balance, locks the document and keeps a version (`humanize`);
+3. sends the text to the provider, saves the result, unlocks, emits
+   `document_updated`, and charges "Humanizing".
+
+Its result tells the model whether the paragraphs came back merged
+(`paragraphsMerged`). If so the agent asks `paragraphSplitChoice` and, on
+`AI split`, calls `split_paragraphs`. The split is not charged.
+
+A revision run has both tools too, so "humanize it" works on a finished essay,
+including the user's own edits. A provider that fails, or has no key in
+`system_settings` (`stealthgpt_api_key`, `undetectable_api_key`), is a failed
+step with a plain message; the essay and the balance are untouched.
 
 ### 6.3 Revisions
 
@@ -416,5 +437,5 @@ Open:
 | 1d ✅ | Document: saving from the editor, the live text stream, version list and restore. The scripted driver writes a placeholder essay. |
 | 2 ✅ | Mobile chat: timeline, question cards, progress bar, pills, Google sign-in (desktop page: later) |
 | 3 ✅ | Editor: mobile editor on Doc Oct's foundation, read-only live text, autosave, history |
-| 4 | Revision mode ✅, source review ✅, humanizer |
+| 4 | Revision mode ✅, source review ✅, humanizer ✅. Left: evaluating sources, critique. |
 | 5 | Push notifications, Live Activities, Android ongoing notification |

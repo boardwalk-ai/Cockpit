@@ -114,7 +114,15 @@ async fn a_change_request_revises_the_essay_in_place() {
         .iter()
         .map(|t| t["function"]["name"].as_str().unwrap())
         .collect();
-    assert_eq!(tools, ["revise_essay", "ask_user"]);
+    assert_eq!(
+        tools,
+        [
+            "revise_essay",
+            "ask_user",
+            "humanize_essay",
+            "split_paragraphs"
+        ]
+    );
     let brief = request.messages[1]["content"].as_str().unwrap();
     assert!(brief.starts_with("USER REQUEST\nShorten paragraph 2"));
     assert!(brief.contains("[2] Rising seas raise every ordinary high tide"));

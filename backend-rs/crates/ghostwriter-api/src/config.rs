@@ -34,6 +34,8 @@ pub struct Config {
     pub ask_timeout: Duration,
     /// Pause between steps of the scripted driver, so a person can follow it.
     pub scripted_step: Duration,
+    /// Whether the scripted driver offers to humanize the essay at the end.
+    pub scripted_humanizer: bool,
     /// `agent` (the model drives the run) or `scripted` (canned run, no model).
     pub driver: String,
     /// The Octopilot scraper service (`GET <url>?url=…`).
@@ -62,6 +64,7 @@ impl Config {
             log_format: std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".into()),
             ask_timeout: millis("ASK_TIMEOUT_MS").unwrap_or(DEFAULT_ASK_TIMEOUT),
             scripted_step: millis("SCRIPTED_STEP_MS").unwrap_or(Duration::from_millis(900)),
+            scripted_humanizer: flag("SCRIPTED_HUMANIZER", true),
             driver: std::env::var("GHOSTWRITER_DRIVER").unwrap_or_else(|_| "agent".into()),
             scraper_url: std::env::var("SCRAPER_URL")
                 .unwrap_or_else(|_| "https://api.octopilotai.com/api/scrape".into()),

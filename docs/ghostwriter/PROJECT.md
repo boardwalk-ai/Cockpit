@@ -18,7 +18,7 @@ API နဲ့ database အသေးစိတ်က [CONTRACT.md](CONTRACT.md) �
 | **ဘာဆောက်နေလဲ** | GhostWriter (AI essay ရေးပေးတဲ့ agent) ကို mobile app အဖြစ် ထုတ်ဖို့ |
 | **ပထမ release** | GhostWriter တစ်ခုတည်း။ ပြီးရင် Study Studio၊ နောက်မှ OctoNotes |
 | **Code နေရာ** | `H:\Cockpit-ghostwriter` (Cockpit monorepo၊ branch `feat/ghostwriter`) |
-| **Backend** | Rust (`ghostwriter-api`)၊ Phase 1a–1d + revision (4a) + source review (4b) ပြီး၊ test ၅၇ ခု pass |
+| **Backend** | Rust (`ghostwriter-api`)၊ Phase 1a–1d + revision (4a) + source review (4b) + humanizer (4c) ပြီး၊ test ၆၈ ခု pass |
 | **Mobile UI** | Phone UI တစ်ခုလုံး Rust API နဲ့ ချိတ်ပြီး၊ Google sign-in (Phase 2)၊ ပြင်လို့ရတဲ့ mobile editor (Phase 3)။ Desktop UI (2c) နောက်မှ။ Test ၄၆ ခု pass |
 | **အခု ပိတ်နေတာ** | Branch ကို GitHub မတင်ရသေးဘူး (git history ထဲမှာ DB password ပါနေလို့၊ အပိုင်း 8) |
 
@@ -288,7 +288,7 @@ Operation တစ်ခုကို 100 ပြည့်အောင် တို�
 | **4a** | Revision: essay ရေးပြီးသား project ပေါ် run အသစ် = ပြင်ခိုင်းတာ / မေးတာ၊ `revise_essay` tool၊ `runIds` | 4a + 4b commit | 3 |
 | **4b** | Source review: ဖတ်ထားတဲ့ source တွေကို user က ဖယ် / focus note ရေး၊ ဖယ်ထားတာကို အနှစ်မချုပ် | 4a + 4b commit | 1 (+ app 7) |
 
-- **Test ၅၇ ခုလုံး pass**၊ clippy သန့်တယ်။ Timing ပေါ်မူတည်တဲ့ test တွေကို ၁၀ ကြိမ် ထပ် run ပြီး တည်ငြိမ်တာ စစ်ထားတယ်။
+- **Test ၆၈ ခုလုံး pass**၊ clippy သန့်တယ်။ Timing ပေါ်မူတည်တဲ့ test တွေကို ၁၀ ကြိမ် ထပ် run ပြီး တည်ငြိမ်တာ စစ်ထားတယ်။
 - **AI အစစ်နဲ့ တစ်ကြိမ် စမ်းထားတယ်** (2026-10-02): ၁၀၉ စက္ကန့်အတွင်း source အစစ် ၄ ခု (IPCC, NASA, Miami-Dade, UN)
   နဲ့ APA citation ပါတဲ့ စာလုံး ၄၅၁ လုံး essay၊ title page field ၅ ခု၊ 200 OC ဖြတ်။
 
@@ -369,7 +369,14 @@ Browser မှာ scripted backend နဲ့ အစအဆုံး စမ်း�
   - ဖြေပြီးရင် chat မှာ "4 sources kept · 1 left out · 1 with a note" လို့ အကျဉ်းပြတယ်
   - Scripted driver မှာလည်း ပါတယ်။ Browser မှာ scripted နဲ့ စမ်းပြီး (နှိပ်တာတွေကိုတော့ widget test နဲ့ စစ်ထား)
 - [ ] Source evaluate၊ critique / revise
-- [ ] Humanizer (StealthGPT / UndetectableAI) + paragraph split
+- [x] **4c Humanizer** (StealthGPT / UndetectableAI) + paragraph split
+  - Essay ပြီးရင် agent က "StealthGPT / UndetectableAI / Skip" မေးတယ်
+  - `humanize_essay`: document ထဲက essay ကို **အခုရှိတဲ့အတိုင်း** (user ပြင်ထားတာပါ) provider ဆီပို့၊ lock ယူ၊ `humanize` version သိမ်း၊ ရလဒ်ကို document ထဲထည့်၊ OctoCredits ဖြတ် ("Humanizing")။ Bibliography ကို မထိဘူး
+  - Provider က စာပိုဒ်တွေကို ပေါင်းပစ်ရင် agent က "Restore paragraphs?" မေးပြီး `split_paragraphs` နဲ့ ပြန်ခွဲတယ်။ **စကားလုံးတစ်လုံး ပြောင်းရင် အဲ့ဒီ split ကို ပယ်တယ်**
+  - ပြင်ခိုင်းတဲ့ run မှာလည်း "humanize it" လို့ ခိုင်းလို့ရတယ်
+  - Provider fail ဖြစ်ရင် / key မရှိရင် essay နဲ့ balance ကို မထိဘူး
+  - Scripted driver မှာလည်း ပါတယ် (`SCRIPTED_HUMANIZER=false` နဲ့ ပိတ်လို့ရ)
+  - **Provider အစစ်နဲ့ မစမ်းရသေးဘူး** (test တွေက humanizer အတုနဲ့)။ App မှာလည်း မကြည့်ရသေးဘူး၊ မေးခွန်းတွေက ရှိပြီးသား select card ကိုပဲ သုံးတယ်
 - [ ] Ask Octo
 
 ### Phase 5 — Notification
@@ -492,3 +499,4 @@ Dev server config `ghostwriter-api` (scripted၊ :8791) နဲ့ `ghostwriter-a
 | 10-03 | Phase 3: mobile editor (ပြင်လို့ရ၊ autosave၊ History)။ doc_oct core မခွဲဘဲ dependency နဲ့ မျှသုံးဖို့ ဆုံးဖြတ်။ Browser မှာ ပြင်ပြီး save ဖြစ်တာ စမ်းပြီး (`ce800f5`) |
 | 10-03 | Phase 4a: revision (ပြင်ခိုင်းတိုင်း run အသစ်)၊ `revise_essay`၊ app မှာ run အားလုံး conversation တစ်ခု |
 | 10-03 | Phase 4b: source review (ဖယ်တာ / focus note)၊ backend + app |
+| 10-03 | Phase 4c: humanizer (StealthGPT / UndetectableAI) + paragraph split၊ backend |

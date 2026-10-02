@@ -31,6 +31,13 @@ pub struct Context {
     pub export_ready: bool,
     /// Revisions made in this run (each is charged on its own).
     pub revisions: i64,
+    /// Times the essay was humanized in this run (each is charged on its own).
+    pub humanizations: i64,
+    /// The humanizer last used on the essay, if any.
+    pub humanized_by: Option<String>,
+    /// How many paragraphs the essay had before it was humanized: what
+    /// `split_paragraphs` restores.
+    pub paragraphs_before_humanize: usize,
     /// The user's review of the sources: notes to steer each summary, and
     /// the ones to leave out.
     pub source_review: Vec<SourceNote>,

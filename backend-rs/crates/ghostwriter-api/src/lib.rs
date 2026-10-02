@@ -2,6 +2,7 @@ pub mod agent;
 pub mod config;
 pub mod ctx;
 pub mod documents;
+pub mod humanize;
 pub mod live_docs;
 pub mod llm;
 pub mod pricing;
@@ -23,6 +24,7 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
+use crate::humanize::{HttpHumanizer, Humanizer};
 use crate::live_docs::LiveDocs;
 use crate::llm::Llm;
 use crate::routes::{documents as doc_routes, folders, projects, runs as run_routes, system};
@@ -52,6 +54,7 @@ pub struct AppState {
     /// leaves it empty and each run takes a key from the shared pool.
     pub llm: Option<Arc<dyn Llm>>,
     pub scraper: Arc<dyn Scraper>,
+    pub humanizer: Arc<dyn Humanizer>,
 }
 
 impl HasFirebase for AppState {
@@ -98,6 +101,7 @@ impl AppState {
             credits,
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             scraper: Arc::new(HttpScraper::new(http.clone(), config.scraper_url.clone())),
+            humanizer: Arc::new(HttpHumanizer::new(http.clone(), octopilot.clone())),
             http,
             db,
             octopilot,
