@@ -1,5 +1,6 @@
 pub mod folders;
 pub mod projects;
+pub mod runs;
 pub mod system;
 
 use octo_common::ApiError;

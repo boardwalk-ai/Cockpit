@@ -1,3 +1,7 @@
+use std::time::Duration;
+
+use crate::runs::driver::DEFAULT_ASK_TIMEOUT;
+
 /// Runtime configuration, all from the environment so nothing secret is baked
 /// into the binary. OpenRouter keys and models are deliberately NOT here — they
 /// come from the shared DB (`api_keys` / `system_settings`).
@@ -26,6 +30,10 @@ pub struct Config {
     pub credits_enabled: bool,
     /// `json` for structured logs (production), anything else for text.
     pub log_format: String,
+    /// How long a run waits for an answer before it gives up.
+    pub ask_timeout: Duration,
+    /// Pause between steps of the scripted driver, so a person can follow it.
+    pub scripted_step: Duration,
 }
 
 impl Config {
@@ -48,8 +56,17 @@ impl Config {
                 .unwrap_or_else(|_| "octo".into()),
             credits_enabled: flag("CREDITS_ENABLED", true),
             log_format: std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".into()),
+            ask_timeout: millis("ASK_TIMEOUT_MS").unwrap_or(DEFAULT_ASK_TIMEOUT),
+            scripted_step: millis("SCRIPTED_STEP_MS").unwrap_or(Duration::from_millis(900)),
         }
     }
+}
+
+fn millis(key: &str) -> Option<Duration> {
+    std::env::var(key)
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .map(Duration::from_millis)
 }
 
 fn env_opt(key: &str) -> Option<String> {

@@ -1068,8 +1068,10 @@ dependencies = [
 name = "ghostwriter-api"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "axum",
  "chrono",
+ "futures",
  "http-body-util",
  "octo-common",
  "reqwest",

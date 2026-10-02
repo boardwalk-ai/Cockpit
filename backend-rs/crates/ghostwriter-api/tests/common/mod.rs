@@ -32,6 +32,11 @@ pub fn admin_url() -> String {
 impl TestApp {
     /// A fresh app with two accounts: `alice` (10,000 OC) and `bob` (50 OC).
     pub async fn new() -> Self {
+        Self::with(|_| {}).await
+    }
+
+    /// A fresh app; `tweak` adjusts the config before it starts.
+    pub async fn with(tweak: impl FnOnce(&mut Config)) -> Self {
         let admin = admin_url();
         let db = format!("ghostwriter_test_{}", Uuid::new_v4().simple());
         let mut conn = PgConnection::connect(&format!("{admin}/postgres"))
@@ -61,6 +66,8 @@ impl TestApp {
         config.ghostwriter_database_url = url.clone();
         config.octopilot_database_url = Some(url);
         config.firebase_project_id = String::new();
+        config.scripted_step = std::time::Duration::ZERO;
+        tweak(&mut config);
         let state = AppState::connect(config).await.expect("app state");
         TestApp {
             app: app(state.clone()),
@@ -101,6 +108,32 @@ impl TestApp {
         (status, value)
     }
 
+    pub async fn post(&self, path: &str, user: &str, body: Value) -> (StatusCode, Value) {
+        self.call(Method::POST, path, user, Some(body)).await
+    }
+
+    /// Opens a Server-Sent Events stream. `last_event_id` sets that header.
+    pub async fn events(&self, path: &str, user: &str, last_event_id: Option<i64>) -> EventStream {
+        let mut req = Request::builder()
+            .method(Method::GET)
+            .uri(path)
+            .header("x-user-id", user);
+        if let Some(id) = last_event_id {
+            req = req.header("last-event-id", id.to_string());
+        }
+        let res = self
+            .app
+            .clone()
+            .oneshot(req.body(Body::empty()).expect("request"))
+            .await
+            .expect("response");
+        assert_eq!(res.status(), StatusCode::OK, "events stream for {path}");
+        EventStream {
+            body: res.into_body().into_data_stream(),
+            buffer: String::new(),
+        }
+    }
+
     pub async fn get(&self, path: &str, user: &str) -> (StatusCode, Value) {
         self.call(Method::GET, path, user, None).await
     }
@@ -127,4 +160,78 @@ impl TestApp {
                 .await;
         }
     }
+}
+
+/// A Server-Sent Events response, read one event at a time.
+pub struct EventStream {
+    body: axum::body::BodyDataStream,
+    buffer: String,
+}
+
+impl EventStream {
+    /// The next event's JSON, or `None` when the stream has ended. Panics if
+    /// nothing arrives for five seconds, so a stuck run fails the test.
+    pub async fn next(&mut self) -> Option<Value> {
+        use futures::StreamExt;
+        loop {
+            if let Some(end) = self.buffer.find(
+                "
+
+",
+            ) {
+                let frame: String = self.buffer.drain(..end + 2).collect();
+                let data: String = frame
+                    .lines()
+                    .filter_map(|line| line.strip_prefix("data:"))
+                    .map(str::trim_start)
+                    .collect();
+                if data.is_empty() {
+                    continue; // a keep-alive comment
+                }
+                return Some(serde_json::from_str(&data).expect("event json"));
+            }
+            let chunk = tokio::time::timeout(std::time::Duration::from_secs(5), self.body.next())
+                .await
+                .expect("an event within five seconds");
+            match chunk {
+                Some(bytes) => self
+                    .buffer
+                    .push_str(&String::from_utf8_lossy(&bytes.expect("stream chunk"))),
+                None => return None,
+            }
+        }
+    }
+
+    /// Events up to and including the first of type `kind`.
+    pub async fn until(&mut self, kind: &str) -> Vec<Value> {
+        let mut events = Vec::new();
+        loop {
+            let event = self
+                .next()
+                .await
+                .unwrap_or_else(|| panic!("stream ended before a `{kind}` event: {events:#?}"));
+            let found = event["type"] == kind;
+            events.push(event);
+            if found {
+                return events;
+            }
+        }
+    }
+
+    /// Everything left until the stream ends.
+    pub async fn rest(&mut self) -> Vec<Value> {
+        let mut events = Vec::new();
+        while let Some(event) = self.next().await {
+            events.push(event);
+        }
+        events
+    }
+}
+
+/// The `type` of each event, in order.
+pub fn kinds(events: &[Value]) -> Vec<&str> {
+    events
+        .iter()
+        .map(|e| e["type"].as_str().unwrap_or("?"))
+        .collect()
 }

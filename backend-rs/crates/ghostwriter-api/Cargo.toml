@@ -17,6 +17,8 @@ tracing-subscriber.workspace = true
 sqlx.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+futures.workspace = true
+async-stream.workspace = true
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

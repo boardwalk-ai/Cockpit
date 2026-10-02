@@ -1,6 +1,6 @@
 # GhostWriter backend contract
 
-Status: **in progress** — phase 1a is built (see section 10).
+Status: **in progress** — phases 1a and 1b are built (see section 10).
 
 This is the agreement between the GhostWriter mobile app and its new Rust
 backend: what is stored, which endpoints exist, and which events the app
@@ -163,10 +163,21 @@ All under `/v1`. JSON in, JSON out, camelCase.
 | GET | `/runs/:runId/events?sinceSeq=N` | Server-Sent Events (section 6). Replays stored events after `N`, then stays live. |
 | POST | `/runs/:runId/answer` | `{ field, value }` — answers the pending question. 409 if that question is not pending. |
 | POST | `/runs/:runId/message` | `{ text }` — a free chat message to the agent |
-| POST | `/runs/:runId/cancel` | Stop the run and release the document lock |
+| GET | `/runs/:runId` | `{ status, pendingQuestion, lastSeq, error }` — where the run stands, for an app coming back to it |
+| POST | `/runs/:runId/cancel` | Stop the run and release the document lock. Harmless if it already ended. |
 
 A run keeps going when the app disconnects. The app reconnects with the last
 `seq` it saw and misses nothing.
+
+A server restart is different: the run's driver dies with the process. At
+startup the service closes any run that was still active with a `fatal` event
+("The server restarted while this run was in progress.") and unlocks its
+document, so the app is told and the project is not stuck. Resuming a run across
+a restart is not built.
+
+Until phase 1c the runs are driven by a scripted driver: the real workflow's
+steps and questions with canned content and no model calls. It stays afterwards
+as a way to build and demo the app without spending credits.
 
 ### Document
 
@@ -202,6 +213,7 @@ Stored and replayed:
 | `document_updated` | `rev, wordCount` | Editor refetches if it is open and not streaming |
 | `credits` | `charged, balance, reason` | OctoCredits pill counts down |
 | `done` | — | Run finished; document unlocked |
+| `cancelled` | — | Run stopped by the user; document unlocked |
 | `fatal` | `error` | Run failed; document unlocked |
 
 Sent live but **not** stored: `assistant_delta { chunk }`, so GhostWriter's
@@ -318,7 +330,7 @@ Open:
 | Phase | Scope |
 |---|---|
 | 1a ✅ | Service skeleton, migrations, auth, `/me`, projects and folders |
-| 1b | Runs: start, durable events, SSE with replay, answer, message, cancel |
+| 1b ✅ | Runs: start, durable events, SSE with replay, answer, message, cancel |
 | 1c | Agent loop + core tools: plan, focus question, outlines, search, scrape, compact, word count and citation questions, write, formatting questions |
 | 1d | Document: lock, versions, save, live stream, word-count progress |
 | 2 | Mobile chat: timeline, question cards, progress bar, pills |

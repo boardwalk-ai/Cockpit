@@ -13,7 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::{clean_text, folders};
+use super::{clean_text, folders, runs};
 use crate::ctx::Caller;
 use crate::AppState;
 
@@ -135,12 +135,7 @@ pub async fn get_one(
     .await?;
     let project = project.ok_or_else(|| ApiError::not_found("project not found"))?;
 
-    let active_run: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM runs WHERE project_id = $1 AND status IN ('running', 'waiting_for_user')",
-    )
-    .bind(id)
-    .fetch_optional(&st.db)
-    .await?;
+    let active_run = runs::active_run_id(&st, id).await?;
 
     let mut value = serde_json::to_value(project).map_err(|_| ApiError::internal("encode"))?;
     value["activeRunId"] = json!(active_run);
