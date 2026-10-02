@@ -207,6 +207,73 @@ void main() {
       expect(server.cancelled, 1);
     });
 
+    test('after the essay, a message asks for a revision run', () async {
+      await session.start('Tides');
+      final project = session.projectId;
+      await server.connected();
+      server.send(ev(1, 'user_message', {'text': 'Tides'}));
+      server.send(ev(2, 'writing_started', {'targetWords': 500}));
+      server.send(ev(3, 'done'));
+      await server.closed();
+      await pumpEventQueue();
+      expect(session.canRevise, isTrue);
+
+      await session.send('Shorten paragraph 2');
+      // A new run on the same project; the project itself is not touched.
+      expect(server.calls.last, 'POST /v1/projects/$project/runs');
+      expect(server.calls.where((c) => c.startsWith('PUT')), hasLength(1));
+      expect(session.earlier, hasLength(1));
+      expect(session.canRevise, isFalse);
+
+      await server.connected();
+      server.send(ev(1, 'user_message', {'text': 'Shorten paragraph 2'}));
+      server.send(
+        ev(2, 'step_start', {
+          'stepId': 's',
+          'tool': 'revise_essay',
+          'title': 'Revising',
+        }),
+      );
+      server.send(ev(3, 'writing_started', {'targetWords': 520}));
+      await pumpEventQueue();
+
+      // The whole conversation, oldest first; the brief shows once per run.
+      expect(session.items.whereType<UserItem>().map((u) => u.text), [
+        'Tides',
+        'Shorten paragraph 2',
+      ]);
+      expect(session.timeline.writing!.revising, isTrue);
+      expect(session.hasEssay, isTrue);
+    });
+
+    test('opening a project replays every run, oldest first', () async {
+      server.responses['GET /v1/projects/p1'] = {
+        'id': 'p1',
+        'title': 'Tides',
+        'runIds': ['r1', 'r2'],
+        'lastRunId': 'r2',
+      };
+      final opened = session.openProject('p1');
+
+      await server.connected();
+      expect(server.calls.last, 'GET /v1/runs/r1/events');
+      server.send(ev(1, 'user_message', {'text': 'Tides'}));
+      server.send(ev(2, 'done'));
+      await opened;
+
+      await server.connected();
+      expect(server.calls.last, 'GET /v1/runs/r2/events');
+      server.send(ev(1, 'user_message', {'text': 'Make it shorter'}));
+      await pumpEventQueue();
+
+      expect(session.earlier, hasLength(1));
+      expect(session.runId, 'r2');
+      expect(session.items.whereType<UserItem>().map((u) => u.text), [
+        'Tides',
+        'Make it shorter',
+      ]);
+    });
+
     test('New chat stops following the old run', () async {
       await session.start('Tides');
       await server.connected();

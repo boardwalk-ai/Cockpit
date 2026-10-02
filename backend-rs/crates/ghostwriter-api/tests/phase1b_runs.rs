@@ -55,6 +55,8 @@ async fn answer_all(t: &TestApp, run: Uuid, events: &mut EventStream) -> Vec<Val
     )
     .await;
     seen.extend(events.until("question").await);
+    answer(t, run, "sourceReviewChoice", json!("One Shot")).await;
+    seen.extend(events.until("question").await);
     answer(t, run, "wordCount", json!(800)).await;
     seen.extend(events.until("question").await);
     answer(t, run, "citationStyle", json!("APA")).await;
@@ -100,12 +102,22 @@ async fn a_run_goes_from_brief_to_done() {
     .await;
     assert_eq!(status, StatusCode::OK);
 
-    // Through the source steps to the word-count question.
+    // Through the research steps to the source review question.
     let middle = events.until("question").await;
     assert_eq!(middle[0]["type"], "question_answered");
     assert_eq!(middle[0]["field"], "essayFocus");
-    assert!(kinds(&middle).contains(&"sources_ready"));
-    assert_eq!(middle.last().unwrap()["field"], "wordCount");
+    assert_eq!(middle.last().unwrap()["field"], "sourceReviewChoice");
+    answer(&t, run, "sourceReviewChoice", json!("One Shot")).await;
+
+    // Summaries, then the word-count question.
+    let summaries = events.until("question").await;
+    let ready = summaries
+        .iter()
+        .find(|e| e["type"] == "sources_ready")
+        .unwrap();
+    assert_eq!(ready["count"], 5);
+    assert_eq!(ready["sources"].as_array().unwrap().len(), 5);
+    assert_eq!(summaries.last().unwrap()["field"], "wordCount");
     answer(&t, run, "wordCount", json!(800)).await;
 
     let style = events.until("question").await;
@@ -204,7 +216,7 @@ async fn a_client_that_reconnects_misses_nothing() {
     let after = second.until("question").await;
     assert_eq!(after[0]["seq"], cursor + 1);
     assert_eq!(after[0]["type"], "question_answered");
-    assert_eq!(after.last().unwrap()["field"], "wordCount");
+    assert_eq!(after.last().unwrap()["field"], "sourceReviewChoice");
 
     let seqs: Vec<i64> = after.iter().map(|e| e["seq"].as_i64().unwrap()).collect();
     let expected: Vec<i64> = (cursor + 1..=cursor + seqs.len() as i64).collect();
@@ -479,6 +491,8 @@ async fn an_unusable_answer_fails_the_run_with_a_reason() {
     let mut events = stream(&t, run, 0).await;
     events.until("question").await;
     answer(&t, run, "essayFocus", json!(["Social impact"])).await;
+    events.until("question").await;
+    answer(&t, run, "sourceReviewChoice", json!("One Shot")).await;
     events.until("question").await;
 
     answer(&t, run, "wordCount", json!("banana")).await;

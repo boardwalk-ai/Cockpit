@@ -92,6 +92,8 @@ pub struct FakeLlm {
     turns: Mutex<VecDeque<ChatReply>>,
     /// Every orchestrator request, for checking what the model was shown.
     pub orchestrator_requests: Mutex<Vec<ChatRequest>>,
+    /// Every sub-agent request (planner, outliner, compactor, ...).
+    pub sub_requests: Mutex<Vec<ChatRequest>>,
     /// What the writer streams. Empty string = the writer returns nothing.
     pub essay_output: Mutex<String>,
     /// If set, the writer stream waits here after its first chunk.
@@ -162,9 +164,13 @@ impl FakeLlm {
 impl Llm for FakeLlm {
     async fn chat(&self, request: ChatRequest) -> Result<ChatReply, String> {
         if request.tools.is_empty() {
-            let system = request.messages[0]["content"].as_str().unwrap_or_default();
+            let system = request.messages[0]["content"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
+            self.sub_requests.lock().unwrap().push(request);
             return Ok(ChatReply {
-                content: Self::sub_agent(system).to_string(),
+                content: Self::sub_agent(&system).to_string(),
                 tool_calls: Vec::new(),
             });
         }

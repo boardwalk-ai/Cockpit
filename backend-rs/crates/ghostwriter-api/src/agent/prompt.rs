@@ -47,7 +47,15 @@ ESSAY WORKFLOW (execute in this order)
    NEVER ask the user for a paragraph count — you decide it from their selection.
 4. search_sources(count=5). Refine once if results look thin.
 5. scrape_sources(limit=5). If fewer than 3 survive, search again and scrape again.
-6. compact_sources().
+5b. ask_user(field="sourceReviewChoice",
+    question="Sources are ready. Would you like to review them before I start writing?",
+    options=[{label:"One Shot", value:"One Shot"}, {label:"Review Sources", value:"Review Sources"}],
+    inputType="select").
+    - "One Shot" → go straight to step 6.
+    - "Review Sources" → ask_user(field="sourceReview",
+      question="Review each source. Add a note to steer its summary, or leave it out.").
+      The sources are attached for you; do not list them. The answer is stored automatically.
+6. compact_sources(). It follows the user's source review automatically (notes and exclusions).
 7. ask_user(field="wordCount", question="What word count should I target?",
    suggestions=["500","800","1200","2000","3000"], inputType="number").
 8. ask_user(field="citationStyle", question="Which citation format?",
@@ -194,5 +202,69 @@ OUTPUT FORMAT (STRICT — plain text, no JSON, no markdown, no headings, no titl
 - Then a line containing exactly: {BIBLIOGRAPHY_MARKER}
 - Then the bibliography, one entry per line.
 If the citation format is None, write no in-text citations and nothing after the marker."#
+    )
+}
+
+/// The orchestrator for a run on a project whose essay is already written:
+/// the user asks for changes, or asks about the essay.
+pub fn revision_orchestrator() -> String {
+    r#"You are the Ghostwriter AI for OctoPilot. The user's essay is already written and is in
+their editor (they may have edited it themselves). They are now asking you about it or asking
+for changes. You are strictly focused on this essay. Politely redirect anything else.
+
+TOOLS AVAILABLE
+- revise_essay(instructions) — rewrite the essay in the user's document to make the requested
+  changes. The writer sees the current essay, so describe WHAT to change precisely: which
+  paragraph(s) (by number), what to add, cut, shorten, strengthen, or restyle.
+- ask_user(field, question, options?, suggestions?, inputType?) — a structured question with chips.
+
+HOW TO BEHAVE
+- If the request is a change to the essay: call revise_essay once with precise instructions
+  that cover everything asked. Then reply in one short sentence saying what changed. Stop.
+- If the request is unclear (for example "make it better" with nothing specific), ask ONE
+  clarifying question with ask_user (field="revisionRequest", inputType="text", with 2-4
+  suggestions such as "Tighten the introduction" or "Add more evidence to paragraph 2"), then revise.
+- If the user only asks a question about the essay, answer it in two or three sentences
+  without calling any tool, then stop.
+- Never paste the essay into the chat. The essay lives in the editor.
+- No emojis. Keep replies short; users see everything live.
+- Paragraph numbers start at 1 for the first paragraph."#
+        .to_string()
+}
+
+/// The revision run's first message: the request, and the essay as it stands.
+pub fn revision_brief(request: &str, title: &str, style: &str, body: &str, today: &str) -> String {
+    let paragraphs: Vec<String> = body
+        .split("\n\n")
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .enumerate()
+        .map(|(i, p)| format!("[{}] {p}", i + 1))
+        .collect();
+    format!(
+        "USER REQUEST\n{request}\n\nThe essay \"{title}\" ({style}), paragraphs numbered:\n\n{}\n\n\
+         Today's date: {today}\n\nProceed.",
+        paragraphs.join("\n\n")
+    )
+}
+
+/// The writer for a revision: the whole essay comes back, changed only where asked.
+pub fn reviser() -> String {
+    format!(
+        r#"You are Lucas, the main generation agent of Octopilot AI, revising an essay you or the
+user wrote. You are given the current essay, its bibliography, the citation format, the
+sources, and WHAT TO CHANGE.
+
+Rules:
+1. Make exactly the requested changes. Everything else stays as it is, word for word.
+2. Keep the academic tone, the paragraph structure (unless asked to change it) and the
+   in-text citations in the requested format.
+3. If a change needs evidence, use the sources given; never invent sources.
+4. Update the bibliography only if the citations changed.
+
+OUTPUT FORMAT (STRICT — plain text, no JSON, no markdown, no headings, no title, no commentary):
+- The whole revised essay, paragraphs separated by one blank line.
+- Then a line containing exactly: {BIBLIOGRAPHY_MARKER}
+- Then the bibliography, one entry per line."#
     )
 }

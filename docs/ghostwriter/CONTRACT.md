@@ -1,6 +1,6 @@
 # GhostWriter backend contract
 
-Status: **in progress** — phases 1a to 1d (the whole backend for phases 2 and 3) are built (see section 10).
+Status: **in progress** — phases 1a to 1d, revisions (4a) and source review (4b) are built (see section 10).
 
 This is the agreement between the GhostWriter mobile app and its new Rust
 backend: what is stored, which endpoints exist, and which events the app
@@ -150,7 +150,7 @@ All under `/v1`. JSON in, JSON out, camelCase.
 |---|---|---|
 | GET | `/projects` | The user's projects, newest first, plus folders |
 | PUT | `/projects/:id` | Create or update (idempotent): `{ title?, folderId?, instruction? }` |
-| GET | `/projects/:id` | One project, with `activeRunId` if a run is in progress and `lastRunId` (the newest run, to replay its timeline) |
+| GET | `/projects/:id` | One project, with `activeRunId` if a run is in progress, `lastRunId`, and `runIds` (every run, oldest first, to replay the whole conversation) |
 | DELETE | `/projects/:id` | Delete a project and everything under it |
 | PUT | `/folders/:id` | Create or rename: `{ name }` |
 | DELETE | `/folders/:id` | Delete a folder (projects are kept, unfiled) |
@@ -174,6 +174,11 @@ startup the service closes any run that was still active with a `fatal` event
 ("The server restarted while this run was in progress.") and unlocks its
 document, so the app is told and the project is not stuck. Resuming a run across
 a restart is not built.
+
+**Revisions.** A run started on a project whose document already has an essay
+is a revision (6.3): the user asks for a change, or asks about the essay. It
+ends once the agent has answered; the next request is another run. The app
+shows a project's runs one after another as one conversation.
 
 Runs are driven by the agent loop (section 6.2). `GHOSTWRITER_DRIVER=scripted`
 switches to a scripted driver instead: the same steps and questions with canned
@@ -244,15 +249,15 @@ replies type out. On replay the app gets the finished `assistant_message` only.
 | `number` | Number field + chips | number |
 | `select` | Chips, one choice | string |
 | `multiselect` | Checkboxes + "Suggest more" + custom | array of strings, or `"__suggest_more__"` |
-| `sourceReview` | Source review sheet | array of `{ url, focusNote?, rejected? }` |
+| `sourceReview` | The sources, each with a keep/leave-out toggle and an optional focus note | array of `{ url, focusNote?, rejected? }`, one entry per source |
 
 Fields, in the order the agent asks them:
 
 | Field | Type | Notes |
 |---|---|---|
 | `essayFocus` | multiselect | Options come from the plan |
-| `sourceReviewChoice` | select | `Review Sources` / `One Shot` (phase 4) |
-| `sourceReview` | sourceReview | Only after `Review Sources` (phase 4) |
+| `sourceReviewChoice` | select | `Review Sources` / `One Shot` |
+| `sourceReview` | sourceReview | Only after `Review Sources`. The question carries `sources[]` (the ones that were read). A source marked `rejected` is not summarised or cited; a `focusNote` steers that source's summary. |
 | `wordCount` | number | Chips 500 / 800 / 1200 / 2000 / 3000 |
 | `citationStyle` | select | APA / MLA / Chicago / Harvard / IEEE / None |
 | `studentName`, `instructorName`, `institutionName`, `courseInfo`, `essayDate` | text | Only the ones the chosen style needs |
@@ -279,11 +284,28 @@ OctopilotWeb's loop.
 | `compact_sources` | A citable brief per source; emits `sources_ready` | secondary |
 | `write_essay` | Streams the essay into the document (section 7); charges for generation | writer |
 | `finalize_document` | Puts the title-page answers on the document; the run then ends | — |
+| `revise_essay` | Revision runs only (6.3) | writer |
 
 A tool that fails is shown as a failed step and its error goes back to the
 model, which retries or tells the user. A run stops after 40 model round-trips.
-Not ported yet: evaluating sources, source review, critique and revision, the
-humanizer (phase 4).
+Not ported yet: evaluating sources, critique, and the humanizer (phase 4).
+
+### 6.3 Revisions
+
+A revision run gets its own instructions (`agent/prompt.rs`, `revision_orchestrator`)
+and two tools: `revise_essay(instructions)` and `ask_user`. Its first message
+is the user's request and the essay as it stands, paragraphs numbered from 1.
+
+- A change: `revise_essay` reads the document as it is now (with the user's own
+  edits), takes the lock, keeps an `agent_revise` version, and streams the whole
+  revised essay into the document exactly like `write_essay` (`writing_started`
+  with the current word count as the target, `write_progress`,
+  `document_updated`). Title, style and title-page fields are left alone. It is
+  charged as essay generation for the words written ("Essay revision").
+- A question about the essay: the agent answers in the chat and the run ends
+  without touching the document.
+- The scripted driver revises too: it appends a "Revision note" quoting the
+  request, so the app's revision flow can be built without a model.
 
 ## 7. The document and the lock
 
@@ -392,7 +414,7 @@ Open:
 | 1b ✅ | Runs: start, durable events, SSE with replay, answer, message, cancel |
 | 1c ✅ | Agent loop + core tools: plan, focus question, outlines, search, scrape, compact, word count and citation questions, write, formatting questions. Also the document lock, version snapshots, progress events and credits. |
 | 1d ✅ | Document: saving from the editor, the live text stream, version list and restore. The scripted driver writes a placeholder essay. |
-| 2 | Mobile chat: timeline, question cards, progress bar, pills |
-| 3 | Editor: shared core from `doc_oct`, mobile editor, read-only live text |
-| 4 | Revision mode, source review, humanizer |
+| 2 ✅ | Mobile chat: timeline, question cards, progress bar, pills, Google sign-in (desktop page: later) |
+| 3 ✅ | Editor: mobile editor on Doc Oct's foundation, read-only live text, autosave, history |
+| 4 | Revision mode ✅, source review ✅, humanizer |
 | 5 | Push notifications, Live Activities, Android ongoing notification |

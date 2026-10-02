@@ -91,8 +91,11 @@ class QuestionItem extends TimelineItem {
 
 /// The word-count progress bar shown while the essay is written.
 class WritingItem extends TimelineItem {
-  WritingItem(this.targetWords);
+  WritingItem(this.targetWords, {this.revising = false});
   int targetWords;
+
+  /// A revision of the written essay rather than the first draft.
+  final bool revising;
   int words = 0;
   bool done = false;
 }
@@ -236,7 +239,10 @@ class RunTimeline {
       case 'writing_started':
         final target = _int(event['targetWords']) ?? 0;
         if (writing == null) {
-          writing = WritingItem(target);
+          writing = WritingItem(
+            target,
+            revising: _runningStep()?.tool == 'revise_essay',
+          );
           items.add(writing!);
         } else {
           writing!

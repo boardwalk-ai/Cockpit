@@ -108,7 +108,7 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
 
   /// The citation style, once it has been answered.
   String? get _citationStyle {
-    for (final item in timeline.items) {
+    for (final item in session.items) {
       if (item is QuestionItem &&
           item.field == 'citationStyle' &&
           item.answered) {
@@ -125,7 +125,7 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
       finished: timeline.phase == RunPhase.finished,
       citationStyle: _citationStyle ?? '—',
       wordCount: timeline.writing?.words ?? 0,
-      sources: timeline.sources ?? const [],
+      sources: session.sources ?? const [],
       bibliography: '',
     );
   }
@@ -139,7 +139,8 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
 
   String get _hint {
     final pending = timeline.pending;
-    if (timeline.ended) return 'Revisions are coming soon';
+    if (session.canRevise) return 'Ask for a change to your essay';
+    if (timeline.ended) return 'Start a new essay from the menu';
     if (pending != null &&
         (pending.inputType == 'text' || pending.inputType == 'number')) {
       return 'Type your answer';
@@ -152,7 +153,8 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
   @override
   Widget build(BuildContext context) {
     final ended = timeline.ended;
-    final canType = !ended && session.runId != null && !session.starting;
+    final running = !ended && session.runId != null && !session.starting;
+    final canType = running || session.canRevise;
     final writing = timeline.writing;
 
     return Column(
@@ -163,7 +165,7 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
           starting: session.starting,
           citationStyle: _citationStyle,
           words: writing?.words ?? 0,
-          onStop: canType ? session.cancel : null,
+          onStop: running ? session.cancel : null,
         ),
         Expanded(
           child: Stack(
@@ -184,11 +186,11 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
                 top: 2,
                 right: 12,
                 child: GwCornerPills(
-                  sourceCount: timeline.sources == null
+                  sourceCount: session.sources == null
                       ? null
-                      : timeline.sourceCount,
+                      : session.sourceCount,
                   onSources: _openSources,
-                  showEditor: writing != null,
+                  showEditor: session.hasEssay,
                   writing: writing != null && !writing.done && !ended,
                   onEditor: widget.onOpenEditor,
                 ),
@@ -217,7 +219,7 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
 
   List<Widget> _items() {
     final widgets = <Widget>[];
-    for (final (index, item) in timeline.items.indexed) {
+    for (final (index, item) in session.items.indexed) {
       final Widget child = switch (item) {
         UserItem(:final text) => _UserBubble(text: text),
         AssistantItem(:final text, :final streaming) => _AssistantBubble(

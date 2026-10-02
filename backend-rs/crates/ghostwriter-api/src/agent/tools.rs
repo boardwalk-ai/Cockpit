@@ -159,6 +159,25 @@ pub fn specs() -> Vec<Value> {
     ]
 }
 
+/// The tools of a revision run: the essay is written, the user wants changes.
+pub fn revision_specs() -> Vec<Value> {
+    let ask = specs()
+        .into_iter()
+        .find(|spec| spec["function"]["name"] == "ask_user")
+        .expect("ask_user is a tool");
+    vec![
+        function(
+            "revise_essay",
+            "Rewrite the essay in the user's document to make the requested changes. Everything not mentioned stays as it is.",
+            json!({
+                "type": "object", "additionalProperties": false, "required": ["instructions"],
+                "properties": { "instructions": { "type": "string", "description": "Precisely what to change: which paragraphs (numbered from 1) and how." } },
+            }),
+        ),
+        ask,
+    ]
+}
+
 /// The line the user sees while the tool runs.
 pub fn title(name: &str, args: &Value) -> String {
     match name {
@@ -168,6 +187,7 @@ pub fn title(name: &str, args: &Value) -> String {
         "scrape_sources" => "Reading the sources".into(),
         "compact_sources" => "Summarising the sources".into(),
         "write_essay" => "Writing the essay".into(),
+        "revise_essay" => "Revising the essay".into(),
         "finalize_document" => "Finishing the document".into(),
         other => {
             let _ = args;
@@ -181,7 +201,7 @@ pub fn time_limit(name: &str) -> Duration {
     Duration::from_secs(match name {
         "scrape_sources" => 180,
         "compact_sources" => 240,
-        "write_essay" => 300,
+        "write_essay" | "revise_essay" => 300,
         _ => 90,
     })
 }
@@ -195,6 +215,7 @@ pub fn exists(name: &str) -> bool {
             | "scrape_sources"
             | "compact_sources"
             | "write_essay"
+            | "revise_essay"
             | "finalize_document"
     )
 }
@@ -212,6 +233,7 @@ pub async fn execute(
         "scrape_sources" => scrape_sources(agent, step_id, args).await,
         "compact_sources" => compact_sources(agent, step_id, args).await,
         "write_essay" => write_essay(agent, args).await,
+        "revise_essay" => revise_essay(agent, args).await,
         "finalize_document" => finalize_document(agent).await,
         other => Err(format!("unknown tool: {other}").into()),
     }
@@ -648,7 +670,9 @@ async fn compact_sources(
                 .any(|c| c.source.url.eq_ignore_ascii_case(url));
             let wanted =
                 selected.is_empty() || selected.iter().any(|u| u.eq_ignore_ascii_case(url));
-            !done && wanted
+            // Left out by the user in their source review.
+            let rejected = agent.ctx.review_of(url).is_some_and(|note| note.rejected);
+            !done && wanted && !rejected
         })
         .cloned()
         .collect();
@@ -662,7 +686,7 @@ async fn compact_sources(
                 json!({ "stepId": step_id, "detail": format!("Summarising {} of {}", index + 1, targets.len()) }),
             )
             .await?;
-        let message = format!(
+        let mut message = format!(
             "Task: SOURCE_COMPACTION\nSource Type: web\nSource Title: {}\n\nFull Content:\n{}",
             if target.source.title.is_empty() {
                 "Untitled"
@@ -671,6 +695,17 @@ async fn compact_sources(
             },
             target.full_content,
         );
+        let note = agent
+            .ctx
+            .review_of(&target.source.url)
+            .and_then(|note| note.focus_note.as_deref())
+            .map(str::trim)
+            .filter(|note| !note.is_empty());
+        if let Some(note) = note {
+            message.push_str(&format!(
+                "\n\nThe user wants this summary to focus on: {note}"
+            ));
+        }
         let reply = ask_json(
             agent,
             &agent.models.secondary,
@@ -840,32 +875,71 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
     }
 
     let db = agent.run.st.db.clone();
-    let docs = agent.run.st.docs.clone();
-    let (project_id, run_id) = (agent.run.project_id, agent.run.run_id);
-
-    documents::begin_agent_write(&db, project_id, run_id, "agent_write").await?;
-    docs.begin(project_id);
+    let project_id = agent.run.project_id;
     sqlx::query("UPDATE projects SET target_words = $2, updated_at = now() WHERE id = $1")
         .bind(project_id)
         .bind(target as i32)
         .execute(&db)
         .await?;
+
+    let request = ChatRequest {
+        model: agent.models.writer.clone(),
+        messages: vec![system(prompt::writer()), user(message)],
+        temperature: Some(0.4),
+        json: false,
+        tools: Vec::new(),
+    };
+    let (body, bibliography) = stream_into_document(agent, request, target, "agent_write").await?;
+    let cited: Vec<&Source> = agent.ctx.compacted.iter().map(|c| &c.source).collect();
+    let cited = json!(cited);
+
+    let save = AgentSave {
+        body: Some(&body),
+        bibliography: Some(&bibliography),
+        title: Some(&topic),
+        style: Some(documents::style_key(&citation_style)),
+        sources: Some(&cited),
+        fields: None,
+    };
+    let words = finish_document_write(agent, save, target).await?;
+    agent.ctx.words_written = words;
+
+    charge(
+        agent,
+        pricing::charge(words, 0, 0),
+        "write",
+        "Essay generation",
+    )
+    .await?;
+
+    Ok((
+        json!({ "wordCount": words, "hasBibliography": !bibliography.is_empty() }),
+        format!("{words} words written."),
+    ))
+}
+
+/// Locks the document, streams the writer's output into it (live to open
+/// editors, saved every 2 seconds, progress once a second) and returns the
+/// finished body and bibliography. The document stays locked: the caller
+/// saves the final text with [finish_document_write].
+async fn stream_into_document(
+    agent: &mut Agent<'_>,
+    request: ChatRequest,
+    target: i64,
+    reason: &str,
+) -> Result<(String, String), Failure> {
+    let db = agent.run.st.db.clone();
+    let docs = agent.run.st.docs.clone();
+    let (project_id, run_id) = (agent.run.project_id, agent.run.run_id);
+
+    documents::begin_agent_write(&db, project_id, run_id, reason).await?;
+    docs.begin(project_id);
     agent
         .run
         .emit("writing_started", json!({ "targetWords": target }))
         .await?;
 
-    let mut stream = agent
-        .llm
-        .stream(ChatRequest {
-            model: agent.models.writer.clone(),
-            messages: vec![system(prompt::writer()), user(message)],
-            temperature: Some(0.4),
-            json: false,
-            tools: Vec::new(),
-        })
-        .await?;
-
+    let mut stream = agent.llm.stream(request).await?;
     let mut output = String::new();
     let mut last_progress = Instant::now();
     let mut last_save = Instant::now();
@@ -919,18 +993,22 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
     if body.is_empty() {
         return Err("the writer returned no essay".into());
     }
-    let bibliography = bibliography.unwrap_or("").trim();
-    let cited: Vec<&Source> = agent.ctx.compacted.iter().map(|c| &c.source).collect();
-    let cited = json!(cited);
+    Ok((
+        body.to_string(),
+        bibliography.unwrap_or("").trim().to_string(),
+    ))
+}
 
-    let save = AgentSave {
-        body: Some(body),
-        bibliography: Some(bibliography),
-        title: Some(&topic),
-        style: Some(documents::style_key(&citation_style)),
-        sources: Some(&cited),
-        fields: None,
-    };
+/// Saves a write's final text, unlocks the document and reports it. Returns
+/// the body's word count.
+async fn finish_document_write(
+    agent: &mut Agent<'_>,
+    save: AgentSave<'_>,
+    target: i64,
+) -> Result<i64, Failure> {
+    let db = agent.run.st.db.clone();
+    let docs = agent.run.st.docs.clone();
+    let (project_id, run_id) = (agent.run.project_id, agent.run.run_id);
     let (rev, words) = documents::save_agent(&db, project_id, run_id, save).await?;
     documents::unlock(&db, &docs, project_id, run_id).await?;
 
@@ -948,19 +1026,88 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
             json!({ "rev": rev, "wordCount": words }),
         )
         .await?;
+    Ok(words)
+}
+
+/// `revise_essay`: rewrites the essay as it stands in the document (with the
+/// user's own edits) to do what the user asked. A version is kept first, so
+/// the revision can be undone from History.
+async fn revise_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failure> {
+    let Some(instructions) = optional(&args["instructions"]) else {
+        return Err("revise_essay needs `instructions`: what to change".into());
+    };
+    let (title, style, body, bibliography): (String, String, String, String) = sqlx::query_as(
+        "SELECT title, style, body, bibliography FROM documents WHERE project_id = $1",
+    )
+    .bind(agent.run.project_id)
+    .fetch_one(&agent.run.st.db)
+    .await?;
+    if body.trim().is_empty() {
+        return Err("the document has no essay to revise".into());
+    }
+    let current = pricing::count_words(&body);
+    precheck(agent, pricing::charge(current, 0, 0)).await?;
+
+    let sources: Vec<String> = agent
+        .ctx
+        .compacted
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            format!(
+                "source {}: {} ({}, {})\n{}",
+                i + 1,
+                c.source.title,
+                c.source.author.as_deref().unwrap_or("unknown author"),
+                c.source.published_year.as_deref().unwrap_or("n.d."),
+                c.summary,
+            )
+        })
+        .collect();
+    let mut message = format!(
+        "Title: {title}\nCitation Format: {}\n\nWHAT TO CHANGE\n{instructions}\n\n\
+         CURRENT ESSAY\n{body}\n\nCURRENT BIBLIOGRAPHY\n{bibliography}",
+        style.to_uppercase(),
+    );
+    if !sources.is_empty() {
+        message.push_str(&format!("\n\nSOURCES\n{}", sources.join("\n\n")));
+    }
+
+    let request = ChatRequest {
+        model: agent.models.writer.clone(),
+        messages: vec![system(prompt::reviser()), user(message)],
+        temperature: Some(0.3),
+        json: false,
+        tools: Vec::new(),
+    };
+    let (revised, new_bibliography) =
+        stream_into_document(agent, request, current, "agent_revise").await?;
+    // A reviser that drops the bibliography keeps the old one.
+    let new_bibliography = if new_bibliography.is_empty() {
+        bibliography.trim().to_string()
+    } else {
+        new_bibliography
+    };
+    let save = AgentSave {
+        body: Some(&revised),
+        bibliography: Some(&new_bibliography),
+        ..AgentSave::default()
+    };
+    let words = finish_document_write(agent, save, current).await?;
+    agent.ctx.revisions += 1;
     agent.ctx.words_written = words;
 
     charge(
         agent,
         pricing::charge(words, 0, 0),
-        "write",
-        "Essay generation",
+        &format!("revise:{}", agent.ctx.revisions),
+        "Essay revision",
     )
     .await?;
 
     Ok((
-        json!({ "wordCount": words, "hasBibliography": !bibliography.is_empty() }),
-        format!("{words} words written."),
+        json!({ "wordCount": words, "before": current }),
+        format!("Revised · {words} words."),
     ))
 }
 

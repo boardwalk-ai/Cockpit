@@ -173,7 +173,7 @@ void main() {
     expect(find.text('Sea level rise'), findsOneWidget);
   });
 
-  testWidgets('a finished run offers the editor and stops the composer', (
+  testWidgets('a finished run offers the editor and invites changes', (
     tester,
   ) async {
     await open(tester);
@@ -186,7 +186,7 @@ void main() {
     expect(find.text('Finished'), findsOneWidget);
     expect(find.text('Essay written'), findsOneWidget);
     expect(find.text('Your essay is ready.'), findsOneWidget);
-    expect(find.text('Revisions are coming soon'), findsOneWidget);
+    expect(find.text('Ask for a change to your essay'), findsOneWidget);
     expect(find.byTooltip('Stop'), findsNothing);
 
     await tester.tap(find.text('Proceed to Editor'));

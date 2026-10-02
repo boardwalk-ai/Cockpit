@@ -55,6 +55,8 @@ async fn written_project(t: &TestApp) -> Uuid {
     events.until("question").await;
     answer(t, run, "essayFocus", json!(["Economic impact"])).await;
     events.until("question").await;
+    answer(t, run, "sourceReviewChoice", json!("One Shot")).await;
+    events.until("question").await;
     answer(t, run, "wordCount", json!(800)).await;
     events.until("question").await;
     answer(t, run, "citationStyle", json!("MLA")).await;
@@ -379,6 +381,8 @@ async fn an_open_editor_sees_the_essay_as_it_is_written() {
         .await;
     events.until("question").await;
     answer(&t, run, "essayFocus", json!(["Economic impact"])).await;
+    events.until("question").await;
+    answer(&t, run, "sourceReviewChoice", json!("One Shot")).await;
     events.until("question").await;
     answer(&t, run, "wordCount", json!(500)).await;
     events.until("question").await;

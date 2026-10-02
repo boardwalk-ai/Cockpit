@@ -224,10 +224,73 @@ fn option(label: &str) -> Value {
     json!({ "label": label, "value": label })
 }
 
+/// Placeholder sources for the scripted run.
+fn scripted_sources() -> Vec<Value> {
+    [
+        (
+            "Sea Level Rise Scenarios",
+            "Sweet, W.",
+            "2022",
+            "NOAA",
+            "https://example.org/noaa-slr",
+        ),
+        (
+            "Managed Retreat",
+            "Hino, M.",
+            "2017",
+            "Nature Climate Change",
+            "https://example.org/retreat",
+        ),
+        (
+            "Coastal Flood Costs",
+            "Hallegatte, S.",
+            "2013",
+            "Nature Climate Change",
+            "https://example.org/flood-costs",
+        ),
+        (
+            "Living with Water",
+            "Dircke, P.",
+            "2020",
+            "Delta Programme",
+            "https://example.org/living-with-water",
+        ),
+        (
+            "Tides and Cities",
+            "Ward, P.",
+            "2018",
+            "Urban Climate",
+            "https://example.org/tides-cities",
+        ),
+    ]
+    .into_iter()
+    .map(|(title, author, year, publisher, url)| {
+        json!({
+            "url": url,
+            "title": title,
+            "author": author,
+            "publishedYear": year,
+            "publisher": publisher,
+        })
+    })
+    .collect()
+}
+
 /// The scripted run: the real workflow's steps and questions, canned content.
 async fn scripted(ctx: &mut RunCtx) -> Result<(), RunError> {
     ctx.emit("user_message", json!({ "text": ctx.instruction }))
         .await?;
+
+    // An essay already written: this run is a revision.
+    let written: Option<String> = sqlx::query_scalar(
+        "SELECT body FROM documents WHERE project_id = $1 AND btrim(body) <> ''",
+    )
+    .bind(ctx.project_id)
+    .fetch_optional(&ctx.st.db)
+    .await?;
+    if let Some(body) = written {
+        return scripted_revise(ctx, &body).await;
+    }
 
     ctx.step(
         "plan_essay",
@@ -273,7 +336,55 @@ async fn scripted(ctx: &mut RunCtx) -> Result<(), RunError> {
     .await?;
     ctx.step("scrape_sources", "Reading the sources", "5 sources read.")
         .await?;
-    ctx.emit("sources_ready", json!({ "count": 5 })).await?;
+
+    let sources = scripted_sources();
+    let choice = ctx
+        .ask(
+            "sourceReviewChoice",
+            json!({
+                "question": "Sources are ready. Would you like to review them before I start writing?",
+                "inputType": "select",
+                "allowCustom": false,
+                "options": [option("One Shot"), option("Review Sources")],
+            }),
+        )
+        .await?;
+    let mut kept = sources.clone();
+    if choice.as_str() == Some("Review Sources") {
+        let review = ctx
+            .ask(
+                "sourceReview",
+                json!({
+                    "question": "Review each source. Add a note to steer its summary, or leave it out.",
+                    "inputType": "sourceReview",
+                    "allowCustom": false,
+                    "sources": sources,
+                }),
+            )
+            .await?;
+        let rejected: Vec<&str> = review
+            .as_array()
+            .map(|notes| {
+                notes
+                    .iter()
+                    .filter(|note| note["rejected"] == true)
+                    .filter_map(|note| note["url"].as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+        kept.retain(|source| !rejected.contains(&source["url"].as_str().unwrap_or_default()));
+    }
+    ctx.step(
+        "compact_sources",
+        "Summarising the sources",
+        &format!("{} sources ready to cite.", kept.len()),
+    )
+    .await?;
+    ctx.emit(
+        "sources_ready",
+        json!({ "count": kept.len(), "sources": kept }),
+    )
+    .await?;
 
     let words = ctx
         .ask(
@@ -388,6 +499,71 @@ async fn scripted_write(ctx: &RunCtx, target: i64, style: &str) -> Result<i64, R
     )
     .await?;
     Ok(words)
+}
+
+/// A canned revision: the essay comes back with a closing note that quotes
+/// the request, written the way the agent writes (locked, streamed, saved).
+async fn scripted_revise(ctx: &mut RunCtx, body: &str) -> Result<(), RunError> {
+    let st = &ctx.st;
+    let (db, docs) = (&st.db, &st.docs);
+    let (project_id, run_id) = (ctx.project_id, ctx.run_id);
+    let step_id = Uuid::new_v4();
+    ctx.emit(
+        "step_start",
+        json!({ "stepId": step_id, "tool": "revise_essay", "title": "Revising the essay" }),
+    )
+    .await?;
+
+    let current = crate::pricing::count_words(body);
+    documents::begin_agent_write(db, project_id, run_id, "agent_revise").await?;
+    docs.begin(project_id);
+    ctx.emit("writing_started", json!({ "targetWords": current }))
+        .await?;
+
+    let revised = format!(
+        "{}\n\nRevision note: {}",
+        body.trim(),
+        ctx.instruction.trim()
+    );
+    let pieces: Vec<&str> = revised.split_inclusive("\n\n").collect();
+    let beat = st.config.scripted_step / pieces.len().max(1) as u32;
+    let mut sent = 0;
+    for piece in &pieces {
+        docs.append(project_id, piece);
+        sent += piece.len();
+        if !beat.is_zero() {
+            tokio::time::sleep(beat).await;
+        }
+        let save = AgentSave {
+            body: Some(revised[..sent].trim()),
+            ..AgentSave::default()
+        };
+        let (rev, words) = documents::save_agent(db, project_id, run_id, save).await?;
+        docs.committed(project_id, rev);
+        ctx.emit(
+            "write_progress",
+            json!({ "words": words, "targetWords": current }),
+        )
+        .await?;
+    }
+    let save = AgentSave {
+        body: Some(revised.trim()),
+        ..AgentSave::default()
+    };
+    let (rev, words) = documents::save_agent(db, project_id, run_id, save).await?;
+    documents::unlock(db, docs, project_id, run_id).await?;
+    ctx.emit(
+        "document_updated",
+        json!({ "rev": rev, "wordCount": words }),
+    )
+    .await?;
+    ctx.emit(
+        "step_done",
+        json!({ "stepId": step_id, "summary": format!("Revised · {words} words.") }),
+    )
+    .await?;
+    ctx.say("Done. I added your note at the end of the essay.")
+        .await
 }
 
 const SCRIPTED_SENTENCES: [&str; 6] = [

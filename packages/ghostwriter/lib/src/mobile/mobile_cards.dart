@@ -254,7 +254,12 @@ class GwWritingCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      done ? 'Essay written' : 'Writing your essay',
+                      switch ((done, writing.revising)) {
+                        (true, true) => 'Essay revised',
+                        (true, false) => 'Essay written',
+                        (false, true) => 'Revising your essay',
+                        (false, false) => 'Writing your essay',
+                      },
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13.5,
@@ -645,12 +650,7 @@ class _GwQuestionCardState extends State<GwQuestionCard> {
         );
 
       case 'sourceReview':
-        return _ConfirmButton(
-          label: 'Use all ${q.sources.length} sources',
-          onTap: () => _send([
-            for (final s in q.sources) {'url': s['url']},
-          ]),
-        );
+        return _SourceReview(sources: q.sources, onSubmit: _send);
 
       default:
         return _InlineField(
@@ -659,6 +659,226 @@ class _GwQuestionCardState extends State<GwQuestionCard> {
           onSubmit: _sendText,
         );
     }
+  }
+}
+
+/// The user's review of the sources: leave out the ones they do not want and
+/// say what to take from the rest.
+class _SourceReview extends StatefulWidget {
+  const _SourceReview({required this.sources, required this.onSubmit});
+
+  final List<Map<String, dynamic>> sources;
+  final ValueChanged<Object> onSubmit;
+
+  @override
+  State<_SourceReview> createState() => _SourceReviewState();
+}
+
+class _SourceReviewState extends State<_SourceReview> {
+  /// Sources the user left out, by URL.
+  final Set<String> _rejected = {};
+
+  /// A focus-note field per source whose note the user opened.
+  final Map<String, TextEditingController> _notes = {};
+
+  @override
+  void dispose() {
+    for (final controller in _notes.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  static String _url(Map<String, dynamic> source) =>
+      source['url']?.toString() ?? '';
+
+  /// Publisher, or failing that the site the source is on.
+  static String _byline(Map<String, dynamic> source) {
+    final publisher = source['publisher']?.toString().trim() ?? '';
+    if (publisher.isNotEmpty) return publisher;
+    return Uri.tryParse(_url(source))?.host.replaceFirst('www.', '') ?? '';
+  }
+
+  void _toggle(String url) {
+    setState(() {
+      if (!_rejected.remove(url)) _rejected.add(url);
+    });
+  }
+
+  void _submit() {
+    widget.onSubmit([
+      for (final source in widget.sources)
+        {
+          'url': _url(source),
+          if (_rejected.contains(_url(source)))
+            'rejected': true
+          else if ((_notes[_url(source)]?.text.trim() ?? '').isNotEmpty)
+            'focusNote': _notes[_url(source)]!.text.trim(),
+        },
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.sources.length;
+    final kept = total - _rejected.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final source in widget.sources) _row(source),
+        const SizedBox(height: 4),
+        _ConfirmButton(
+          label: kept == 0
+              ? 'Keep at least one source'
+              : 'Continue with $kept of $total sources',
+          onTap: kept == 0 ? null : _submit,
+        ),
+      ],
+    );
+  }
+
+  Widget _row(Map<String, dynamic> source) {
+    final url = _url(source);
+    final rejected = _rejected.contains(url);
+    final title = source['title']?.toString().trim() ?? '';
+    final byline = _byline(source);
+    final note = _notes[url];
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 220),
+      opacity: rejected ? 0.45 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.fromLTRB(12, 9, 4, 9),
+        decoration: BoxDecoration(
+          color: const Color(0x14FFFFFF),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title.isEmpty ? 'Untitled source' : title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13.5,
+                          height: 1.3,
+                          fontWeight: FontWeight.w600,
+                          decoration: rejected
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                      if (byline.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          byline,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: kGwBody.copyWith(
+                            color: GwColors.muted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                GwPressable(
+                  tooltip: rejected ? 'Include source' : 'Exclude source',
+                  haptic: GwHaptic.selection,
+                  onTap: () => _toggle(url),
+                  child: SizedBox(
+                    width: kGwButton,
+                    height: kGwButton,
+                    child: Icon(
+                      rejected
+                          ? Icons.add_circle_outline_rounded
+                          : Icons.check_circle_rounded,
+                      size: 22,
+                      color: rejected ? GwColors.muted : GwColors.accentSoft,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            // A source that is left out needs no note.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topLeft,
+              child: rejected
+                  ? const SizedBox(width: double.infinity)
+                  : Padding(
+                      padding: const EdgeInsets.only(top: 6, right: 8),
+                      child: note == null
+                          ? GwPressable(
+                              haptic: GwHaptic.selection,
+                              pressedScale: 0.96,
+                              onTap: () => setState(
+                                () => _notes[url] = TextEditingController(),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.edit_note_rounded,
+                                    size: 17,
+                                    color: Color(0xFFFF777D),
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'Add a focus note',
+                                    style: TextStyle(
+                                      color: Color(0xFFFF777D),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : TextField(
+                              controller: note,
+                              autofocus: true,
+                              maxLength: 200,
+                              minLines: 1,
+                              maxLines: 3,
+                              cursorColor: GwColors.accent,
+                              textCapitalization: TextCapitalization.sentences,
+                              style: kGwBody.copyWith(
+                                fontSize: 13.5,
+                                color: Colors.white,
+                              ),
+                              decoration: InputDecoration(
+                                isDense: true,
+                                filled: false,
+                                counterText: '',
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                                hintText:
+                                    'What should I take from this source?',
+                                hintStyle: kGwBody.copyWith(
+                                  fontSize: 13.5,
+                                  color: GwColors.hint,
+                                ),
+                              ),
+                            ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -862,10 +1082,28 @@ class _AnswerChips extends StatelessWidget {
     return text;
   }
 
+  /// A source review reads better as counts than as a list of links.
+  static List<String> _reviewSummary(List<Object?> review) {
+    final sources = review.whereType<Map>().toList();
+    final rejected = sources.where((s) => s['rejected'] == true).length;
+    final noted = sources
+        .where((s) => (s['focusNote']?.toString() ?? '').isNotEmpty)
+        .length;
+    final kept = sources.length - rejected;
+    return [
+      '$kept ${kept == 1 ? 'source' : 'sources'} kept',
+      if (rejected > 0) '$rejected left out',
+      if (noted > 0) '$noted with a note',
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final values = switch (answer) {
-      final List<Object?> list => list.map((v) => v is Map ? v['url'] : v),
+    final Iterable<Object?> values = switch (answer) {
+      final List<Object?> list
+          when list.isNotEmpty && list.every((v) => v is Map) =>
+        _reviewSummary(list),
+      final List<Object?> list => list,
       final other => [other],
     };
     return Wrap(
@@ -905,6 +1143,10 @@ class GwEndCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A run that only answered a question needs no closing line.
+    if (end.phase == RunPhase.finished && !end.wroteEssay) {
+      return const SizedBox.shrink();
+    }
     final (icon, color, text) = switch (end.phase) {
       RunPhase.finished => (
         Icons.check_circle_rounded,

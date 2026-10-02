@@ -83,7 +83,41 @@ class GwSession extends ChangeNotifier {
   String? projectId;
   String? runId;
   String title = '';
+
+  /// The open run. Earlier runs on the project (the first essay, then each
+  /// revision) are in [earlier], oldest first.
   RunTimeline timeline = RunTimeline();
+  List<RunTimeline> earlier = [];
+
+  /// Every run's items, oldest first: the whole conversation.
+  List<TimelineItem> get items => [
+    for (final run in earlier) ...run.items,
+    ...timeline.items,
+  ];
+
+  /// The newest sources any run found (for the Sources pill).
+  List<Map<String, dynamic>>? get sources {
+    for (final run in [timeline, ...earlier.reversed]) {
+      if (run.sources != null) return run.sources;
+    }
+    return null;
+  }
+
+  int get sourceCount {
+    for (final run in [timeline, ...earlier.reversed]) {
+      if (run.sources != null) return run.sourceCount;
+    }
+    return 0;
+  }
+
+  /// Some run has written into the document (the Open Editor pill).
+  bool get hasEssay =>
+      timeline.writing != null || earlier.any((run) => run.writing != null);
+
+  /// The essay is written and no run is going: what the user types now asks
+  /// for a revision.
+  bool get canRevise =>
+      projectId != null && timeline.ended && hasEssay && !starting;
 
   /// True between Start and the run being created.
   bool starting = false;
@@ -102,6 +136,7 @@ class GwSession extends ChangeNotifier {
 
   /// The brief of a start that failed, for [retry].
   String? _failedStart;
+  bool _failedCreate = true;
 
   StreamSubscription<Map<String, dynamic>>? _subscription;
   Completer<void>? _connection;
@@ -178,6 +213,7 @@ class GwSession extends ChangeNotifier {
     runId = null;
     title = '';
     timeline = RunTimeline();
+    earlier = [];
     starting = false;
     reconnecting = false;
     actionError = null;
@@ -199,16 +235,32 @@ class GwSession extends ChangeNotifier {
     await _startRun(text);
   }
 
-  Future<void> _startRun(String brief) async {
+  /// Asks for a change to the written essay: a new run on the same project,
+  /// shown below the earlier ones.
+  Future<void> revise(String request) async {
+    final text = request.trim();
+    if (text.isEmpty || !canRevise) return;
+    earlier = [...earlier, timeline];
+    timeline = RunTimeline();
+    runId = newId();
+    starting = true;
+    actionError = null;
+    timeline.items.add(UserItem(text));
+    _notify();
+    await _startRun(text, create: false);
+  }
+
+  Future<void> _startRun(String brief, {bool create = true}) async {
     final project = projectId!, run = runId!;
     final generation = _generation;
     try {
-      await api.putProject(project, instruction: brief);
+      if (create) await api.putProject(project, instruction: brief);
       await api.startRun(project, run, brief);
     } catch (e) {
       if (generation != _generation) return;
       starting = false;
       _failedStart = brief;
+      _failedCreate = create;
       actionError = 'Could not start: ${_describe(e)}';
       _notify();
       return;
@@ -230,7 +282,7 @@ class GwSession extends ChangeNotifier {
       // a no-op there.
       starting = true;
       _notify();
-      return _startRun(brief);
+      return _startRun(brief, create: _failedCreate);
     }
     _notify();
     reconnect();
@@ -248,7 +300,22 @@ class GwSession extends ChangeNotifier {
       final data = await api.project(id);
       if (generation != _generation) return;
       title = data['title']?.toString() ?? title;
-      runId = (data['activeRunId'] ?? data['lastRunId'])?.toString();
+      final runs = [
+        for (final id in data['runIds'] as List? ?? const []) id.toString(),
+      ];
+      final last = (data['lastRunId'] ?? data['activeRunId'])?.toString();
+      if (runs.isEmpty && last != null) runs.add(last);
+      // Earlier runs are over: replay them whole, then follow the last.
+      final finished = runs.isEmpty
+          ? <String>[]
+          : runs.sublist(0, runs.length - 1);
+      for (final run in finished) {
+        final replayed = await _replay(run);
+        if (generation != _generation) return;
+        earlier = [...earlier, replayed];
+        _notify();
+      }
+      runId = runs.isEmpty ? null : runs.last;
       _notify();
       if (runId != null) unawaited(_follow(runId!, generation));
     } catch (e) {
@@ -256,6 +323,19 @@ class GwSession extends ChangeNotifier {
       actionError = 'Could not open this essay: ${_describe(e)}';
       _notify();
     }
+  }
+
+  /// A finished run's whole timeline, read from its stored events.
+  Future<RunTimeline> _replay(String run) async {
+    final replayed = RunTimeline();
+    try {
+      await for (final event in api.runEvents(run)) {
+        replayed.apply(event);
+      }
+    } catch (_) {
+      // Show what arrived; the rest of the conversation still works.
+    }
+    return replayed;
   }
 
   /// Follows the open run again if its connection is down (the app came
@@ -385,6 +465,7 @@ class GwSession extends ChangeNotifier {
     final message = text.trim();
     final run = runId;
     if (message.isEmpty || run == null) return;
+    if (canRevise) return revise(message);
     final question = timeline.pending;
     if (question != null) {
       if (question.field == 'essayFocus') {

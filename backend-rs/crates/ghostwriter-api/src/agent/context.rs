@@ -29,6 +29,28 @@ pub struct Context {
     pub words_written: i64,
     /// Set by `finalize_document`: the essay is delivered.
     pub export_ready: bool,
+    /// Revisions made in this run (each is charged on its own).
+    pub revisions: i64,
+    /// The user's review of the sources: notes to steer each summary, and
+    /// the ones to leave out.
+    pub source_review: Vec<SourceNote>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SourceNote {
+    pub url: String,
+    pub focus_note: Option<String>,
+    pub rejected: bool,
+}
+
+impl Context {
+    /// The user's note on `url`, if they reviewed it.
+    pub fn review_of(&self, url: &str) -> Option<&SourceNote> {
+        self.source_review
+            .iter()
+            .find(|note| note.url.eq_ignore_ascii_case(url))
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -98,6 +120,16 @@ impl Context {
                 }
             }
             "citationStyle" => self.citation_style = Some(text),
+            "sourceReview" => {
+                // An array of { url, focusNote?, rejected? }, or its text.
+                let notes = match value {
+                    Value::Array(_) => serde_json::from_value(value.clone()).ok(),
+                    _ => serde_json::from_str::<Vec<SourceNote>>(&text).ok(),
+                };
+                if let Some(notes) = notes {
+                    self.source_review = notes;
+                }
+            }
             "essayFocus" => {
                 // A JSON array, sent either as an array or as its text.
                 let picked = match value {

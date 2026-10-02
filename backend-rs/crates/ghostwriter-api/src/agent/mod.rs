@@ -3,6 +3,11 @@
 //!
 //! A port of OctopilotWeb's `agent/loop.ts`. Every transition is an event on
 //! the run, so the app's timeline is this loop, seen from outside.
+//!
+//! A run on a project whose essay is already written is a *revision*: the user
+//! asks for changes (or asks about the essay) and the agent revises the
+//! document as it stands, with a smaller set of tools. The run ends when the
+//! agent has answered; the next request is a new run.
 
 pub mod context;
 pub mod prompt;
@@ -97,21 +102,67 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
         .await?;
 
     let today = chrono::Utc::now().format("%B %-d, %Y").to_string();
-    let mut messages = vec![
-        llm::system(prompt::orchestrator()),
-        llm::user(prompt::user_brief(&instruction, &today)),
-    ];
+    let written: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT title, style, body FROM documents \
+         WHERE project_id = $1 AND btrim(body) <> ''",
+    )
+    .bind(run.project_id)
+    .fetch_optional(&run.st.db)
+    .await?;
+    let revision = written.is_some();
+
+    let (mut messages, ctx, specs) = match written {
+        None => (
+            vec![
+                llm::system(prompt::orchestrator()),
+                llm::user(prompt::user_brief(&instruction, &today)),
+            ],
+            Context {
+                instruction,
+                ..Context::default()
+            },
+            tools::specs(),
+        ),
+        Some((title, style, body)) => {
+            // What the earlier run worked out (topic, outline, sources) helps
+            // the reviser cite properly.
+            let previous: Option<Value> = sqlx::query_scalar(
+                "SELECT context FROM runs WHERE project_id = $1 AND id <> $2 \
+                 ORDER BY created_at DESC LIMIT 1",
+            )
+            .bind(run.project_id)
+            .bind(run.run_id)
+            .fetch_optional(&run.st.db)
+            .await?;
+            let mut ctx: Context = previous
+                .and_then(|value| serde_json::from_value(value).ok())
+                .unwrap_or_default();
+            ctx.instruction = instruction.clone();
+            ctx.export_ready = false;
+            ctx.revisions = 0;
+            (
+                vec![
+                    llm::system(prompt::revision_orchestrator()),
+                    llm::user(prompt::revision_brief(
+                        &instruction,
+                        &title,
+                        &style.to_uppercase(),
+                        &body,
+                        &today,
+                    )),
+                ],
+                ctx,
+                tools::revision_specs(),
+            )
+        }
+    };
     let mut agent = Agent {
         run,
-        ctx: Context {
-            instruction,
-            ..Context::default()
-        },
+        ctx,
         llm,
         scraper,
         models,
     };
-    let specs = tools::specs();
     let mut recent: HashMap<String, Instant> = HashMap::new();
 
     for _ in 0..MAX_STEPS {
@@ -129,7 +180,9 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
         if reply.tool_calls.is_empty() {
             messages.push(json!({ "role": "assistant", "content": reply.content }));
             save(&agent, &messages).await?;
-            if agent.ctx.export_ready {
+            // A revision ends once the agent has answered; the next request
+            // is a new run.
+            if agent.ctx.export_ready || revision {
                 return Ok(());
             }
             // The model asked something in plain text: wait for the reply.
@@ -319,9 +372,12 @@ async fn ask_user(agent: &mut Agent<'_>, args: &Value) -> Result<Value, RunError
         })
         .unwrap_or_default();
 
-    // The essay-focus question is always a multi-select, whatever the model said.
+    // The essay-focus question is always a multi-select, and the source
+    // review its own sheet, whatever the model said.
     let input_type = if field == "essayFocus" {
         "multiselect"
+    } else if field == "sourceReview" {
+        "sourceReview"
     } else {
         args["inputType"]
             .as_str()
@@ -342,6 +398,15 @@ async fn ask_user(agent: &mut Agent<'_>, args: &Value) -> Result<Value, RunError
     }
     if !suggestions.is_empty() {
         payload["suggestions"] = json!(suggestions);
+    }
+    if input_type == "sourceReview" {
+        // The sources the user reviews: the ones that were read.
+        let sources: Vec<&context::Source> = agent.ctx.scraped.iter().map(|s| &s.source).collect();
+        if sources.is_empty() {
+            return Ok(json!({ "error": "no sources to review yet; run scrape_sources first" }));
+        }
+        payload["sources"] = json!(sources);
+        payload["allowCustom"] = json!(false);
     }
 
     let answer = agent.run.ask(&field, payload).await?;
