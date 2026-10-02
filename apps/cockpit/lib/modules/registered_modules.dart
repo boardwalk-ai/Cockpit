@@ -1,6 +1,7 @@
 import 'package:cockpit_core/cockpit_core.dart';
 import 'package:cockpit_module/cockpit_module.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:ghostwriter/ghostwriter.dart';
 import 'package:octo_notes/octo_notes.dart';
 import 'package:study_studio/study_studio.dart';
 
@@ -18,11 +19,16 @@ import 'package:study_studio/study_studio.dart';
 const _octoNotesBuildEnabled =
     bool.fromEnvironment('OCTONOTES_ENABLED', defaultValue: true);
 
+/// Compile-time switch for GhostWriter, so a release build can leave it out.
+const _ghostWriterBuildEnabled =
+    bool.fromEnvironment('GHOSTWRITER_ENABLED', defaultValue: true);
+
 final activeModulesProvider = Provider<List<CockpitModule>>((ref) {
   final flags = ref.watch(featureFlagsProvider);
   return [
     if (_octoNotesBuildEnabled && flags.octoNotesEnabled)
       const OctoNotesModule(),
     if (flags.studyStudioEnabled) const StudyStudioModule(),
+    if (_ghostWriterBuildEnabled) const GhostWriterModule(),
   ];
 });

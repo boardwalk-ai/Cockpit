@@ -41,6 +41,8 @@ dependencies:
     path: ../../packages/octo_notes
   doc_oct:
     path: ../../packages/doc_oct
+  ghostwriter:
+    path: ../../packages/ghostwriter
 
 dev_dependencies:
   flutter_test:

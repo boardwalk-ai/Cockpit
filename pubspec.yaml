@@ -13,4 +13,5 @@ workspace:
   - packages/cockpit_module
   - packages/study_studio
   - packages/octo_notes
+  - packages/ghostwriter
   - packages/doc_oct
