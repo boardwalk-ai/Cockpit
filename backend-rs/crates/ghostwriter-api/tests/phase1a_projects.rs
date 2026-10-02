@@ -169,6 +169,7 @@ async fn get_one_reports_the_active_run() {
     let (status, project) = t.get(&path, "alice").await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(project["activeRunId"], Value::Null);
+    assert_eq!(project["lastRunId"], Value::Null);
 
     let run = Uuid::new_v4();
     sqlx::query(
@@ -192,6 +193,8 @@ async fn get_one_reports_the_active_run() {
         .unwrap();
     let (_, project) = t.get(&path, "alice").await;
     assert_eq!(project["activeRunId"], Value::Null);
+    // It is still the one to replay.
+    assert_eq!(project["lastRunId"], run.to_string());
 
     t.cleanup().await;
 }

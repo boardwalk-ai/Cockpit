@@ -150,7 +150,7 @@ All under `/v1`. JSON in, JSON out, camelCase.
 |---|---|---|
 | GET | `/projects` | The user's projects, newest first, plus folders |
 | PUT | `/projects/:id` | Create or update (idempotent): `{ title?, folderId?, instruction? }` |
-| GET | `/projects/:id` | One project, with `activeRunId` if a run is in progress |
+| GET | `/projects/:id` | One project, with `activeRunId` if a run is in progress and `lastRunId` (the newest run, to replay its timeline) |
 | DELETE | `/projects/:id` | Delete a project and everything under it |
 | PUT | `/folders/:id` | Create or rename: `{ name }` |
 | DELETE | `/folders/:id` | Delete a folder (projects are kept, unfiled) |

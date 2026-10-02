@@ -111,7 +111,8 @@ pub async fn put(
 }
 
 /// `GET /v1/projects/:id` — one project, with `activeRunId` when a run is
-/// still going so the app can reconnect to it.
+/// still going so the app can reconnect to it, and `lastRunId` (the newest
+/// run, active or not) so it can replay the conversation.
 pub async fn get_one(
     State(st): State<AppState>,
     caller: Caller,
@@ -127,9 +128,16 @@ pub async fn get_one(
     let project = project.ok_or_else(|| ApiError::not_found("project not found"))?;
 
     let active_run = runs::active_run_id(&st, id).await?;
+    let last_run: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM runs WHERE project_id = $1 ORDER BY created_at DESC, id LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(&st.db)
+    .await?;
 
     let mut value = serde_json::to_value(project).map_err(|_| ApiError::internal("encode"))?;
     value["activeRunId"] = json!(active_run);
+    value["lastRunId"] = json!(last_run);
     Ok(Json(value))
 }
 
