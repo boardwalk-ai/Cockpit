@@ -56,7 +56,7 @@ class GhostWriterMobileTopBar extends StatelessWidget {
               child: Row(
                 children: [
                   GwPressable(
-                    tooltip: 'Threads',
+                    tooltip: 'Essays',
                     onTap: () => Scaffold.of(context).openDrawer(),
                     child: Container(
                       width: kGwButton,

@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.octopilot.cockpit"
+    namespace = "com.boardwalklabs.octopilot"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +15,8 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.octopilot.cockpit"
+        // Registered in Firebase (octopilot-ai-7b29e) under this ID.
+        applicationId = "com.boardwalklabs.octopilot"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -42,4 +42,10 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Firebase reads google-services.json, which is kept out of git (public
+// repo). Builds without it still work, just without sign-in (dev user).
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
 }

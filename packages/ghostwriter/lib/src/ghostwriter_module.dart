@@ -3,11 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'ghostwriter_root.dart';
+import 'gw_auth.dart';
 import 'mobile/mobile_theme.dart';
 
-/// GhostWriter as a pluggable Cockpit module.
+/// GhostWriter as a pluggable Cockpit module. [auth] is the host app's
+/// sign-in; without it GhostWriter runs as the dev user.
 class GhostWriterModule extends CockpitModule {
-  const GhostWriterModule();
+  const GhostWriterModule({this.auth});
+
+  final GwAuth? auth;
 
   @override
   String get id => 'ghostwriter';
@@ -32,6 +36,9 @@ class GhostWriterModule extends CockpitModule {
 
   @override
   List<RouteBase> routes() => [
-    GoRoute(path: '/ghostwriter', builder: (_, _) => const GhostWriterRoot()),
+    GoRoute(
+      path: '/ghostwriter',
+      builder: (_, _) => GhostWriterRoot(auth: auth),
+    ),
   ];
 }

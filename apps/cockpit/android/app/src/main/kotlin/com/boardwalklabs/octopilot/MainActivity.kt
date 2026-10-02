@@ -1,4 +1,4 @@
-package com.octopilot.cockpit
+package com.boardwalklabs.octopilot
 
 import io.flutter.embedding.android.FlutterActivity
 

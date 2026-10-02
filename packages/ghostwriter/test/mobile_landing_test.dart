@@ -17,10 +17,10 @@ void main() {
     expect(find.byType(GhostWriterMobileLanding), findsOneWidget);
   });
 
-  testWidgets('menu button opens the threads drawer', (tester) async {
+  testWidgets('menu button opens the essays drawer', (tester) async {
     await tester.pumpWidget(const GhostWriterApp());
 
-    await tester.tap(find.byTooltip('Threads'));
+    await tester.tap(find.byTooltip('Essays'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 

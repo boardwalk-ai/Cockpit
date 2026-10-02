@@ -4,21 +4,35 @@
     {
       "name": "octonotes-static",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8766"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8766"
+      ],
       "cwd": "apps/cockpit/build/web",
       "port": 8766
     },
     {
       "name": "octonotes-web",
       "runtimeExecutable": "/Users/leon/AndroidStudioProjects/flutter/bin/flutter",
-      "runtimeArgs": ["run", "-d", "web-server", "--web-port=8765"],
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-port=8765"
+      ],
       "cwd": "apps/cockpit",
       "port": 8765
     },
     {
       "name": "cockpit-web",
       "runtimeExecutable": "C:\\Users\\USER\\sdk\\flutter\\bin\\flutter.bat",
-      "runtimeArgs": ["run", "-d", "chrome", "--web-port=8765"],
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "chrome",
+        "--web-port=8765"
+      ],
       "cwd": "apps/cockpit",
       "port": 8765
     },
@@ -53,6 +67,30 @@
       ],
       "cwd": "apps/cockpit",
       "port": 8765
+    },
+    {
+      "name": "ghostwriter-api",
+      "runtimeExecutable": "H:/Git/usr/bin/bash.exe",
+      "runtimeArgs": [
+        "-lc",
+        "cd /h/Cockpit-ghostwriter/backend-rs && FIREBASE_PROJECT_ID= BIND=127.0.0.1 PORT=8791 GHOSTWRITER_DRIVER=scripted OCTOPILOT_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/octopilot_dev CARGO_TARGET_DIR=/h/Cockpit-ghostwriter/backend-rs/target cargo run -p ghostwriter-api"
+      ],
+      "port": 8791
+    },
+    {
+      "name": "ghostwriter-app",
+      "runtimeExecutable": "C:/Users/USER/sdk/flutter/bin/flutter.bat",
+      "runtimeArgs": [
+        "run",
+        "-t",
+        "lib/main_ghostwriter.dart",
+        "-d",
+        "web-server",
+        "--web-port=5300",
+        "--dart-define=FORCE_MOBILE=true"
+      ],
+      "cwd": "apps/cockpit",
+      "port": 5300
     }
   ]
 }

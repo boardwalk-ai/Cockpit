@@ -3,38 +3,43 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
+import '../session/gw_session.dart';
 import 'mobile_motion.dart';
 import 'mobile_theme.dart';
 import 'mobile_top_bar.dart';
 
-/// Phone side drawer: new chat, search, folders, saved threads and the
+/// Phone side drawer: new chat, search, folders, the user's essays and the
 /// account row. Rows slide in one after another each time it opens.
 class GhostWriterMobileDrawer extends StatefulWidget {
   const GhostWriterMobileDrawer({
     super.key,
-    required this.threads,
+    required this.projects,
     required this.folders,
     required this.loading,
-    required this.selectedIndex,
+    required this.selectedId,
     required this.sessionName,
     required this.credits,
     required this.onNewChat,
-    required this.onOpenThread,
+    required this.onOpenProject,
     required this.onRefresh,
+    this.onSignOut,
   });
 
-  final List<Map<String, dynamic>> threads;
-  final List<Map<String, dynamic>> folders;
+  final List<GwProject> projects;
+  final List<GwFolder> folders;
   final bool loading;
 
-  /// Index into [threads] of the open thread, or null on the landing screen.
-  final int? selectedIndex;
+  /// The open essay, or null on the landing screen.
+  final String? selectedId;
 
   final String sessionName;
   final int credits;
   final VoidCallback onNewChat;
-  final ValueChanged<int> onOpenThread;
+  final ValueChanged<String> onOpenProject;
   final Future<void> Function() onRefresh;
+
+  /// Null hides sign-out (dev builds without a real sign-in).
+  final VoidCallback? onSignOut;
 
   @override
   State<GhostWriterMobileDrawer> createState() =>
@@ -68,8 +73,12 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
     super.dispose();
   }
 
-  static String _titleOf(Map<String, dynamic> thread) =>
-      thread['title']?.toString() ?? 'Untitled GhostWriter Essay';
+  /// The second line of an essay's row, and its dot colour.
+  static (String, Color) _statusOf(GwProject p) => switch (p.status) {
+    'writing' => ('Writing…', GwColors.gold),
+    'ready' => ('${p.wordCount} words', const Color(0xFF3DDC84)),
+    _ => ('Draft', GwColors.hint),
+  };
 
   void _close() => Navigator.of(context).pop();
 
@@ -91,8 +100,8 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
     final width = math.min(MediaQuery.sizeOf(context).width * 0.86, 340.0);
 
     final matches = [
-      for (final (index, thread) in widget.threads.indexed)
-        if (_titleOf(thread).toLowerCase().contains(_query)) index,
+      for (final project in widget.projects)
+        if (project.title.toLowerCase().contains(_query)) project,
     ];
 
     var order = 0;
@@ -165,8 +174,9 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
                             _staggered(
                               order++,
                               _FolderRow(
-                                name: (folder['name'] ?? 'Untitled Folder')
-                                    .toString(),
+                                name: folder.name.isEmpty
+                                    ? 'Untitled folder'
+                                    : folder.name,
                               ),
                             ),
                           const SizedBox(height: 14),
@@ -174,8 +184,8 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
                         _staggered(
                           order++,
                           _SectionLabel(
-                            'Threads',
-                            trailing: widget.threads.isEmpty
+                            'Essays',
+                            trailing: widget.projects.isEmpty
                                 ? null
                                 : '${matches.length}',
                           ),
@@ -185,18 +195,17 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
                             order++,
                             _EmptyThreads(searching: _query.isNotEmpty),
                           ),
-                        for (final index in matches)
+                        for (final project in matches)
                           _staggered(
                             order++,
                             _ThreadRow(
-                              title: _titleOf(widget.threads[index]),
-                              status:
-                                  widget.threads[index]['status']?.toString() ??
-                                  'Saved',
-                              selected: widget.selectedIndex == index,
+                              title: project.title,
+                              status: _statusOf(project).$1,
+                              dot: _statusOf(project).$2,
+                              selected: widget.selectedId == project.id,
                               onTap: () {
                                 _close();
-                                widget.onOpenThread(index);
+                                widget.onOpenProject(project.id);
                               },
                             ),
                           ),
@@ -204,7 +213,16 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
                     ),
                   ),
                 ),
-                _AccountRow(name: widget.sessionName, credits: widget.credits),
+                _AccountRow(
+                  name: widget.sessionName,
+                  credits: widget.credits,
+                  onSignOut: widget.onSignOut == null
+                      ? null
+                      : () {
+                          _close();
+                          widget.onSignOut!();
+                        },
+                ),
               ],
             ),
           ),
@@ -327,7 +345,7 @@ class _SearchField extends StatelessWidget {
                 isDense: true,
                 filled: false,
                 contentPadding: EdgeInsets.zero,
-                hintText: 'Search threads',
+                hintText: 'Search essays',
                 hintStyle: TextStyle(
                   color: GwColors.hint,
                   fontFamily: GwFonts.secondary,
@@ -411,19 +429,19 @@ class _ThreadRow extends StatelessWidget {
   const _ThreadRow({
     required this.title,
     required this.status,
+    required this.dot,
     required this.selected,
     required this.onTap,
   });
 
   final String title;
   final String status;
+  final Color dot;
   final bool selected;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final finished = status.toLowerCase() == 'finished';
-
     return GwPressable(
       haptic: GwHaptic.selection,
       pressedScale: 0.97,
@@ -447,10 +465,7 @@ class _ThreadRow extends StatelessWidget {
             Container(
               width: 8,
               height: 8,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: finished ? const Color(0xFF3DDC84) : GwColors.gold,
-              ),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: dot),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -506,7 +521,7 @@ class _EmptyThreads extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            searching ? 'No threads match' : 'No saved threads yet',
+            searching ? 'No essays match' : 'No essays yet',
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Color(0xFFD7D7D9),
@@ -534,10 +549,15 @@ class _EmptyThreads extends StatelessWidget {
 }
 
 class _AccountRow extends StatelessWidget {
-  const _AccountRow({required this.name, required this.credits});
+  const _AccountRow({
+    required this.name,
+    required this.credits,
+    required this.onSignOut,
+  });
 
   final String name;
   final int credits;
+  final VoidCallback? onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -588,6 +608,21 @@ class _AccountRow extends StatelessWidget {
             ),
           ),
           OctoCreditsPill(credits: credits),
+          if (onSignOut != null)
+            GwPressable(
+              tooltip: 'Sign out',
+              haptic: GwHaptic.medium,
+              onTap: onSignOut,
+              child: const SizedBox(
+                width: kGwButton,
+                height: kGwButton,
+                child: Icon(
+                  Icons.logout_rounded,
+                  size: 19,
+                  color: GwColors.muted,
+                ),
+              ),
+            ),
         ],
       ),
     );

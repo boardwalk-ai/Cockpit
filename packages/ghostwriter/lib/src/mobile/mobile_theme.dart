@@ -32,3 +32,20 @@ abstract final class GwAssets {
 
 /// Composer and top-bar button size.
 const double kGwButton = 44;
+
+/// Body copy: chat bubbles, cards, anything read at length.
+const TextStyle kGwBody = TextStyle(
+  color: Color(0xFFE6E6E8),
+  fontFamily: GwFonts.secondary,
+  fontFamilyFallback: GwFonts.secondaryFallback,
+  fontSize: 15,
+  height: 1.55,
+);
+
+/// Small uppercase label above a section.
+const TextStyle kGwLabel = TextStyle(
+  color: GwColors.hint,
+  fontSize: 11,
+  letterSpacing: 1.6,
+  fontWeight: FontWeight.w700,
+);

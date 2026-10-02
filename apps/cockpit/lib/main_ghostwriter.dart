@@ -4,26 +4,41 @@ import 'package:ghostwriter/ghostwriter.dart';
 import 'package:go_router/go_router.dart';
 import 'package:study_studio/study_studio.dart';
 
+import 'modules/module_auth.dart';
+
 /// Standalone GhostWriter entrypoint: the release app while GhostWriter is the
-/// only finished module. Signs in with the shared Octopilot Firebase account.
+/// only finished module. Signs in with the shared Octopilot Firebase account
+/// (from `google-services.json` / `GoogleService-Info.plist` on phones, the
+/// `FIREBASE_*` defines on the web); without either it runs as the dev user.
 ///
 ///   flutter run -t lib/main_ghostwriter.dart
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initStudioFirebase(); // no-op unless FIREBASE_* defines are provided
+  await initStudioFirebase();
   runApp(const ProviderScope(child: GhostWriterApp()));
 }
 
-final _router = GoRouter(
-  initialLocation: '/ghostwriter',
-  routes: [
-    GoRoute(path: '/', redirect: (_, _) => '/ghostwriter'),
-    ...const GhostWriterModule().routes(),
-  ],
-);
-
-class GhostWriterApp extends StatelessWidget {
+class GhostWriterApp extends ConsumerStatefulWidget {
   const GhostWriterApp({super.key});
+
+  @override
+  ConsumerState<GhostWriterApp> createState() => _GhostWriterAppState();
+}
+
+class _GhostWriterAppState extends ConsumerState<GhostWriterApp> {
+  late final GoRouter _router = GoRouter(
+    initialLocation: '/ghostwriter',
+    routes: [
+      GoRoute(path: '/', redirect: (_, _) => '/ghostwriter'),
+      ...GhostWriterModule(auth: ref.read(ghostWriterAuthProvider)).routes(),
+    ],
+  );
+
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -6,3 +6,4 @@ library;
 
 export 'src/ghostwriter_module.dart';
 export 'src/ghostwriter_root.dart';
+export 'src/gw_auth.dart';

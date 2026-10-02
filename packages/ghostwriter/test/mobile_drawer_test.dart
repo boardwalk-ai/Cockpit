@@ -1,19 +1,35 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostwriter/src/mobile/mobile_drawer.dart';
+import 'package:ghostwriter/src/session/gw_session.dart';
 
 void main() {
-  final threads = <Map<String, dynamic>>[
-    {'title': 'Coastal cities and tides', 'status': 'Finished'},
-    {'title': 'History of the printing press', 'status': 'Generating'},
-    {'title': 'Tidal energy explained', 'status': 'Finished'},
+  const threads = [
+    GwProject(
+      id: 'p1',
+      title: 'Coastal cities and tides',
+      status: 'ready',
+      wordCount: 812,
+    ),
+    GwProject(
+      id: 'p2',
+      title: 'History of the printing press',
+      status: 'writing',
+      wordCount: 0,
+    ),
+    GwProject(
+      id: 'p3',
+      title: 'Tidal energy explained',
+      status: 'ready',
+      wordCount: 640,
+    ),
   ];
 
   late List<String> events;
 
   Future<void> openDrawer(
     WidgetTester tester, {
-    List<Map<String, dynamic>>? withThreads,
+    List<GwProject>? withThreads,
   }) async {
     events = [];
     final scaffold = GlobalKey<ScaffoldState>();
@@ -23,16 +39,14 @@ void main() {
         home: Scaffold(
           key: scaffold,
           drawer: GhostWriterMobileDrawer(
-            threads: withThreads ?? threads,
-            folders: const [
-              {'name': 'Geography'},
-            ],
+            projects: withThreads ?? threads,
+            folders: const [GwFolder(id: 'f1', name: 'Geography')],
             loading: false,
-            selectedIndex: 0,
+            selectedId: 'p1',
             sessionName: 'GUEST',
             credits: 2067,
             onNewChat: () => events.add('new'),
-            onOpenThread: (index) => events.add('open $index'),
+            onOpenProject: (id) => events.add('open $id'),
             onRefresh: () async {},
           ),
         ),
@@ -67,7 +81,7 @@ void main() {
     await tester.enterText(find.byType(TextField), 'zzz');
     await tester.pump();
 
-    expect(find.text('No threads match'), findsOneWidget);
+    expect(find.text('No essays match'), findsOneWidget);
   });
 
   testWidgets('tapping a thread opens it and closes the drawer', (
@@ -75,14 +89,13 @@ void main() {
   ) async {
     await openDrawer(tester);
 
-    // Index stays the thread's real position even when the list is filtered.
     await tester.enterText(find.byType(TextField), 'energy');
     await tester.pump();
     await tester.tap(find.text('Tidal energy explained'));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
 
-    expect(events, ['open 2']);
+    expect(events, ['open p3']);
     expect(find.byType(GhostWriterMobileDrawer), findsNothing);
   });
 
@@ -100,6 +113,6 @@ void main() {
   testWidgets('shows an empty state with no threads', (tester) async {
     await openDrawer(tester, withThreads: const []);
 
-    expect(find.text('No saved threads yet'), findsOneWidget);
+    expect(find.text('No essays yet'), findsOneWidget);
   });
 }

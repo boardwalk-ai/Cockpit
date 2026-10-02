@@ -5,6 +5,8 @@ import 'package:ghostwriter/ghostwriter.dart';
 import 'package:octo_notes/octo_notes.dart';
 import 'package:study_studio/study_studio.dart';
 
+import 'module_auth.dart';
+
 /// The set of modules currently mounted in the super-app, after applying
 /// feature flags. This is the single place that knows which modules exist —
 /// add new modules here, each gated by its flag.
@@ -29,6 +31,7 @@ final activeModulesProvider = Provider<List<CockpitModule>>((ref) {
     if (_octoNotesBuildEnabled && flags.octoNotesEnabled)
       const OctoNotesModule(),
     if (flags.studyStudioEnabled) const StudyStudioModule(),
-    if (_ghostWriterBuildEnabled) const GhostWriterModule(),
+    if (_ghostWriterBuildEnabled)
+      GhostWriterModule(auth: ref.watch(ghostWriterAuthProvider)),
   ];
 });

@@ -1,55 +1,30 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
+import '../session/gw_session.dart';
+import '../session/timeline.dart';
+import 'mobile_cards.dart';
 import 'mobile_composer.dart';
 import 'mobile_details_sheet.dart';
 import 'mobile_motion.dart';
+import 'mobile_pills.dart';
 import 'mobile_theme.dart';
 
-/// Phone main page: the conversation while GhostWriter drafts, then the
-/// finished essay, with the composer docked at the bottom.
+/// Phone chat: the run's timeline (steps, questions, the word-count bar),
+/// the Sources and Open Editor pills in the top-right corner, and the
+/// composer docked at the bottom. The essay itself lives in the editor.
 class GhostWriterMobileChat extends StatefulWidget {
   const GhostWriterMobileChat({
     super.key,
-    required this.finished,
-    required this.title,
-    required this.citationStyle,
-    required this.wordCount,
-    required this.messages,
-    required this.assistantText,
-    required this.essay,
-    required this.bibliography,
-    required this.sources,
-    required this.onRetry,
-    required this.composerController,
-    required this.onSend,
-    this.pendingQuestion,
-    this.errorMessage,
+    required this.session,
+    required this.composer,
+    required this.onOpenEditor,
   });
 
-  final bool finished;
-  final String title;
-  final String citationStyle;
-  final int wordCount;
-
-  /// What the user has sent in this run, oldest first.
-  final List<String> messages;
-
-  /// GhostWriter's reply so far; grows while it streams.
-  final String assistantText;
-
-  final String essay;
-  final String bibliography;
-  final List<Map<String, dynamic>> sources;
-
-  final String? pendingQuestion;
-  final String? errorMessage;
-  final VoidCallback onRetry;
-
-  final TextEditingController composerController;
-  final VoidCallback onSend;
+  final GwSession session;
+  final TextEditingController composer;
+  final VoidCallback onOpenEditor;
 
   @override
   State<GhostWriterMobileChat> createState() => _GhostWriterMobileChatState();
@@ -58,173 +33,516 @@ class GhostWriterMobileChat extends StatefulWidget {
 class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
   final ScrollController _scroll = ScrollController();
 
+  GwSession get session => widget.session;
+  RunTimeline get timeline => session.timeline;
+
   @override
   void initState() {
     super.initState();
-    widget.composerController.addListener(_onComposerChanged);
+    widget.composer.addListener(_rebuild);
+    session.addListener(_onSession);
   }
-
-  void _onComposerChanged() => setState(() {});
 
   @override
   void didUpdateWidget(GhostWriterMobileChat oldWidget) {
     super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.composerController != widget.composerController) {
-      oldWidget.composerController.removeListener(_onComposerChanged);
-      widget.composerController.addListener(_onComposerChanged);
+    if (oldWidget.composer != widget.composer) {
+      oldWidget.composer.removeListener(_rebuild);
+      widget.composer.addListener(_rebuild);
     }
-
-    if (widget.finished && !oldWidget.finished) {
-      // Start reading the finished essay from the top.
-      _afterLayout(() => _scroll.jumpTo(0));
-    } else if (widget.assistantText != oldWidget.assistantText ||
-        widget.messages.length != oldWidget.messages.length ||
-        widget.pendingQuestion != oldWidget.pendingQuestion ||
-        widget.errorMessage != oldWidget.errorMessage) {
-      _followIfNearBottom();
+    if (oldWidget.session != widget.session) {
+      oldWidget.session.removeListener(_onSession);
+      widget.session.addListener(_onSession);
     }
   }
 
-  void _afterLayout(VoidCallback action) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _scroll.hasClients) action();
-    });
+  void _rebuild() => setState(() {});
+
+  void _onSession() {
+    setState(() {});
+    _followIfNearBottom();
   }
 
-  /// Keeps new text in view, unless the user has scrolled up to read.
+  /// Keeps new items in view, unless the user has scrolled up to read.
   void _followIfNearBottom() {
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
-    if (position.maxScrollExtent - position.pixels > 220) return;
+    if (position.maxScrollExtent - position.pixels > 240) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd(3));
+  }
 
-    _afterLayout(() => _scroll.jumpTo(_scroll.position.maxScrollExtent));
+  /// The list builds lazily, so its end is an estimate until the last items
+  /// are laid out: scroll, look again, and finish the job.
+  Future<void> _scrollToEnd(int tries) async {
+    if (!mounted || !_scroll.hasClients || tries == 0) return;
+    await _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+    );
+    if (!mounted || !_scroll.hasClients) return;
+    final position = _scroll.position;
+    if (position.maxScrollExtent - position.pixels > 1) {
+      await _scrollToEnd(tries - 1);
+    }
   }
 
   @override
   void dispose() {
-    widget.composerController.removeListener(_onComposerChanged);
+    widget.composer.removeListener(_rebuild);
+    session.removeListener(_onSession);
     _scroll.dispose();
     super.dispose();
   }
 
-  void _openDetails() {
-    gwHaptic(GwHaptic.light);
+  /// The citation style, once it has been answered.
+  String? get _citationStyle {
+    for (final item in timeline.items) {
+      if (item is QuestionItem &&
+          item.field == 'citationStyle' &&
+          item.answered) {
+        return item.answer?.toString();
+      }
+    }
+    return null;
+  }
+
+  void _openSources() {
     showGwDetailsSheet(
       context,
-      title: widget.title,
-      finished: widget.finished,
-      citationStyle: widget.citationStyle,
-      wordCount: widget.wordCount,
-      sources: widget.sources,
-      bibliography: widget.bibliography,
+      title: session.title,
+      finished: timeline.phase == RunPhase.finished,
+      citationStyle: _citationStyle ?? '—',
+      wordCount: timeline.writing?.words ?? 0,
+      sources: timeline.sources ?? const [],
+      bibliography: '',
     );
+  }
+
+  void _send() {
+    final text = widget.composer.text.trim();
+    if (text.isEmpty) return;
+    widget.composer.clear();
+    session.send(text);
+  }
+
+  String get _hint {
+    final pending = timeline.pending;
+    if (timeline.ended) return 'Revisions are coming soon';
+    if (pending != null &&
+        (pending.inputType == 'text' || pending.inputType == 'number')) {
+      return 'Type your answer';
+    }
+    if (pending?.field == 'essayFocus') return 'Or describe the angle you want';
+    if (timeline.awaitingReply) return 'Reply to GhostWriter';
+    return 'Steer the draft';
   }
 
   @override
   Widget build(BuildContext context) {
+    final ended = timeline.ended;
+    final canType = !ended && session.runId != null && !session.starting;
+    final writing = timeline.writing;
+
     return Column(
       children: [
         _ThreadStrip(
-          title: widget.title,
-          finished: widget.finished,
-          citationStyle: widget.citationStyle,
-          wordCount: widget.wordCount,
-          sourceCount: widget.sources.length,
-          onDetails: _openDetails,
+          title: session.title.isEmpty ? 'New essay' : session.title,
+          phase: timeline.phase,
+          starting: session.starting,
+          citationStyle: _citationStyle,
+          words: writing?.words ?? 0,
+          onStop: canType ? session.cancel : null,
         ),
         Expanded(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 720),
-              child: ListView(
-                controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(14, 6, 14, 18),
-                children: widget.finished ? _finishedItems() : _draftingItems(),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: ListView(
+                      controller: _scroll,
+                      padding: const EdgeInsets.fromLTRB(14, 6, 14, 18),
+                      children: _items(),
+                    ),
+                  ),
+                ),
               ),
-            ),
+              Positioned(
+                top: 2,
+                right: 12,
+                child: GwCornerPills(
+                  sourceCount: timeline.sources == null
+                      ? null
+                      : timeline.sourceCount,
+                  onSources: _openSources,
+                  showEditor: writing != null,
+                  writing: writing != null && !writing.done && !ended,
+                  onEditor: widget.onOpenEditor,
+                ),
+              ),
+              if (session.reconnecting)
+                const Positioned(
+                  top: 6,
+                  left: 0,
+                  right: 0,
+                  child: Center(child: _ReconnectingBadge()),
+                ),
+            ],
           ),
         ),
         GwComposer(
-          controller: widget.composerController,
-          canSend: widget.composerController.text.trim().isNotEmpty,
+          controller: widget.composer,
+          canSend: canType && widget.composer.text.trim().isNotEmpty,
           onChanged: (_) {},
-          onSend: widget.onSend,
+          onSend: _send,
           sendLabel: 'Send',
-          hintText:
-              widget.pendingQuestion ??
-              (widget.finished ? 'Ask about your essay' : 'Steer the draft'),
+          hintText: _hint,
         ),
       ],
     );
   }
 
-  List<Widget> _draftingItems() {
-    final waiting =
-        widget.assistantText.isEmpty &&
-        widget.pendingQuestion == null &&
-        widget.errorMessage == null;
+  List<Widget> _items() {
+    final widgets = <Widget>[];
+    for (final (index, item) in timeline.items.indexed) {
+      final Widget child = switch (item) {
+        UserItem(:final text) => _UserBubble(text: text),
+        AssistantItem(:final text, :final streaming) => _AssistantBubble(
+          text: text,
+          streaming: streaming,
+        ),
+        StepItem() => GwStepCard(step: item),
+        QuestionItem() => GwQuestionCard(
+          question: item,
+          active: identical(item, timeline.pending) && !timeline.ended,
+          onAnswer: (value) => session.answer(item.field, value),
+        ),
+        WritingItem() => GwWritingCard(
+          writing: item,
+          onOpenEditor: widget.onOpenEditor,
+        ),
+        EndItem() => GwEndCard(end: item, onOpenEditor: widget.onOpenEditor),
+      };
+      widgets.add(GwAppear(key: ValueKey('item-$index'), child: child));
+    }
 
-    return [
-      for (final (index, message) in widget.messages.indexed)
-        GwAppear(
-          key: ValueKey('user-$index'),
-          child: _UserBubble(text: message),
-        ),
-      if (waiting)
+    if (_thinking) {
+      widgets.add(
         const GwAppear(key: ValueKey('typing'), child: _TypingBubble()),
-      if (widget.assistantText.isNotEmpty)
-        GwAppear(
-          key: const ValueKey('assistant'),
-          child: _AssistantBubble(
-            text: widget.assistantText,
-            streaming:
-                widget.pendingQuestion == null && widget.errorMessage == null,
-          ),
-        ),
-      if (widget.pendingQuestion case final question?)
-        GwAppear(
-          key: ValueKey('question-$question'),
-          child: _QuestionCard(question: question),
-        ),
-      if (widget.errorMessage case final error?)
+      );
+    }
+    if (session.actionError case final error?) {
+      widgets.add(
         GwAppear(
           key: ValueKey('error-$error'),
-          child: _ErrorCard(message: error, onRetry: widget.onRetry),
+          child: _ErrorCard(message: error, onRetry: session.retry),
         ),
-    ];
+      );
+    }
+    return widgets;
   }
 
-  List<Widget> _finishedItems() {
-    return [
-      GwAppear(
-        key: const ValueKey('prompt'),
-        child: _UserBubble(text: widget.title),
-      ),
-      const GwAppear(key: ValueKey('done'), delay: 0.15, child: _DoneBanner()),
-      GwAppear(
-        key: const ValueKey('essay'),
-        delay: 0.3,
-        child: _DocumentCard(
-          label: 'Final essay',
-          text: widget.essay.isEmpty
-              ? 'No essay content was returned by the backend.'
-              : widget.essay,
-          fontSize: 15,
-        ),
-      ),
-      if (widget.bibliography.isNotEmpty)
-        GwAppear(
-          key: const ValueKey('references'),
-          delay: 0.45,
-          child: _DocumentCard(
-            label: 'References',
-            text: widget.bibliography,
-            fontSize: 13.5,
+  /// GhostWriter is busy with something that has no card of its own yet.
+  bool get _thinking {
+    if (session.actionError != null) return false;
+    if (session.starting) return true;
+    if (session.runId == null) return false;
+    if (timeline.ended || timeline.phase == RunPhase.waiting) return false;
+    final items = timeline.items;
+    if (items.isEmpty) return true;
+    return switch (items.last) {
+      AssistantItem(:final streaming) => !streaming,
+      StepItem(:final status) => status != StepStatus.running,
+      WritingItem(:final done) => done,
+      _ => true,
+    };
+  }
+}
+
+class _ThreadStrip extends StatelessWidget {
+  const _ThreadStrip({
+    required this.title,
+    required this.phase,
+    required this.starting,
+    required this.citationStyle,
+    required this.words,
+    required this.onStop,
+  });
+
+  final String title;
+  final RunPhase phase;
+  final bool starting;
+  final String? citationStyle;
+  final int words;
+  final VoidCallback? onStop;
+
+  @override
+  Widget build(BuildContext context) {
+    final (label, color, pulse) = starting
+        ? ('Starting', GwColors.gold, true)
+        : switch (phase) {
+            RunPhase.running => ('Working', GwColors.gold, true),
+            RunPhase.waiting => ('Your turn', GwColors.accentSoft, true),
+            RunPhase.finished => ('Finished', const Color(0xFF3DDC84), false),
+            RunPhase.cancelled => ('Stopped', GwColors.muted, false),
+            RunPhase.failed => ('Failed', const Color(0xFFFF777D), false),
+          };
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6, bottom: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 18, right: 12),
+            child: SizedBox(
+              height: 36,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 300),
+                      layoutBuilder: (current, previous) => Stack(
+                        alignment: Alignment.centerLeft,
+                        children: [...previous, ?current],
+                      ),
+                      child: Text(
+                        title,
+                        key: ValueKey(title),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (onStop != null) ...[
+                    const SizedBox(width: 8),
+                    GwPressable(
+                      tooltip: 'Stop',
+                      haptic: GwHaptic.medium,
+                      onTap: onStop,
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: const Color(0xFF2A1416),
+                          border: Border.all(color: const Color(0xFF7A2D31)),
+                        ),
+                        child: const Icon(
+                          Icons.stop_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
-      const GwAppear(key: ValueKey('editor'), delay: 0.6, child: _EditorCard()),
-    ];
+          const SizedBox(height: 6),
+          SizedBox(
+            height: 32,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              children: [
+                _StatusChip(label: label, color: color, pulse: pulse),
+                if (citationStyle case final style?) ...[
+                  const SizedBox(width: 6),
+                  _Chip(icon: Icons.format_quote_rounded, label: style),
+                ],
+                if (words > 0) ...[
+                  const SizedBox(width: 6),
+                  _Chip(icon: Icons.notes_rounded, label: '$words words'),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  const _Chip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11),
+      decoration: BoxDecoration(
+        color: const Color(0xCC181919),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: GwColors.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: GwColors.muted),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFFD7D7D9),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The run's state, with a dot that pulses while something is going on.
+class _StatusChip extends StatefulWidget {
+  const _StatusChip({
+    required this.label,
+    required this.color,
+    required this.pulse,
+  });
+
+  final String label;
+  final Color color;
+  final bool pulse;
+
+  @override
+  State<_StatusChip> createState() => _StatusChipState();
+}
+
+class _StatusChipState extends State<_StatusChip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_StatusChip oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _sync() {
+    final animate = widget.pulse && !MediaQuery.disableAnimationsOf(context);
+    if (animate && !_pulse.isAnimating) {
+      _pulse.repeat(reverse: true);
+    } else if (!animate) {
+      _pulse.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.color;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 400),
+      padding: const EdgeInsets.symmetric(horizontal: 11),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, _) {
+              final glow = widget.pulse ? _pulse.value : 0.0;
+              return Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.7 * glow),
+                      blurRadius: 8 * glow,
+                      spreadRadius: 2 * glow,
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 7),
+          Text(
+            widget.label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReconnectingBadge extends StatelessWidget {
+  const _ReconnectingBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xE6181919),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0x26FFFFFF)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.6,
+              color: GwColors.muted,
+            ),
+          ),
+          SizedBox(width: 8),
+          Text(
+            'Reconnecting…',
+            style: TextStyle(
+              color: GwColors.muted,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -278,240 +596,6 @@ class _GwAppearState extends State<GwAppear>
   }
 }
 
-class _ThreadStrip extends StatelessWidget {
-  const _ThreadStrip({
-    required this.title,
-    required this.finished,
-    required this.citationStyle,
-    required this.wordCount,
-    required this.sourceCount,
-    required this.onDetails,
-  });
-
-  final String title;
-  final bool finished;
-  final String citationStyle;
-  final int wordCount;
-  final int sourceCount;
-  final VoidCallback onDetails;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 6, bottom: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 18, right: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GwPressable(
-                  tooltip: 'Details',
-                  onTap: onDetails,
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: const Color(0xFF2A1416),
-                      border: Border.all(color: const Color(0xFF7A2D31)),
-                    ),
-                    child: const Icon(
-                      Icons.tune_rounded,
-                      size: 19,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 32,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              children: [
-                _StatusChip(finished: finished),
-                const SizedBox(width: 6),
-                _Chip(icon: Icons.format_quote_rounded, label: citationStyle),
-                if (wordCount > 0) ...[
-                  const SizedBox(width: 6),
-                  _Chip(icon: Icons.notes_rounded, label: '$wordCount words'),
-                ],
-                if (sourceCount > 0) ...[
-                  const SizedBox(width: 6),
-                  _Chip(
-                    icon: Icons.menu_book_rounded,
-                    label: sourceCount == 1
-                        ? '1 source'
-                        : '$sourceCount sources',
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 11),
-      decoration: BoxDecoration(
-        color: const Color(0xCC181919),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: GwColors.border),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 15, color: GwColors.muted),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFFD7D7D9),
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// "Writing" with a pulsing gold dot, or "Finished" with a green one.
-class _StatusChip extends StatefulWidget {
-  const _StatusChip({required this.finished});
-
-  final bool finished;
-
-  @override
-  State<_StatusChip> createState() => _StatusChipState();
-}
-
-class _StatusChipState extends State<_StatusChip>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1100),
-  );
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
-  }
-
-  @override
-  void didUpdateWidget(_StatusChip oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _sync();
-  }
-
-  void _sync() {
-    final animate =
-        !widget.finished && !MediaQuery.disableAnimationsOf(context);
-    if (animate && !_pulse.isAnimating) {
-      _pulse.repeat(reverse: true);
-    } else if (!animate) {
-      _pulse.stop();
-    }
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = widget.finished ? const Color(0xFF3DDC84) : GwColors.gold;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 400),
-      padding: const EdgeInsets.symmetric(horizontal: 11),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.45)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AnimatedBuilder(
-            animation: _pulse,
-            builder: (context, _) {
-              final glow = widget.finished ? 0.0 : _pulse.value;
-
-              return Container(
-                width: 7,
-                height: 7,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: color,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.7 * glow),
-                      blurRadius: 8 * glow,
-                      spreadRadius: 2 * glow,
-                    ),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(width: 7),
-          Text(
-            widget.finished ? 'Finished' : 'Writing',
-            style: TextStyle(
-              color: color,
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-const _bodyStyle = TextStyle(
-  color: Color(0xFFE6E6E8),
-  fontFamily: GwFonts.secondary,
-  fontFamilyFallback: GwFonts.secondaryFallback,
-  fontSize: 15,
-  height: 1.55,
-);
-
 class _UserBubble extends StatelessWidget {
   const _UserBubble({required this.text});
 
@@ -551,7 +635,7 @@ class _UserBubble extends StatelessWidget {
             ),
             child: Text(
               text,
-              style: _bodyStyle.copyWith(
+              style: kGwBody.copyWith(
                 color: Colors.white,
                 fontWeight: FontWeight.w500,
                 height: 1.4,
@@ -564,48 +648,6 @@ class _UserBubble extends StatelessWidget {
   }
 }
 
-/// Ghost avatar on the left with GhostWriter's content beside it.
-class _AssistantRow extends StatelessWidget {
-  const _AssistantRow({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            padding: const EdgeInsets.all(3),
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Color(0xCC181919),
-            ),
-            child: Image.asset(GwAssets.ghost),
-          ),
-          const SizedBox(width: 8),
-          Flexible(child: child),
-        ],
-      ),
-    );
-  }
-}
-
-const _assistantBubble = BoxDecoration(
-  color: Color(0xE6181919),
-  borderRadius: BorderRadius.only(
-    topLeft: Radius.circular(6),
-    topRight: Radius.circular(20),
-    bottomLeft: Radius.circular(20),
-    bottomRight: Radius.circular(20),
-  ),
-  border: Border.fromBorderSide(BorderSide(color: Color(0x1AFFFFFF))),
-);
-
 class _AssistantBubble extends StatelessWidget {
   const _AssistantBubble({required this.text, required this.streaming});
 
@@ -614,10 +656,10 @@ class _AssistantBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _AssistantRow(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-        decoration: _assistantBubble,
+    // GhostWriter speaks in plain text beside its avatar, no bubble.
+    return GwAssistantRow(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 4),
         child: Text.rich(
           TextSpan(
             text: text,
@@ -629,7 +671,7 @@ class _AssistantBubble extends StatelessWidget {
                 ),
             ],
           ),
-          style: _bodyStyle,
+          style: kGwBody,
         ),
       ),
     );
@@ -683,7 +725,7 @@ class _CaretState extends State<_Caret> with SingleTickerProviderStateMixin {
   }
 }
 
-/// Three dots bouncing in turn while GhostWriter has not replied yet.
+/// Three dots bouncing in turn while GhostWriter is busy.
 class _TypingBubble extends StatefulWidget {
   const _TypingBubble();
 
@@ -718,24 +760,26 @@ class _TypingBubbleState extends State<_TypingBubble>
   Widget build(BuildContext context) {
     return Semantics(
       label: 'GhostWriter is writing',
-      child: _AssistantRow(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          decoration: _assistantBubble,
-          child: AnimatedBuilder(
-            animation: _bounce,
-            builder: (context, _) {
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var dot = 0; dot < 3; dot++)
-                    Padding(
-                      padding: EdgeInsets.only(left: dot == 0 ? 0 : 5),
-                      child: _dot(dot),
-                    ),
-                ],
-              );
-            },
+      child: GwAssistantRow(
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: AnimatedBuilder(
+              animation: _bounce,
+              builder: (context, _) {
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var dot = 0; dot < 3; dot++)
+                      Padding(
+                        padding: EdgeInsets.only(left: dot == 0 ? 0 : 5),
+                        child: _dot(dot),
+                      ),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -761,59 +805,6 @@ class _TypingBubbleState extends State<_TypingBubble>
   }
 }
 
-class _QuestionCard extends StatelessWidget {
-  const _QuestionCard({required this.question});
-
-  final String question;
-
-  @override
-  Widget build(BuildContext context) {
-    return _AssistantRow(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(15, 12, 15, 13),
-        decoration: BoxDecoration(
-          color: const Color(0xF02A1416),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFF7A2D31)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.help_outline_rounded,
-                  size: 15,
-                  color: Color(0xFFFF777D),
-                ),
-                SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    'GhostWriter needs your input',
-                    style: TextStyle(
-                      color: Color(0xFFFF777D),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 7),
-            Text(question, style: _bodyStyle.copyWith(color: Colors.white)),
-            const SizedBox(height: 7),
-            Text(
-              'Answer below and press send.',
-              style: _bodyStyle.copyWith(color: GwColors.muted, fontSize: 12),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ErrorCard extends StatelessWidget {
   const _ErrorCard({required this.message, required this.onRetry});
 
@@ -822,14 +813,8 @@ class _ErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      decoration: BoxDecoration(
-        color: const Color(0xF0251013),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFF4B52)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 2, 0, 12),
       child: Row(
         children: [
           const Icon(
@@ -841,7 +826,7 @@ class _ErrorCard extends StatelessWidget {
           Expanded(
             child: Text(
               message,
-              style: _bodyStyle.copyWith(
+              style: kGwBody.copyWith(
                 color: const Color(0xFFFF9A9E),
                 fontSize: 13.5,
                 height: 1.4,
@@ -876,215 +861,6 @@ class _ErrorCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DoneBanner extends StatelessWidget {
-  const _DoneBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 2, 4, 12),
-      child: Row(
-        children: [
-          const Icon(
-            Icons.check_circle_rounded,
-            size: 18,
-            color: Color(0xFF3DDC84),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Your GhostWriter draft is complete.',
-              style: _bodyStyle.copyWith(fontSize: 14),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Essay or reference list in a card, with a button to copy the text.
-class _DocumentCard extends StatelessWidget {
-  const _DocumentCard({
-    required this.label,
-    required this.text,
-    required this.fontSize,
-  });
-
-  final String label;
-  final String text;
-  final double fontSize;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xF0181919),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0x1AFFFFFF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 6, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label.toUpperCase(),
-                    style: const TextStyle(
-                      color: GwColors.hint,
-                      fontSize: 11,
-                      letterSpacing: 1.6,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                _CopyButton(label: label, text: text),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: SelectableText(
-              text,
-              style: _bodyStyle.copyWith(fontSize: fontSize, height: 1.6),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Copies [text]; the icon turns into a tick for a moment afterwards.
-class _CopyButton extends StatefulWidget {
-  const _CopyButton({required this.label, required this.text});
-
-  final String label;
-  final String text;
-
-  @override
-  State<_CopyButton> createState() => _CopyButtonState();
-}
-
-class _CopyButtonState extends State<_CopyButton>
-    with SingleTickerProviderStateMixin {
-  /// Runs while the tick is showing.
-  late final AnimationController _copied =
-      AnimationController(
-        vsync: this,
-        duration: const Duration(milliseconds: 1600),
-      )..addStatusListener((status) {
-        if (status == AnimationStatus.completed) _copied.reset();
-        setState(() {});
-      });
-
-  @override
-  void dispose() {
-    _copied.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final done = _copied.isAnimating;
-
-    return GwPressable(
-      tooltip: 'Copy ${widget.label.toLowerCase()}',
-      onTap: () {
-        Clipboard.setData(ClipboardData(text: widget.text));
-        _copied.forward(from: 0);
-      },
-      child: SizedBox(
-        width: kGwButton,
-        height: kGwButton,
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          transitionBuilder: (child, animation) =>
-              ScaleTransition(scale: animation, child: child),
-          child: Icon(
-            done ? Icons.check_rounded : Icons.copy_rounded,
-            key: ValueKey(done),
-            size: 18,
-            color: done ? const Color(0xFF3DDC84) : GwColors.muted,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _EditorCard extends StatelessWidget {
-  const _EditorCard();
-
-  @override
-  Widget build(BuildContext context) {
-    // TODO: open the editor once it exists on mobile.
-    return GwPressable(
-      pressedScale: 0.97,
-      onTap: () {},
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
-        decoration: BoxDecoration(
-          color: const Color(0xF0181919),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFF7A2D31)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFF2A1416),
-              ),
-              child: const Icon(
-                Icons.edit_note_rounded,
-                color: GwColors.accentSoft,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Proceed to Editor',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Review and refine your essay',
-                    style: _bodyStyle.copyWith(
-                      color: GwColors.muted,
-                      fontSize: 12.5,
-                      height: 1.3,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(
-              Icons.arrow_forward_rounded,
-              color: Colors.white70,
-              size: 20,
-            ),
-          ],
-        ),
       ),
     );
   }

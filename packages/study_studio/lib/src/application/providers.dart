@@ -14,12 +14,13 @@ import '../domain/entities/me.dart';
 import '../domain/entities/studio.dart';
 import '../domain/entities/topic.dart';
 import '../domain/repositories/studio_repository.dart';
+import '../firebase_bootstrap.dart';
 import 'config.dart';
 
 /// Auth boundary. Uses Firebase (Octopilot's project) when the Firebase config
 /// is injected, otherwise the offline/dev stub (backend then uses X-User-Id).
 final authServiceProvider = Provider<AuthService>((ref) {
-  if (StudioConfig.firebaseConfigured) return FirebaseAuthService();
+  if (studioFirebaseReady) return FirebaseAuthService();
   return const StubAuthService();
 });
 

@@ -1,4 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- GhostWriter talks to its API. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
         android:label="cockpit"
         android:name="${applicationName}"

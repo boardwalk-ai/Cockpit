@@ -168,7 +168,7 @@ class _Hero extends StatelessWidget {
           from: 0,
           to: 0.4,
           scaleFrom: 0.4,
-          child: _FloatingGhost(ambient: ambient),
+          child: GwFloatingGhost(ambient: ambient),
         ),
         const SizedBox(height: 14),
         AnimatedBuilder(
@@ -238,8 +238,9 @@ class _Hero extends StatelessWidget {
   }
 }
 
-class _FloatingGhost extends StatelessWidget {
-  const _FloatingGhost({required this.ambient});
+/// The ghost artwork, bobbing gently over its shadow.
+class GwFloatingGhost extends StatelessWidget {
+  const GwFloatingGhost({super.key, required this.ambient});
 
   final Animation<double> ambient;
 

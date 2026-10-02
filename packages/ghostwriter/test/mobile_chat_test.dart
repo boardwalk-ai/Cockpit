@@ -1,174 +1,211 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ghostwriter/src/mobile/mobile_chat.dart';
+import 'package:ghostwriter/src/session/gw_session.dart';
+
+import 'fake_server.dart';
 
 void main() {
+  late FakeServer server;
+  late GwSession session;
   late TextEditingController composer;
-  late List<String> events;
+  late int editorOpens;
 
   setUp(() {
+    server = FakeServer();
+    session = server.session();
     composer = TextEditingController();
-    events = [];
+    editorOpens = 0;
   });
 
-  Widget chat({
-    bool finished = false,
-    List<String> messages = const ['An essay on tides'],
-    String assistantText = '',
-    String essay = '',
-    String bibliography = '',
-    List<Map<String, dynamic>> sources = const [],
-    String? pendingQuestion,
-    String? errorMessage,
-  }) {
-    return MaterialApp(
-      home: Scaffold(
-        body: GhostWriterMobileChat(
-          finished: finished,
-          title: 'An essay on tides',
-          citationStyle: 'APA',
-          wordCount: 500,
-          messages: messages,
-          assistantText: assistantText,
-          essay: essay,
-          bibliography: bibliography,
-          sources: sources,
-          pendingQuestion: pendingQuestion,
-          errorMessage: errorMessage,
-          onRetry: () => events.add('retry'),
-          composerController: composer,
-          onSend: () => events.add('send'),
-        ),
-      ),
-    );
-  }
+  tearDown(() => session.dispose());
 
-  Future<void> show(WidgetTester tester, Widget widget) async {
-    tester.view.physicalSize = const Size(360, 740);
+  /// Starts a run and shows the chat, connected and empty.
+  Future<void> open(WidgetTester tester) async {
+    tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(widget);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GhostWriterMobileChat(
+            session: session,
+            composer: composer,
+            onOpenEditor: () => editorOpens++,
+          ),
+        ),
+      ),
+    );
+    final started = session.start('An essay on tides');
+    await tester.pump();
+    await started;
+    await tester.pump();
+  }
+
+  /// Sends events and lets the list settle.
+  Future<void> send(
+    WidgetTester tester,
+    List<Map<String, dynamic>> events,
+  ) async {
+    for (final e in events) {
+      server.send(e);
+    }
+    await tester.pump();
     await tester.pump(const Duration(seconds: 2));
     expect(tester.takeException(), isNull);
   }
 
-  testWidgets('shows the typing indicator before the first words', (
+  testWidgets('shows the brief and a typing indicator before any step', (
     tester,
   ) async {
-    await show(tester, chat());
-
-    expect(find.text('An essay on tides'), findsNWidgets(2)); // strip + bubble
-    expect(find.text('Writing'), findsOneWidget);
-    expect(find.bySemanticsLabel('GhostWriter is writing'), findsOneWidget);
-  });
-
-  testWidgets('shows streamed text in place of the typing indicator', (
-    tester,
-  ) async {
-    await show(tester, chat(assistantText: 'Tides rise and fall'));
-
-    expect(find.textContaining('Tides rise and fall'), findsOneWidget);
-    expect(find.bySemanticsLabel('GhostWriter is writing'), findsNothing);
-  });
-
-  testWidgets('shows a pending question and uses it as the hint', (
-    tester,
-  ) async {
-    await show(tester, chat(pendingQuestion: 'Which citation style?'));
-
-    expect(find.text('GhostWriter needs your input'), findsOneWidget);
-    expect(find.text('Which citation style?'), findsNWidgets(2));
-  });
-
-  testWidgets('error card retries', (tester) async {
-    await show(tester, chat(errorMessage: 'Stream disconnected'));
-
-    await tester.tap(find.text('Retry'));
-    await tester.pump(const Duration(milliseconds: 600));
-
-    expect(events, ['retry']);
-  });
-
-  testWidgets('Send is disabled until something is typed', (tester) async {
-    await show(tester, chat());
-
-    await tester.tap(find.byTooltip('Send'));
-    await tester.pump(const Duration(milliseconds: 600));
-    expect(events, isEmpty);
-
-    await tester.enterText(find.byType(TextField), 'Make it shorter');
-    await tester.pump(const Duration(milliseconds: 600));
-    await tester.tap(find.byTooltip('Send'));
-    await tester.pump(const Duration(milliseconds: 600));
-
-    expect(events, ['send']);
-  });
-
-  testWidgets('finished run shows the essay and references, and copies', (
-    tester,
-  ) async {
-    String? clipboard;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          clipboard = (call.arguments as Map)['text'] as String;
-        }
-        return null;
-      },
-    );
-
-    await show(
-      tester,
-      chat(
-        finished: true,
-        essay: 'The tide is the sea breathing.',
-        bibliography: 'Sweet, W. (2022). Sea level rise.',
-      ),
-    );
-
-    expect(find.text('Finished'), findsOneWidget);
-    expect(find.text('The tide is the sea breathing.'), findsOneWidget);
-    expect(find.text('Sweet, W. (2022). Sea level rise.'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Copy final essay'));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(clipboard, 'The tide is the sea breathing.');
-    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
-
-    // The tick goes back to the copy icon on its own.
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byIcon(Icons.check_rounded), findsNothing);
-  });
-
-  testWidgets('Details opens the sheet with sources', (tester) async {
-    await show(
-      tester,
-      chat(
-        finished: true,
-        essay: 'Essay.',
-        sources: const [
-          {
-            'title': 'Sea Level Rise Scenarios',
-            'author': 'Sweet, W.',
-            'publisher': 'NOAA',
-            'url': 'https://example.org/slr',
-          },
-        ],
-      ),
-    );
-
-    await tester.tap(find.byTooltip('Details'));
-    await tester.pump();
+    await open(tester);
     await tester.pump(const Duration(seconds: 1));
 
-    expect(find.text('Essay details'), findsOneWidget);
-    expect(find.text('Sea Level Rise Scenarios'), findsOneWidget);
-    expect(find.text('Sweet, W. · NOAA'), findsOneWidget);
-    expect(find.text('https://example.org/slr'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    expect(find.text('An essay on tides'), findsWidgets);
+    expect(find.bySemanticsLabel('GhostWriter is writing'), findsOneWidget);
+    expect(find.text('Starting').evaluate().isEmpty, isTrue);
+  });
+
+  testWidgets('a step runs, then a focus question is answered with chips', (
+    tester,
+  ) async {
+    await open(tester);
+    await send(tester, [
+      ev(1, 'user_message', {'text': 'An essay on tides'}),
+      ev(2, 'step_start', {
+        'stepId': 's1',
+        'tool': 'plan_essay',
+        'title': 'Planning the essay',
+      }),
+    ]);
+    expect(find.text('Planning the essay'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+    await send(tester, [
+      ev(3, 'step_done', {'stepId': 's1', 'summary': 'Thesis drafted.'}),
+      ev(4, 'question', {
+        'field': 'essayFocus',
+        'question': 'What should it focus on?',
+        'inputType': 'multiselect',
+        'allowCustom': true,
+        'options': [
+          {'label': 'Economy', 'value': 'Economy'},
+          {'label': 'Policy', 'value': 'Policy'},
+        ],
+      }),
+    ]);
+    expect(find.text('Thesis drafted.'), findsOneWidget);
+    expect(find.text('Your turn'), findsOneWidget);
+    expect(find.text('Pick at least one'), findsOneWidget);
+
+    await tester.tap(find.text('Policy'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Continue with 1'));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(server.calls.last, endsWith('/answer'));
+    expect(server.bodies.last, {
+      'field': 'essayFocus',
+      'value': ['Policy'],
+    });
+
+    // The server confirms; the card folds to the answer.
+    await send(tester, [
+      ev(5, 'question_answered', {
+        'field': 'essayFocus',
+        'value': ['Policy'],
+      }),
+    ]);
+    expect(find.text('Pick at least one'), findsNothing);
+    expect(find.text('GhostWriter needs your input'), findsNothing);
+  });
+
+  testWidgets('a number question answers from its chips', (tester) async {
+    await open(tester);
+    await send(tester, [
+      ev(1, 'question', {
+        'field': 'wordCount',
+        'question': 'How long?',
+        'inputType': 'number',
+        'suggestions': ['500', '800'],
+        'allowCustom': true,
+      }),
+    ]);
+
+    await tester.tap(find.text('800'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(server.bodies.last, {'field': 'wordCount', 'value': 800});
+  });
+
+  testWidgets('sources and writing bring in the corner pills', (tester) async {
+    await open(tester);
+    expect(find.byTooltip('Open Editor'), findsNothing);
+
+    await send(tester, [
+      ev(1, 'sources_ready', {
+        'count': 2,
+        'sources': [
+          {'url': 'https://noaa.example', 'title': 'Sea level rise'},
+        ],
+      }),
+    ]);
+    expect(find.byTooltip('Sources · 2'), findsOneWidget);
+    expect(find.byTooltip('Open Editor'), findsNothing);
+
+    await send(tester, [
+      ev(2, 'writing_started', {'targetWords': 800}),
+      ev(3, 'write_progress', {'words': 320, 'targetWords': 800}),
+    ]);
+    expect(find.byTooltip('Open Editor'), findsOneWidget);
+    expect(find.text('Writing your essay'), findsOneWidget);
+    expect(find.text('320 / 800 words'), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp('Writing now')), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Open Editor'));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(editorOpens, 1);
+
+    // Sources opens the details sheet.
+    await tester.tap(find.byTooltip('Sources · 2'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Sea level rise'), findsOneWidget);
+  });
+
+  testWidgets('a finished run offers the editor and stops the composer', (
+    tester,
+  ) async {
+    await open(tester);
+    await send(tester, [
+      ev(1, 'writing_started', {'targetWords': 500}),
+      ev(2, 'write_progress', {'words': 520, 'targetWords': 500}),
+      ev(3, 'done'),
+    ]);
+
+    expect(find.text('Finished'), findsOneWidget);
+    expect(find.text('Essay written'), findsOneWidget);
+    expect(find.text('Your essay is ready.'), findsOneWidget);
+    expect(find.text('Revisions are coming soon'), findsOneWidget);
+    expect(find.byTooltip('Stop'), findsNothing);
+
+    await tester.tap(find.text('Proceed to Editor'));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(editorOpens, 1);
+  });
+
+  testWidgets('Stop cancels the run', (tester) async {
+    await open(tester);
+    await send(tester, [
+      ev(1, 'user_message', {'text': 'An essay on tides'}),
+    ]);
+
+    await tester.tap(find.byTooltip('Stop'));
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(server.calls.last, endsWith('/cancel'));
+
+    await send(tester, [ev(2, 'cancelled')]);
+    expect(find.text('Stopped'), findsOneWidget);
+    expect(find.text('Stopped.'), findsOneWidget);
   });
 }

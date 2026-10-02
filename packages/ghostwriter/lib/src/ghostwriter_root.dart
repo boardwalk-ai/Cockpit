@@ -1,21 +1,92 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import 'data/gw_api.dart';
 import 'ghostwriter_page.dart';
+import 'gw_auth.dart';
+import 'mobile/mobile_app.dart';
+import 'mobile/mobile_sign_in.dart';
 import 'mobile/mobile_theme.dart';
+import 'platform.dart';
+import 'session/gw_session.dart';
 
-/// GhostWriter with its own look, whatever theme the host app uses.
-class GhostWriterRoot extends StatelessWidget {
-  const GhostWriterRoot({super.key});
+/// GhostWriter with its own look, whatever theme the host app uses: the
+/// phone UI on Android and iOS, the desktop UI elsewhere. With a real
+/// [auth] the phone UI asks the user to sign in first.
+class GhostWriterRoot extends StatefulWidget {
+  const GhostWriterRoot({super.key, this.auth, this.session});
+
+  /// The host app's sign-in. Null (or not [GwAuth.enabled]) means local dev:
+  /// no sign-in screen, and the API is called as the dev user.
+  final GwAuth? auth;
+
+  /// A ready-made session, for tests.
+  final GwSession? session;
+
+  @override
+  State<GhostWriterRoot> createState() => _GhostWriterRootState();
+}
+
+class _GhostWriterRootState extends State<GhostWriterRoot> {
+  late final GwSession _session =
+      widget.session ?? GwSession(GwApi(idToken: widget.auth?.idToken));
+  StreamSubscription<bool>? _authChanges;
+  late bool _signedIn;
+
+  GwAuth? get _auth {
+    final auth = widget.auth;
+    return auth != null && auth.enabled ? auth : null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final auth = _auth;
+    _signedIn = auth == null || auth.isSignedIn;
+    _authChanges = auth?.authStateChanges().listen((signedIn) {
+      if (signedIn == _signedIn || !mounted) return;
+      if (!signedIn) _session.signedOut();
+      setState(() => _signedIn = signedIn);
+    });
+  }
+
+  @override
+  void dispose() {
+    _authChanges?.cancel();
+    if (widget.session == null) _session.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final auth = _auth;
+    final Widget child;
+    if (!isMobilePlatform) {
+      child = const GhostWriterPage();
+    } else if (!_signedIn && auth != null) {
+      child = GhostWriterSignIn(
+        key: const ValueKey('sign-in'),
+        onSignIn: auth.signIn,
+      );
+    } else {
+      child = GhostWriterMobileApp(
+        key: const ValueKey('app'),
+        session: _session,
+        onSignOut: auth?.signOut,
+      );
+    }
+
     return Theme(
       data: ThemeData(
         useMaterial3: true,
         brightness: Brightness.dark,
         fontFamily: GwFonts.primary,
       ),
-      child: const GhostWriterPage(),
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        child: child,
+      ),
     );
   }
 }

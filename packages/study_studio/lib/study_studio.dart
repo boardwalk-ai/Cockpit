@@ -6,5 +6,6 @@ library;
 
 export 'src/application/providers.dart' show authServiceProvider;
 export 'src/data/auth/auth_service.dart' show AuthService;
-export 'src/firebase_bootstrap.dart' show initStudioFirebase;
+export 'src/data/auth/firebase_auth_service.dart' show FirebaseAuthService;
+export 'src/firebase_bootstrap.dart' show initStudioFirebase, studioFirebaseReady;
 export 'src/study_studio_module.dart';

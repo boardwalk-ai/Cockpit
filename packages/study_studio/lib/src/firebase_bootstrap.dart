@@ -4,9 +4,11 @@ import 'package:flutter/foundation.dart';
 
 import 'application/config.dart';
 
-/// Initializes Firebase from the injected config, if present. Safe to call
-/// unconditionally from the host app's `main()` — a no-op when Firebase isn't
-/// configured (offline/dev), so the app runs without any Firebase setup.
+/// Initializes Firebase. On the web it needs the injected config; on Android
+/// and iOS it reads the app's `google-services.json` /
+/// `GoogleService-Info.plist` (kept out of git). Safe to call unconditionally
+/// from the host app's `main()` — when neither is present it does nothing, so
+/// the app runs without any Firebase setup (offline/dev).
 ///
 /// ```dart
 /// void main() async {
@@ -16,7 +18,16 @@ import 'application/config.dart';
 /// }
 /// ```
 Future<void> initStudioFirebase() async {
-  if (!StudioConfig.firebaseConfigured) return;
+  if (!StudioConfig.firebaseConfigured) {
+    if (kIsWeb) return;
+    try {
+      await Firebase.initializeApp();
+    } catch (error) {
+      // No platform config bundled: stay in dev mode.
+      debugPrint('Firebase not configured on this build: $error');
+    }
+    return;
+  }
   final projectId = StudioConfig.firebaseProjectId;
   await Firebase.initializeApp(
     options: FirebaseOptions(
@@ -42,4 +53,14 @@ Future<void> initStudioFirebase() async {
   final auth = FirebaseAuth.instance;
   await auth.authStateChanges().first;
   await auth.setPersistence(Persistence.LOCAL);
+}
+
+/// Whether Firebase is up, from the injected config or the platform files.
+bool get studioFirebaseReady {
+  if (StudioConfig.firebaseConfigured) return true;
+  try {
+    return Firebase.apps.isNotEmpty;
+  } catch (_) {
+    return false;
+  }
 }

@@ -60,7 +60,7 @@ void main() {
     await tester.pumpWidget(const GhostWriterApp());
     await tester.pump(const Duration(seconds: 2));
 
-    await tester.tap(find.byTooltip('Threads'));
+    await tester.tap(find.byTooltip('Essays'));
     await tester.pump(const Duration(milliseconds: 600));
 
     expect(haptics, ['HapticFeedbackType.lightImpact']);
