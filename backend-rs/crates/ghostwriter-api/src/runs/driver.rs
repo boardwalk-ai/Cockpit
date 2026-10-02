@@ -88,6 +88,48 @@ impl RunCtx {
         }
     }
 
+    /// Waits for the user's next chat message: the model asked something in
+    /// plain text rather than through `ask`.
+    pub async fn wait_message(&mut self) -> Result<String, RunError> {
+        {
+            let _guard = self.st.hub.lock(self.run_id).await;
+            let waiting = sqlx::query(
+                "UPDATE runs SET status = 'waiting_for_user', updated_at = now()                  WHERE id = $1 AND status = 'running'",
+            )
+            .bind(self.run_id)
+            .execute(&self.st.db)
+            .await?
+            .rows_affected();
+            if waiting == 0 {
+                return Err(RunError::Stopped);
+            }
+            // Tells the app the run is now waiting on the chat box.
+            append(&self.st, self.run_id, "awaiting_reply", json!({})).await?;
+        }
+
+        let text = match tokio::time::timeout(
+            self.st.config.ask_timeout,
+            self.inbox.messages.recv(),
+        )
+        .await
+        {
+            Ok(Some(text)) => text,
+            Ok(None) => return Err(RunError::Stopped),
+            Err(_) => {
+                return Err(RunError::Failed(
+                    "Timed out waiting for your reply.".to_string(),
+                ))
+            }
+        };
+        sqlx::query(
+            "UPDATE runs SET status = 'running', updated_at = now()              WHERE id = $1 AND status = 'waiting_for_user'",
+        )
+        .bind(self.run_id)
+        .execute(&self.st.db)
+        .await?;
+        Ok(text)
+    }
+
     /// Chat messages the user sent since the last call.
     pub fn take_messages(&mut self) -> Vec<String> {
         let mut messages = Vec::new();
@@ -122,7 +164,7 @@ impl RunCtx {
 
     /// Says something as GhostWriter: deltas for a live client, then the
     /// stored message.
-    async fn say(&self, text: &str) -> Result<(), RunError> {
+    pub(crate) async fn say(&self, text: &str) -> Result<(), RunError> {
         for word in text.split_inclusive(' ') {
             self.emit_live("assistant_delta", json!({ "chunk": word }));
         }
@@ -144,7 +186,12 @@ pub fn spawn(st: AppState, run_id: Uuid, project_id: Uuid, user_id: Uuid, instru
     };
 
     let task = tokio::spawn(async move {
-        let outcome = match scripted(&mut ctx).await {
+        let result = if ctx.st.config.driver == "scripted" {
+            scripted(&mut ctx).await
+        } else {
+            crate::agent::run(&mut ctx).await
+        };
+        let outcome = match result {
             Ok(()) => Outcome::Finished,
             // Whoever stopped the run has closed it already.
             Err(RunError::Stopped) => return,

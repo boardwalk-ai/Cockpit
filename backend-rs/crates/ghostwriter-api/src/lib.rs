@@ -1,7 +1,12 @@
+pub mod agent;
 pub mod config;
 pub mod ctx;
+pub mod documents;
+pub mod llm;
+pub mod pricing;
 pub mod routes;
 pub mod runs;
+pub mod scrape;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,8 +22,10 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
+use crate::llm::Llm;
 use crate::routes::{folders, projects, runs as run_routes, system};
 use crate::runs::Hub;
+use crate::scrape::{HttpScraper, Scraper};
 
 /// Embedded `ghostwriter` migrations (see `migrations/`).
 pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -37,6 +44,10 @@ pub struct AppState {
     pub credits: octo_common::credits::Credits,
     /// The runs this process is driving.
     pub hub: Hub,
+    /// A model to use instead of OpenRouter. Tests set this; production
+    /// leaves it empty and each run takes a key from the shared pool.
+    pub llm: Option<Arc<dyn Llm>>,
+    pub scraper: Arc<dyn Scraper>,
 }
 
 impl HasFirebase for AppState {
@@ -82,11 +93,13 @@ impl AppState {
         Ok(Self {
             credits,
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
+            scraper: Arc::new(HttpScraper::new(http.clone(), config.scraper_url.clone())),
             http,
             db,
             octopilot,
             user_ids: UserIdCache::default(),
             hub: Hub::default(),
+            llm: None,
             config: Arc::new(config),
         })
     }
@@ -106,6 +119,7 @@ pub fn app(state: AppState) -> Router {
                 .delete(projects::remove),
         )
         .route("/v1/folders/:id", put(folders::put).delete(folders::remove))
+        .route("/v1/projects/:id/document", get(projects::document))
         .route("/v1/projects/:id/runs", post(run_routes::start))
         .route("/v1/runs/:run_id", get(run_routes::get_one))
         .route("/v1/runs/:run_id/events", get(run_routes::events))

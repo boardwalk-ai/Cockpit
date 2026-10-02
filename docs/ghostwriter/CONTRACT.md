@@ -1,6 +1,6 @@
 # GhostWriter backend contract
 
-Status: **in progress** — phases 1a and 1b are built (see section 10).
+Status: **in progress** — phases 1a, 1b and 1c are built (see section 10).
 
 This is the agreement between the GhostWriter mobile app and its new Rust
 backend: what is stored, which endpoints exist, and which events the app
@@ -175,15 +175,16 @@ startup the service closes any run that was still active with a `fatal` event
 document, so the app is told and the project is not stuck. Resuming a run across
 a restart is not built.
 
-Until phase 1c the runs are driven by a scripted driver: the real workflow's
-steps and questions with canned content and no model calls. It stays afterwards
-as a way to build and demo the app without spending credits.
+Runs are driven by the agent loop (section 6.2). `GHOSTWRITER_DRIVER=scripted`
+switches to a scripted driver instead: the same steps and questions with canned
+content and no model calls, for building and demoing the app without spending
+credits.
 
 ### Document
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/projects/:id/document` | The document, its `rev`, and `locked` |
+| GET | `/projects/:id/document` ✅ | The document, its `rev`, and `locked` |
 | PUT | `/projects/:id/document` | Save from the editor: `{ baseRev, style, title, fields, body, delta }`. **409** while locked, **409** if `baseRev` is stale. |
 | GET | `/projects/:id/document/stream` | SSE for the read-only editor (section 7) |
 | GET | `/projects/:id/versions` | Version list |
@@ -207,7 +208,9 @@ Stored and replayed:
 | `thought` | `stepId?, text` | The agent's short reasoning, attached to the step |
 | `question` | see 6.1 | A question card |
 | `question_answered` | `field, value` | Question card collapses to the answer |
-| `sources_ready` | `count` | **Sources pill appears** |
+| `context_update` | a patch: `essayTopic`, `essayType`, `thesis`, `outlines` | What the run has worked out so far |
+| `awaiting_reply` | — | GhostWriter asked something in plain text and is waiting on the chat box |
+| `sources_ready` | `count`, `sources[]` (`url, title, author, publishedYear, publisher`) | **Sources pill appears** |
 | `writing_started` | `targetWords` | **Open Editor pill appears**; progress bar starts |
 | `write_progress` | `words, targetWords` | Progress bar. At most one per second. `words` may exceed `targetWords`. |
 | `document_updated` | `rev, wordCount` | Editor refetches if it is open and not streaming |
@@ -255,7 +258,30 @@ Fields, in the order the agent asks them:
 | `paragraphSplitChoice` | select | After StealthGPT only (phase 4) |
 
 A chat message sent while `essayFocus` is pending is treated as a direction for
-new focus options, as on the web.
+new focus options, as on the web: the app answers the question with
+`"__chat_refinement__:<text>"`.
+
+### 6.2 The agent loop
+
+The orchestrator model is given the tools below and the workflow in
+`agent/prompt.rs`, and decides each next step itself. It is a port of
+OctopilotWeb's loop.
+
+| Tool | Does | Model |
+|---|---|---|
+| `plan_essay` | Topic, type, thesis, focus options; names the project | orchestrator |
+| `ask_user` | A question (6.1); the run waits | — |
+| `generate_outlines` | Introduction, body paragraphs, conclusion | orchestrator |
+| `search_sources` | Candidate sources; PDFs and duplicates dropped | source search |
+| `scrape_sources` | Fetches each source's text; charges for research | — |
+| `compact_sources` | A citable brief per source; emits `sources_ready` | secondary |
+| `write_essay` | Streams the essay into the document (section 7); charges for generation | writer |
+| `finalize_document` | Puts the title-page answers on the document; the run then ends | — |
+
+A tool that fails is shown as a failed step and its error goes back to the
+model, which retries or tells the user. A run stops after 40 model round-trips.
+Not ported yet: evaluating sources, source review, critique and revision, the
+humanizer (phase 4).
 
 ## 7. The document and the lock
 
@@ -284,8 +310,9 @@ The lock is enforced on the server: a `PUT /document` during a write gets 409.
 Text is only pushed to clients connected to this stream, so a chat-only client
 costs nothing extra.
 
-The writer is prompted to produce the body paragraphs only. The bibliography is
-produced as a separate step, so the stream is clean prose.
+The writer returns plain prose: the essay, a `===BIBLIOGRAPHY===` line, then the
+bibliography. Only the text before the marker is the body, so the stream is
+clean prose.
 
 ## 8. Credits
 
@@ -331,8 +358,8 @@ Open:
 |---|---|
 | 1a ✅ | Service skeleton, migrations, auth, `/me`, projects and folders |
 | 1b ✅ | Runs: start, durable events, SSE with replay, answer, message, cancel |
-| 1c | Agent loop + core tools: plan, focus question, outlines, search, scrape, compact, word count and citation questions, write, formatting questions |
-| 1d | Document: lock, versions, save, live stream, word-count progress |
+| 1c ✅ | Agent loop + core tools: plan, focus question, outlines, search, scrape, compact, word count and citation questions, write, formatting questions. Also the document lock, version snapshots, progress events and credits. |
+| 1d | Document: saving from the editor, the live text stream, version list and restore |
 | 2 | Mobile chat: timeline, question cards, progress bar, pills |
 | 3 | Editor: shared core from `doc_oct`, mobile editor, read-only live text |
 | 4 | Revision mode, source review, humanizer |

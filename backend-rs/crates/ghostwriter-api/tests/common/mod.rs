@@ -6,6 +6,8 @@
 //! be a server where the user can CREATE DATABASE.
 #![allow(dead_code)]
 
+pub mod fakes;
+
 use axum::body::Body;
 use axum::http::{Method, Request, StatusCode};
 use axum::Router;
@@ -67,6 +69,7 @@ impl TestApp {
         config.octopilot_database_url = Some(url);
         config.firebase_project_id = String::new();
         config.scripted_step = std::time::Duration::ZERO;
+        config.driver = "scripted".into();
         tweak(&mut config);
         let state = AppState::connect(config).await.expect("app state");
         TestApp {
@@ -75,6 +78,19 @@ impl TestApp {
             db,
             admin,
         }
+    }
+
+    /// A fresh app whose runs are driven by the agent loop, with the model and
+    /// the scraper replaced by test doubles.
+    pub async fn agent(
+        llm: std::sync::Arc<dyn ghostwriter_api::llm::Llm>,
+        scraper: std::sync::Arc<dyn ghostwriter_api::scrape::Scraper>,
+    ) -> Self {
+        let mut t = Self::with(|config| config.driver = "agent".into()).await;
+        t.state.llm = Some(llm);
+        t.state.scraper = scraper;
+        t.app = app(t.state.clone());
+        t
     }
 
     /// Sends a request as `user` (the dev `X-User-Id` identity).

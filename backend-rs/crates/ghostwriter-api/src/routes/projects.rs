@@ -159,3 +159,22 @@ pub async fn remove(
     }
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// `GET /v1/projects/:id/document` — the project's document as it stands.
+/// `locked` is true while a run is writing it.
+pub async fn document(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(id): Path<Uuid>,
+) -> Result<Json<Value>, ApiError> {
+    let document: Option<Value> = sqlx::query_scalar(
+        "SELECT jsonb_build_object(             'rev', d.rev, 'style', d.style, 'title', d.title, 'fields', d.fields,              'body', d.body, 'delta', d.delta, 'bibliography', d.bibliography,              'sources', d.sources, 'locked', d.locked_by_run IS NOT NULL,              'wordCount', p.word_count, 'updatedAt', d.updated_at)          FROM documents d JOIN projects p ON p.id = d.project_id          WHERE d.project_id = $1 AND p.user_id = $2",
+    )
+    .bind(id)
+    .bind(caller.user_id)
+    .fetch_optional(&st.db)
+    .await?;
+    document
+        .map(Json)
+        .ok_or_else(|| ApiError::not_found("project not found"))
+}
