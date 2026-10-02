@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:study_studio/study_studio.dart';
 
 import 'modules/module_auth.dart';
+import 'modules/module_push.dart';
 
 /// Standalone GhostWriter entrypoint: the release app while GhostWriter is the
 /// only finished module. Signs in with the shared Octopilot Firebase account
@@ -30,7 +31,10 @@ class _GhostWriterAppState extends ConsumerState<GhostWriterApp> {
     initialLocation: '/ghostwriter',
     routes: [
       GoRoute(path: '/', redirect: (_, _) => '/ghostwriter'),
-      ...GhostWriterModule(auth: ref.read(ghostWriterAuthProvider)).routes(),
+      ...GhostWriterModule(
+        auth: ref.read(ghostWriterAuthProvider),
+        push: ref.read(ghostWriterPushProvider),
+      ).routes(),
     ],
   );
 

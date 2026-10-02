@@ -1,3 +1,4 @@
+pub mod devices;
 pub mod documents;
 pub mod folders;
 pub mod octo;

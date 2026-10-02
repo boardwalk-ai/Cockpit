@@ -6,6 +6,7 @@ pub mod humanize;
 pub mod live_docs;
 pub mod llm;
 pub mod pricing;
+pub mod push;
 pub mod routes;
 pub mod runs;
 pub mod scrape;
@@ -27,7 +28,10 @@ use crate::config::Config;
 use crate::humanize::{HttpHumanizer, Humanizer};
 use crate::live_docs::LiveDocs;
 use crate::llm::Llm;
-use crate::routes::{documents as doc_routes, folders, octo, projects, runs as run_routes, system};
+use crate::push::{FcmPusher, NoPusher, Pusher};
+use crate::routes::{
+    devices, documents as doc_routes, folders, octo, projects, runs as run_routes, system,
+};
 use crate::runs::Hub;
 use crate::scrape::{HttpScraper, Scraper};
 
@@ -55,6 +59,8 @@ pub struct AppState {
     pub llm: Option<Arc<dyn Llm>>,
     pub scraper: Arc<dyn Scraper>,
     pub humanizer: Arc<dyn Humanizer>,
+    /// Sends push notifications; does nothing when FCM is not configured.
+    pub pusher: Arc<dyn Pusher>,
 }
 
 impl HasFirebase for AppState {
@@ -92,6 +98,14 @@ impl AppState {
             );
         }
 
+        let pusher: Arc<dyn Pusher> = match &config.fcm_service_account_file {
+            Some(path) => Arc::new(FcmPusher::from_file(http.clone(), path)?),
+            None => {
+                tracing::warn!("FCM_SERVICE_ACCOUNT_FILE not set — no push notifications");
+                Arc::new(NoPusher)
+            }
+        };
+
         let credits = octo_common::credits::Credits::new(
             octopilot.clone(),
             config.credits_ledger_type.clone(),
@@ -102,6 +116,7 @@ impl AppState {
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             scraper: Arc::new(HttpScraper::new(http.clone(), config.scraper_url.clone())),
             humanizer: Arc::new(HttpHumanizer::new(http.clone(), octopilot.clone())),
+            pusher,
             http,
             db,
             octopilot,
@@ -129,6 +144,7 @@ pub fn app(state: AppState) -> Router {
                 .delete(projects::remove),
         )
         .route("/v1/folders/:id", put(folders::put).delete(folders::remove))
+        .route("/v1/devices/:id", put(devices::put).delete(devices::remove))
         .route(
             "/v1/projects/:id/document",
             get(doc_routes::get_one).put(doc_routes::save),

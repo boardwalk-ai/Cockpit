@@ -20,6 +20,7 @@ use tokio::sync::{broadcast, mpsc, OwnedMutexGuard};
 use tokio::task::AbortHandle;
 use uuid::Uuid;
 
+use crate::push::{notify_run, RunNews};
 use crate::AppState;
 
 /// Run states in which a driver is (or should be) working.
@@ -128,6 +129,15 @@ impl Hub {
             .unwrap()
             .get(&run_id)
             .map(|live| live.events.subscribe())
+    }
+
+    /// How many clients are following the run's events right now.
+    pub fn watchers(&self, run_id: Uuid) -> usize {
+        self.live
+            .lock()
+            .unwrap()
+            .get(&run_id)
+            .map_or(0, |live| live.events.receiver_count())
     }
 
     fn broadcast(&self, run_id: Uuid, event: LiveEvent) {
@@ -295,6 +305,17 @@ pub async fn finish(st: &AppState, run_id: Uuid, outcome: Outcome) -> Result<(),
             None => json!({}),
         };
         append(st, run_id, kind, payload).await?;
+
+        // Nobody was following: tell the user's phones how it ended.
+        if st.hub.watchers(run_id) == 0 {
+            match &outcome {
+                Outcome::Finished => notify_run(st, project_id, run_id, RunNews::Finished),
+                Outcome::Failed(message) => {
+                    notify_run(st, project_id, run_id, RunNews::Failed(message))
+                }
+                Outcome::Cancelled => {}
+            }
+        }
     }
     drop(guard);
     st.hub.close(run_id);

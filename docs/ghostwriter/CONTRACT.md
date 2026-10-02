@@ -143,6 +143,8 @@ All under `/v1`. JSON in, JSON out, camelCase.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/me` | `{ id, name, email, photoUrl, octoCredits }` |
+| PUT | `/devices/:id` | Register this install for push, or refresh its token. `{ token, platform }` (`android`, `ios`, `web`). `id` is made once by the app. 204. |
+| DELETE | `/devices/:id` | Stop pushing to this install (sign-out). 204. |
 | POST | `/octo/ask` | Ask Octo. `{ question }` (max 500 characters) → `{ answer }`. Answers questions about using the app only; not saved, not charged. 503 when no model is available. |
 
 ### Projects and folders
@@ -295,6 +297,22 @@ OctopilotWeb's loop.
 A tool that fails is shown as a failed step and its error goes back to the
 model, which retries or tells the user. A run stops after 40 model round-trips.
 Not ported: the web's automatic removal of junk pages after scraping.
+
+### 6.7 Push notifications
+
+A run notifies the project owner's devices through Firebase Cloud Messaging when
+**no client is connected to its event stream** at that moment:
+
+| When | `data.type` | Body |
+|---|---|---|
+| `question` is emitted | `question` | the question |
+| the run ends `done` | `done` | "GhostWriter has finished. Tap to open." |
+| the run ends `fatal` | `fatal` | "GhostWriter stopped. <reason>" |
+
+The title is the project's title; `data` also has `projectId` and `runId`. A
+cancelled run sends nothing. A token FCM reports as unregistered is deleted.
+The app closes its event stream when it goes to the background, which is what
+makes the server notify. With `FCM_SERVICE_ACCOUNT_FILE` unset nothing is sent.
 
 ### 6.5 Evaluating the sources
 

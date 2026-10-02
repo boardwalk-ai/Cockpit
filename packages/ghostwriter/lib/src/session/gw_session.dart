@@ -138,6 +138,13 @@ class GwSession extends ChangeNotifier {
   String? _failedStart;
   bool _failedCreate = true;
 
+  /// The app is in the background: the run is not followed, so the server
+  /// knows to notify instead.
+  bool _suspended = false;
+
+  /// Called each time a run has started on the server.
+  void Function()? onRunStarted;
+
   StreamSubscription<Map<String, dynamic>>? _subscription;
   Completer<void>? _connection;
 
@@ -269,6 +276,7 @@ class GwSession extends ChangeNotifier {
     starting = false;
     _failedStart = null;
     _notify();
+    onRunStarted?.call();
     unawaited(refreshLibrary());
     unawaited(_follow(run, generation));
   }
@@ -341,6 +349,7 @@ class GwSession extends ChangeNotifier {
   /// Follows the open run again if its connection is down (the app came
   /// back to the foreground, or the user tapped retry).
   void reconnect() {
+    _suspended = false;
     final run = runId;
     if (run == null || timeline.ended || _followingGeneration == _generation) {
       return;
@@ -381,7 +390,7 @@ class GwSession extends ChangeNotifier {
               cancelOnError: true,
             );
         await connection.future;
-        if (!_current(generation) || timeline.ended) return;
+        if (!_current(generation) || timeline.ended || _suspended) return;
 
         final error = failure;
         if (error is GwApiException &&
@@ -408,6 +417,14 @@ class GwSession extends ChangeNotifier {
         _notify();
       }
     }
+  }
+
+  /// Stops following the open run without closing it: the app went to the
+  /// background. [reconnect] picks it up again from where it was.
+  void suspend() {
+    if (_suspended) return;
+    _suspended = true;
+    _stopFollowing();
   }
 
   void _stopFollowing() {

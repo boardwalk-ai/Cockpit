@@ -1073,6 +1073,7 @@ dependencies = [
  "chrono",
  "futures",
  "http-body-util",
+ "jsonwebtoken",
  "octo-common",
  "reqwest",
  "serde",

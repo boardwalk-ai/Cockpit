@@ -40,6 +40,9 @@ pub struct Config {
     pub driver: String,
     /// The Octopilot scraper service (`GET <url>?url=…`).
     pub scraper_url: String,
+    /// The Firebase service-account key file used to send push
+    /// notifications. Unset = no push.
+    pub fcm_service_account_file: Option<String>,
 }
 
 impl Config {
@@ -68,6 +71,7 @@ impl Config {
             driver: std::env::var("GHOSTWRITER_DRIVER").unwrap_or_else(|_| "agent".into()),
             scraper_url: std::env::var("SCRAPER_URL")
                 .unwrap_or_else(|_| "https://api.octopilotai.com/api/scrape".into()),
+            fcm_service_account_file: env_opt("FCM_SERVICE_ACCOUNT_FILE"),
         }
     }
 }

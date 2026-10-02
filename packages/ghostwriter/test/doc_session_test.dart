@@ -29,13 +29,16 @@ void main() {
   GwDocumentSession? opened;
   var saves = 0;
 
-  GwDocumentSession open({Map<String, Object?>? responses}) {
+  GwDocumentSession open({
+    Map<String, Object?>? responses,
+    Duration retryDelay = const Duration(milliseconds: 5),
+  }) {
     server = FakeServer(responses: responses);
     return GwDocumentSession(
       GwApi(baseUrl: 'http://api', client: server.client),
       'p1',
       autosaveDelay: const Duration(milliseconds: 5),
-      retryDelay: const Duration(milliseconds: 5),
+      retryDelay: retryDelay,
     );
   }
 
@@ -185,12 +188,19 @@ void main() {
         responses: {
           'PUT /v1/projects/p1/document': const FakeReply(500, {'error': 'x'}),
         },
+        // No retry during the test: a snapshot that lands mid-save is left
+        // to that save's reply, which is not what this test is about.
+        retryDelay: const Duration(minutes: 1),
       );
       await server.connected();
       server.send(snapshot());
       await settle();
       doc.body.document.insert(0, 'Mine. ');
-      await settle(); // the save fails; the edit is still pending
+      // The save fails; the edit is still pending.
+      for (var i = 0; i < 50 && doc.saveState != SaveState.failed; i++) {
+        await settle();
+      }
+      expect(doc.saveState, SaveState.failed);
 
       server.send(snapshot(rev: 9, body: 'From the web.'));
       // The snapshot can take a while to arrive when the suite runs in parallel.

@@ -82,6 +82,17 @@ impl TestApp {
         }
     }
 
+    /// A fresh scripted app that pushes through `pusher`.
+    pub async fn with_pusher(
+        tweak: impl FnOnce(&mut Config),
+        pusher: std::sync::Arc<fakes::FakePusher>,
+    ) -> Self {
+        let mut t = Self::with(tweak).await;
+        t.state.pusher = pusher;
+        t.app = app(t.state.clone());
+        t
+    }
+
     /// A fresh app whose runs are driven by the agent loop, with the model and
     /// the scraper replaced by test doubles.
     pub async fn agent(

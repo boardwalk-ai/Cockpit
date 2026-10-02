@@ -115,6 +115,13 @@ class GwApi {
   Future<void> message(String runId, String text) =>
       _json('POST', '/v1/runs/$runId/message', {'text': text});
 
+  /// Registers this install for push notifications, or refreshes its token.
+  Future<void> putDevice(String id, String token, String platform) =>
+      _json('PUT', '/v1/devices/$id', {'token': token, 'platform': platform});
+
+  /// Stops push notifications to this install.
+  Future<void> deleteDevice(String id) => _json('DELETE', '/v1/devices/$id');
+
   /// Ask Octo: one question about using the app, one short answer.
   Future<String> askOcto(String question) async {
     final reply = await _json('POST', '/v1/octo/ask', {'question': question});

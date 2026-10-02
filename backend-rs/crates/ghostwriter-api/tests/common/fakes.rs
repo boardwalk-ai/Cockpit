@@ -8,6 +8,7 @@ use axum::async_trait;
 use futures::StreamExt;
 use ghostwriter_api::humanize::{Humanizer, Provider};
 use ghostwriter_api::llm::{ChatReply, ChatRequest, Llm, TextStream, ToolCall};
+use ghostwriter_api::push::{Notice, PushError, Pusher};
 use ghostwriter_api::scrape::{Scraped, Scraper};
 use serde_json::{json, Value};
 use tokio::sync::Notify;
@@ -297,6 +298,28 @@ impl Humanizer for FakeHumanizer {
             Provider::StealthGpt => reworded.replace("\n\n", " "),
             Provider::Undetectable => reworded,
         })
+    }
+}
+
+/// Records what would have been pushed, and to which token.
+#[derive(Default)]
+pub struct FakePusher {
+    pub sent: Mutex<Vec<(String, Notice)>>,
+    /// Tokens FCM would report as no longer registered.
+    pub dead: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl Pusher for FakePusher {
+    async fn send(&self, token: &str, notice: &Notice) -> Result<(), PushError> {
+        if self.dead.lock().unwrap().iter().any(|dead| dead == token) {
+            return Err(PushError::Unregistered);
+        }
+        self.sent
+            .lock()
+            .unwrap()
+            .push((token.to_string(), notice.clone()));
+        Ok(())
     }
 }
 

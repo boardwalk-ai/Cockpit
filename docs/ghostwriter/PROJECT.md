@@ -18,7 +18,7 @@ API နဲ့ database အသေးစိတ်က [CONTRACT.md](CONTRACT.md) �
 | **ဘာဆောက်နေလဲ** | GhostWriter (AI essay ရေးပေးတဲ့ agent) ကို mobile app အဖြစ် ထုတ်ဖို့ |
 | **ပထမ release** | GhostWriter တစ်ခုတည်း။ ပြီးရင် Study Studio၊ နောက်မှ OctoNotes |
 | **Code နေရာ** | `H:\Cockpit-ghostwriter` (Cockpit monorepo၊ branch `feat/ghostwriter`) |
-| **Backend** | Rust (`ghostwriter-api`)၊ Phase 1a–1d + revision (4a) + source review (4b) + humanizer (4c) + source evaluate / critique / Ask Octo (4d) ပြီး၊ test ၇၃ ခု pass |
+| **Backend** | Rust (`ghostwriter-api`)၊ Phase 1a–1d + revision (4a) + source review (4b) + humanizer (4c) + source evaluate / critique / Ask Octo (4d) + push (5a) ပြီး၊ test ၈၀ ခု pass |
 | **Mobile UI** | Phone UI တစ်ခုလုံး Rust API နဲ့ ချိတ်ပြီး၊ Google sign-in (Phase 2)၊ ပြင်လို့ရတဲ့ mobile editor (Phase 3)။ Desktop UI (2c) နောက်မှ။ Test ၄၆ ခု pass |
 | **အခု ပိတ်နေတာ** | Branch ကို GitHub မတင်ရသေးဘူး (git history ထဲမှာ DB password ပါနေလို့၊ အပိုင်း 8) |
 
@@ -195,7 +195,7 @@ packages/
                                 mobile_pills  mobile_editor (editor အဖြူ + toolbar + History)  mobile_sign_in
                                 mobile_details_sheet  mobile_background  mobile_motion  mobile_theme
     assets/                   ghost.png, Poppins fonts
-    test/                     test ၅၈ ခု (fake_server.dart နဲ့ API ကို အတု)
+    test/                     test ၆၄ ခု (fake_server.dart နဲ့ API ကို အတု)
   doc_oct/                    Doc Oct (editor ကို ဒီကနေ ယူမယ်)
   cockpit_ui/ cockpit_core/ cockpit_module/ study_studio/ octo_notes/
 apps/cockpit/
@@ -288,7 +288,7 @@ Operation တစ်ခုကို 100 ပြည့်အောင် တို�
 | **4a** | Revision: essay ရေးပြီးသား project ပေါ် run အသစ် = ပြင်ခိုင်းတာ / မေးတာ၊ `revise_essay` tool၊ `runIds` | 4a + 4b commit | 3 |
 | **4b** | Source review: ဖတ်ထားတဲ့ source တွေကို user က ဖယ် / focus note ရေး၊ ဖယ်ထားတာကို အနှစ်မချုပ် | 4a + 4b commit | 1 (+ app 7) |
 
-- **Test ၇၃ ခုလုံး pass**၊ clippy သန့်တယ်။ Timing ပေါ်မူတည်တဲ့ test တွေကို ၁၀ ကြိမ် ထပ် run ပြီး တည်ငြိမ်တာ စစ်ထားတယ်။
+- **Test ၈၀ ခုလုံး pass**၊ clippy သန့်တယ်။ Timing ပေါ်မူတည်တဲ့ test တွေကို ၁၀ ကြိမ် ထပ် run ပြီး တည်ငြိမ်တာ စစ်ထားတယ်။
 - **AI အစစ်နဲ့ တစ်ကြိမ် စမ်းထားတယ်** (2026-10-02): ၁၀၉ စက္ကန့်အတွင်း source အစစ် ၄ ခု (IPCC, NASA, Miami-Dade, UN)
   နဲ့ APA citation ပါတဲ့ စာလုံး ၄၅၁ လုံး essay၊ title page field ၅ ခု၊ 200 OC ဖြတ်။
 
@@ -383,7 +383,13 @@ Browser မှာ scripted backend နဲ့ အစအဆုံး စမ်း�
 - [x] **Ask Octo** — header မှာ Octo icon၊ နှိပ်ရင် bottom sheet။ App သုံးပုံအကြောင်း မေးခွန်းတစ်ခု၊ အဖြေတိုတစ်ခု (`POST /v1/octo/ask`)။ Essay အကြောင်း မဖြေဘူး၊ credit မဖြတ်ဘူး၊ မသိမ်းဘူး။ **Rate limit မထည့်ရသေးဘူး** (မေးခွန်း စာလုံး ၅၀၀ ကန့်သတ်ပဲ ရှိ)
 
 ### Phase 5 — Notification
-- [ ] Push (မေးခွန်းစောင့်နေရင်)
+- [x] **5a Push notification** (code ပြီး၊ **ဖုန်းအစစ်မှာ မစမ်းရသေး**)
+  - Server: `devices` table၊ `PUT/DELETE /v1/devices/:id`၊ FCM HTTP v1 နဲ့ ပို့တယ်
+  - ပို့တဲ့အချိန်: agent က မေးခွန်းမေးတဲ့အခါ၊ run ပြီးတဲ့အခါ၊ run fail တဲ့အခါ။ **အဲ့ဒီ run ကို ဘယ် app မှ ကြည့်မနေမှ** ပို့တယ် (event stream ချိတ်ထားသူ မရှိမှ)
+  - App: နောက်ကွယ်ရောက်ရင် stream ပိတ်တယ် (server က notify လုပ်ဖို့)၊ ပြန်ဝင်ရင် ဆက်ချိတ်ပြီး လွတ်သွားတာတွေ ပြန်ယူတယ်
+  - Permission ကို app ဖွင့်ဖွင့်ချင်း မတောင်းဘူး၊ **ပထမဆုံး run စတဲ့အခါမှ** တောင်းတယ်
+  - Notification နှိပ်ရင် အဲ့ဒီ essay ပွင့်တယ်။ Sign out လုပ်ရင် အဲ့ဒီဖုန်းကို ဆက်မပို့တော့ဘူး
+  - **လိုသေးတာ (user လုပ်ရမယ်):** Firebase service account key (server မှာ `FCM_SERVICE_ACCOUNT_FILE`)၊ iOS အတွက် APNs key ကို Firebase မှာ upload + Xcode မှာ Push Notifications capability
 - [ ] iOS Live Activities၊ Android ongoing notification
 
 ### Release မတိုင်ခင်
@@ -504,3 +510,4 @@ Dev server config `ghostwriter-api` (scripted၊ :8791) နဲ့ `ghostwriter-a
 | 10-03 | Phase 4b: source review (ဖယ်တာ / focus note)၊ backend + app |
 | 10-03 | Phase 4c: humanizer (StealthGPT / UndetectableAI) + paragraph split၊ backend |
 | 10-03 | Phase 4d: source evaluate၊ critique၊ Ask Octo (header icon)။ Phase 4 ပြီး |
+| 10-03 | Phase 5a: push notification (server + app)။ ဖုန်းအစစ်မှာ မစမ်းရသေး |

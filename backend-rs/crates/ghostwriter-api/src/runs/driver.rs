@@ -13,6 +13,7 @@ use uuid::Uuid;
 use super::{append, emit, emit_live, finish, Inbox, Outcome};
 use crate::documents::{self, AgentSave, DocError};
 use crate::humanize::{self, Provider};
+use crate::push::{notify_run, RunNews};
 use crate::AppState;
 
 /// Why a driver stopped early.
@@ -83,7 +84,22 @@ impl RunCtx {
             if waiting == 0 {
                 return Err(RunError::Stopped);
             }
+            let text = question["question"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string();
             append(&self.st, self.run_id, "question", question).await?;
+
+            // The run now waits on the user; if nobody is following it,
+            // their phone is the only way they find out.
+            if self.st.hub.watchers(self.run_id) == 0 {
+                notify_run(
+                    &self.st,
+                    self.project_id,
+                    self.run_id,
+                    RunNews::Question(&text),
+                );
+            }
         }
 
         let limit = self.st.config.ask_timeout;
