@@ -746,6 +746,20 @@ fn compaction_summary(reply: &Value) -> String {
     sections.join("\n\n")
 }
 
+/// How often the writer's new text goes to open editors.
+const LIVE_BATCH: Duration = Duration::from_millis(50);
+
+/// Sends the part of `body` past `streamed` (a byte offset) to open editors
+/// and returns the new offset. `body` only ever grows, so it is a clean cut.
+fn stream_live(agent: &Agent<'_>, body: &str, streamed: usize) -> usize {
+    agent
+        .run
+        .st
+        .docs
+        .append(agent.run.project_id, &body[streamed..]);
+    body.len()
+}
+
 /// The essay part of the writer's output so far, and the bibliography once
 /// the marker has arrived.
 fn split_output(output: &str) -> (&str, Option<&str>) {
@@ -826,9 +840,11 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
     }
 
     let db = agent.run.st.db.clone();
+    let docs = agent.run.st.docs.clone();
     let (project_id, run_id) = (agent.run.project_id, agent.run.run_id);
 
     documents::begin_agent_write(&db, project_id, run_id, "agent_write").await?;
+    docs.begin(project_id);
     sqlx::query("UPDATE projects SET target_words = $2, updated_at = now() WHERE id = $1")
         .bind(project_id)
         .bind(target as i32)
@@ -853,10 +869,17 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
     let mut output = String::new();
     let mut last_progress = Instant::now();
     let mut last_save = Instant::now();
+    let mut last_live: Option<Instant> = None;
     let mut reported = -1;
+    let mut streamed = 0;
     while let Some(chunk) = stream.next().await {
         output.push_str(&chunk?);
         let (body, _) = split_output(&output);
+
+        if last_live.is_none_or(|at| at.elapsed() >= LIVE_BATCH) {
+            last_live = Some(Instant::now());
+            streamed = stream_live(agent, body.trim_start(), streamed);
+        }
 
         if last_progress.elapsed() >= Duration::from_secs(1) {
             last_progress = Instant::now();
@@ -879,6 +902,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
                 ..AgentSave::default()
             };
             let (rev, words) = documents::save_agent(&db, project_id, run_id, save).await?;
+            docs.committed(project_id, rev);
             agent
                 .run
                 .emit(
@@ -890,6 +914,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
     }
 
     let (body, bibliography) = split_output(&output);
+    stream_live(agent, body.trim_start(), streamed);
     let body = body.trim();
     if body.is_empty() {
         return Err("the writer returned no essay".into());
@@ -907,7 +932,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
         fields: None,
     };
     let (rev, words) = documents::save_agent(&db, project_id, run_id, save).await?;
-    documents::unlock(&db, project_id, run_id).await?;
+    documents::unlock(&db, &docs, project_id, run_id).await?;
 
     agent
         .run
@@ -953,7 +978,7 @@ async fn finalize_document(agent: &mut Agent<'_>) -> Result<Done, Failure> {
         ..AgentSave::default()
     };
     let (rev, words) = documents::save_agent(&db, project_id, run_id, save).await?;
-    documents::unlock(&db, project_id, run_id).await?;
+    documents::unlock(&db, &agent.run.st.docs, project_id, run_id).await?;
 
     agent
         .run

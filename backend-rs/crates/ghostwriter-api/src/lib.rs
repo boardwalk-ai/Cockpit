@@ -2,6 +2,7 @@ pub mod agent;
 pub mod config;
 pub mod ctx;
 pub mod documents;
+pub mod live_docs;
 pub mod llm;
 pub mod pricing;
 pub mod routes;
@@ -22,8 +23,9 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
+use crate::live_docs::LiveDocs;
 use crate::llm::Llm;
-use crate::routes::{folders, projects, runs as run_routes, system};
+use crate::routes::{documents as doc_routes, folders, projects, runs as run_routes, system};
 use crate::runs::Hub;
 use crate::scrape::{HttpScraper, Scraper};
 
@@ -44,6 +46,8 @@ pub struct AppState {
     pub credits: octo_common::credits::Credits,
     /// The runs this process is driving.
     pub hub: Hub,
+    /// Live text for open editors while the agent writes.
+    pub docs: LiveDocs,
     /// A model to use instead of OpenRouter. Tests set this; production
     /// leaves it empty and each run takes a key from the shared pool.
     pub llm: Option<Arc<dyn Llm>>,
@@ -99,6 +103,7 @@ impl AppState {
             octopilot,
             user_ids: UserIdCache::default(),
             hub: Hub::default(),
+            docs: LiveDocs::default(),
             llm: None,
             config: Arc::new(config),
         })
@@ -119,7 +124,16 @@ pub fn app(state: AppState) -> Router {
                 .delete(projects::remove),
         )
         .route("/v1/folders/:id", put(folders::put).delete(folders::remove))
-        .route("/v1/projects/:id/document", get(projects::document))
+        .route(
+            "/v1/projects/:id/document",
+            get(doc_routes::get_one).put(doc_routes::save),
+        )
+        .route("/v1/projects/:id/document/stream", get(doc_routes::stream))
+        .route("/v1/projects/:id/versions", get(doc_routes::versions))
+        .route(
+            "/v1/projects/:id/versions/:version_id/restore",
+            post(doc_routes::restore),
+        )
         .route("/v1/projects/:id/runs", post(run_routes::start))
         .route("/v1/runs/:run_id", get(run_routes::get_one))
         .route("/v1/runs/:run_id/events", get(run_routes::events))

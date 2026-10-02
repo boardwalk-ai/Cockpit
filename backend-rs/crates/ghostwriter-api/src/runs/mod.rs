@@ -286,7 +286,10 @@ pub async fn finish(st: &AppState, run_id: Uuid, outcome: Outcome) -> Result<(),
 
     let guard = st.hub.lock(run_id).await;
     let closed = close_in_db(&st.db, run_id, status, error).await?;
-    if closed {
+    if let Some((project_id, unlocked)) = closed {
+        if unlocked {
+            st.docs.changed(project_id);
+        }
         let payload = match error {
             Some(message) => json!({ "error": message }),
             None => json!({}),
@@ -298,13 +301,14 @@ pub async fn finish(st: &AppState, run_id: Uuid, outcome: Outcome) -> Result<(),
     Ok(())
 }
 
-/// Marks the run closed and releases what it held. False if it was not active.
+/// Marks the run closed and releases what it held. Returns the run's project
+/// and whether its document was locked, or `None` if the run was not active.
 async fn close_in_db(
     db: &PgPool,
     run_id: Uuid,
     status: &str,
     error: Option<&str>,
-) -> Result<bool, sqlx::Error> {
+) -> Result<Option<(Uuid, bool)>, sqlx::Error> {
     let mut tx = db.begin().await?;
     let project_id: Option<Uuid> = sqlx::query_scalar(&format!(
         "UPDATE runs SET status = $2, error = $3, pending_question = NULL, updated_at = now() \
@@ -316,13 +320,16 @@ async fn close_in_db(
     .fetch_optional(&mut *tx)
     .await?;
     let Some(project_id) = project_id else {
-        return Ok(false);
+        return Ok(None);
     };
 
-    sqlx::query("UPDATE documents SET locked_by_run = NULL WHERE locked_by_run = $1")
-        .bind(run_id)
-        .execute(&mut *tx)
-        .await?;
+    let unlocked =
+        sqlx::query("UPDATE documents SET locked_by_run = NULL WHERE locked_by_run = $1")
+            .bind(run_id)
+            .execute(&mut *tx)
+            .await?
+            .rows_affected()
+            > 0;
     // A project with words in it is worth opening even if the run failed.
     sqlx::query(
         "UPDATE projects SET updated_at = now(), status = \
@@ -334,7 +341,7 @@ async fn close_in_db(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(true)
+    Ok(Some((project_id, unlocked)))
 }
 
 /// Closes runs a restart cut off. Their drivers died with the old process, so
@@ -351,7 +358,10 @@ pub async fn recover_interrupted(db: &PgPool) -> Result<u64, sqlx::Error> {
     let message = "The server restarted while this run was in progress.";
     let mut closed = 0;
     for run_id in runs {
-        if close_in_db(db, run_id, "error", Some(message)).await? {
+        if close_in_db(db, run_id, "error", Some(message))
+            .await?
+            .is_some()
+        {
             append_to_log(db, run_id, "fatal", &json!({ "error": message })).await?;
             closed += 1;
         }

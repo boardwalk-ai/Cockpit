@@ -9,11 +9,11 @@ use axum::http::StatusCode;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use octo_common::ApiError;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::{clean_text, folders, runs};
+use super::{clean_text, folders, present, runs};
 use crate::ctx::Caller;
 use crate::AppState;
 
@@ -42,15 +42,6 @@ pub struct PutProject {
     /// Absent ⇒ leave the folder alone; `null` ⇒ unfile; an id ⇒ move there.
     #[serde(default, deserialize_with = "present")]
     pub folder_id: Option<Option<Uuid>>,
-}
-
-/// Tells a field that was sent as `null` apart from one that was not sent.
-fn present<'de, T, D>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: Deserializer<'de>,
-{
-    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 /// `GET /v1/projects` — the user's projects (newest first) and folders.
@@ -157,24 +148,7 @@ pub async fn remove(
     if deleted == 0 {
         return Err(ApiError::not_found("project not found"));
     }
+    // Ends any open document stream on it.
+    st.docs.changed(id);
     Ok(StatusCode::NO_CONTENT)
-}
-
-/// `GET /v1/projects/:id/document` — the project's document as it stands.
-/// `locked` is true while a run is writing it.
-pub async fn document(
-    State(st): State<AppState>,
-    caller: Caller,
-    Path(id): Path<Uuid>,
-) -> Result<Json<Value>, ApiError> {
-    let document: Option<Value> = sqlx::query_scalar(
-        "SELECT jsonb_build_object(             'rev', d.rev, 'style', d.style, 'title', d.title, 'fields', d.fields,              'body', d.body, 'delta', d.delta, 'bibliography', d.bibliography,              'sources', d.sources, 'locked', d.locked_by_run IS NOT NULL,              'wordCount', p.word_count, 'updatedAt', d.updated_at)          FROM documents d JOIN projects p ON p.id = d.project_id          WHERE d.project_id = $1 AND p.user_id = $2",
-    )
-    .bind(id)
-    .bind(caller.user_id)
-    .fetch_optional(&st.db)
-    .await?;
-    document
-        .map(Json)
-        .ok_or_else(|| ApiError::not_found("project not found"))
 }

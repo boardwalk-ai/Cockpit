@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::{append, emit, emit_live, finish, Inbox, Outcome};
+use crate::documents::{self, AgentSave, DocError};
 use crate::AppState;
 
 /// Why a driver stopped early.
@@ -26,6 +27,17 @@ pub enum RunError {
 impl From<sqlx::Error> for RunError {
     fn from(e: sqlx::Error) -> Self {
         RunError::Db(e)
+    }
+}
+
+impl From<DocError> for RunError {
+    fn from(e: DocError) -> Self {
+        match e {
+            DocError::Locked => {
+                RunError::Failed("Another run is writing this document.".to_string())
+            }
+            DocError::Db(e) => RunError::Db(e),
+        }
     }
 }
 
@@ -280,19 +292,20 @@ async fn scripted(ctx: &mut RunCtx) -> Result<(), RunError> {
         .filter(|n| (50..=20_000).contains(n))
         .ok_or_else(|| RunError::Failed("That word count is not usable.".to_string()))?;
 
-    ctx.ask(
-        "citationStyle",
-        json!({
-            "question": "Which citation format?",
-            "inputType": "select",
-            "allowCustom": false,
-            "options": [
-                option("APA"), option("MLA"), option("Chicago"),
-                option("Harvard"), option("IEEE"), option("None"),
-            ],
-        }),
-    )
-    .await?;
+    let style = ctx
+        .ask(
+            "citationStyle",
+            json!({
+                "question": "Which citation format?",
+                "inputType": "select",
+                "allowCustom": false,
+                "options": [
+                    option("APA"), option("MLA"), option("Chicago"),
+                    option("Harvard"), option("IEEE"), option("None"),
+                ],
+            }),
+        )
+        .await?;
 
     ctx.say("Thanks. Writing your essay now.").await?;
 
@@ -302,25 +315,149 @@ async fn scripted(ctx: &mut RunCtx) -> Result<(), RunError> {
         json!({ "stepId": step_id, "tool": "write_essay", "title": "Writing the essay" }),
     )
     .await?;
-    ctx.emit("writing_started", json!({ "targetWords": target }))
-        .await?;
-    // A real draft may overshoot its target; so does this one.
-    for percent in [20, 45, 70, 95, 104] {
-        ctx.pause().await;
-        ctx.emit(
-            "write_progress",
-            json!({ "words": target * percent / 100, "targetWords": target }),
-        )
-        .await?;
-    }
+    let style = documents::style_key(style.as_str().unwrap_or_default());
+    let words = scripted_write(ctx, target, style).await?;
     ctx.emit(
         "step_done",
-        json!({ "stepId": step_id, "summary": format!("{} words written.", target * 104 / 100) }),
+        json!({ "stepId": step_id, "summary": format!("{words} words written.") }),
     )
     .await?;
 
     Ok(())
 }
 
+/// Writes a canned essay into the document the way the agent does: locked,
+/// streamed to open editors, saved as it goes, then unlocked.
+async fn scripted_write(ctx: &RunCtx, target: i64, style: &str) -> Result<i64, RunError> {
+    let st = &ctx.st;
+    let (db, docs) = (&st.db, &st.docs);
+    let (project_id, run_id) = (ctx.project_id, ctx.run_id);
+
+    documents::begin_agent_write(db, project_id, run_id, "agent_write").await?;
+    docs.begin(project_id);
+    ctx.emit("writing_started", json!({ "targetWords": target }))
+        .await?;
+
+    // A real draft may overshoot its target; so does this one.
+    let length = target * 104 / 100;
+    let draft = canned_essay(length);
+    let essay = first_words(&draft, length as usize);
+    let mut streamed = 0;
+    for percent in [20, 45, 70, 95, 104] {
+        let words = target * percent / 100;
+        let upto = first_words(essay, words as usize).len();
+        // Typed out over the pause, a word at a time, for an open editor.
+        let pieces: Vec<&str> = essay[streamed..upto].split_inclusive(' ').collect();
+        let beat = st.config.scripted_step / pieces.len().max(1) as u32;
+        if beat.is_zero() {
+            docs.append(project_id, &essay[streamed..upto]);
+        } else {
+            for piece in pieces {
+                docs.append(project_id, piece);
+                tokio::time::sleep(beat).await;
+            }
+        }
+        streamed = upto;
+
+        let save = AgentSave {
+            body: Some(&essay[..upto]),
+            ..AgentSave::default()
+        };
+        let (rev, _) = documents::save_agent(db, project_id, run_id, save).await?;
+        docs.committed(project_id, rev);
+        ctx.emit(
+            "write_progress",
+            json!({ "words": words, "targetWords": target }),
+        )
+        .await?;
+    }
+
+    let title: String = ctx.instruction.chars().take(80).collect();
+    let save = AgentSave {
+        body: Some(essay),
+        bibliography: Some(SCRIPTED_BIBLIOGRAPHY),
+        title: Some(title.trim()),
+        style: Some(style),
+        ..AgentSave::default()
+    };
+    let (rev, words) = documents::save_agent(db, project_id, run_id, save).await?;
+    documents::unlock(db, docs, project_id, run_id).await?;
+    ctx.emit(
+        "document_updated",
+        json!({ "rev": rev, "wordCount": words }),
+    )
+    .await?;
+    Ok(words)
+}
+
+const SCRIPTED_SENTENCES: [&str; 6] = [
+    "This draft was written by the scripted driver, so no model was called.",
+    "Each paragraph stands in for the argument a real run would make from its sources.",
+    "The claims here are placeholders, but the shape of the essay is real.",
+    "A citation would sit at the end of a sentence like this one (Author, 2024).",
+    "The text streams into the editor as it is written and is saved every few seconds.",
+    "When the run ends, the document unlocks and can be edited.",
+];
+
+const SCRIPTED_BIBLIOGRAPHY: &str = "Author, A. (2024). A placeholder source. Example Press.
+     Writer, B. (2023). Another placeholder source. Example Journal, 1(1), 1-10.";
+
+/// About `words` words of placeholder prose, in paragraphs of four sentences.
+fn canned_essay(words: i64) -> String {
+    let mut essay = String::new();
+    let mut count = 0;
+    let mut sentences = SCRIPTED_SENTENCES.iter().cycle().enumerate();
+    while count < words {
+        let (index, sentence) = sentences.next().expect("cycle never ends");
+        if index > 0 {
+            essay.push_str(if index % 4 == 0 {
+                "
+
+"
+            } else {
+                " "
+            });
+        }
+        essay.push_str(sentence);
+        count += sentence.split_whitespace().count() as i64;
+    }
+    essay
+}
+
+/// The start of `text` up to the end of its `n`th word.
+fn first_words(text: &str, n: usize) -> &str {
+    let mut ends = text
+        .split_whitespace()
+        .map(|word| word.as_ptr() as usize - text.as_ptr() as usize + word.len());
+    match n {
+        0 => "",
+        n => ends.nth(n - 1).map_or(text, |end| &text[..end]),
+    }
+}
+
 /// Default wait for an answer before a run gives up.
 pub const DEFAULT_ASK_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_canned_essay_is_cut_at_whole_words() {
+        let essay = canned_essay(120);
+        assert!(crate::pricing::count_words(&essay) >= 120);
+        assert!(essay.contains(
+            "
+
+"
+        ));
+
+        let start = first_words(&essay, 5);
+        assert_eq!(start, "This draft was written by");
+        assert_eq!(first_words(&essay, 0), "");
+        assert_eq!(first_words("one two", 9), "one two");
+        let cut = first_words(&essay, 100);
+        assert_eq!(crate::pricing::count_words(cut), 100);
+        assert!(!cut.ends_with(char::is_whitespace));
+    }
+}

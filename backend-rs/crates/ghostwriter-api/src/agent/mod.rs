@@ -247,7 +247,8 @@ async fn dispatch(
     )
     .await;
     // Whatever happened, a tool must not leave the document locked.
-    documents::unlock(&agent.run.st.db, agent.run.project_id, agent.run.run_id).await?;
+    let st = &agent.run.st;
+    documents::unlock(&st.db, &st.docs, agent.run.project_id, agent.run.run_id).await?;
 
     let error = match outcome {
         Ok(Ok((result, summary))) => {

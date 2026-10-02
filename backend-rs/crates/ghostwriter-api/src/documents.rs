@@ -3,10 +3,13 @@
 //! While a run writes, the document is locked to that run: `locked_by_run`
 //! is set, and every write here checks it. A snapshot goes into
 //! `document_versions` before the first change, so an agent edit can be undone.
+//! Editor saves and restores are in `routes::documents`.
 
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
+
+use crate::live_docs::LiveDocs;
 
 /// Why a document write did not happen.
 #[derive(Debug)]
@@ -51,21 +54,29 @@ pub async fn begin_agent_write(
         return Err(DocError::Locked);
     }
 
-    sqlx::query(
-        "INSERT INTO document_versions (project_id, rev, reason, snapshot) \
-         SELECT project_id, rev, $2, to_jsonb(documents) - 'locked_by_run' \
-         FROM documents WHERE project_id = $1",
-    )
-    .bind(project_id)
-    .bind(reason)
-    .execute(&mut *tx)
-    .await?;
+    snapshot(&mut tx, project_id, reason).await?;
     sqlx::query("UPDATE documents SET locked_by_run = $2 WHERE project_id = $1")
         .bind(project_id)
         .bind(run_id)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    Ok(())
+}
+
+/// Saves the document as it stands into `document_versions`.
+pub async fn snapshot(
+    conn: &mut PgConnection,
+    project_id: Uuid,
+    reason: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO document_versions (project_id, rev, reason, snapshot)          SELECT project_id, rev, $2, to_jsonb(documents) - 'locked_by_run'          FROM documents WHERE project_id = $1",
+    )
+    .bind(project_id)
+    .bind(reason)
+    .execute(conn)
+    .await?;
     Ok(())
 }
 
@@ -125,14 +136,23 @@ pub async fn save_agent(
     Ok((rev, words))
 }
 
-/// Releases the run's lock, if it holds it.
-pub async fn unlock(db: &PgPool, project_id: Uuid, run_id: Uuid) -> Result<(), sqlx::Error> {
-    sqlx::query(
+/// Releases the run's lock, if it holds it, and tells open editors.
+pub async fn unlock(
+    db: &PgPool,
+    docs: &LiveDocs,
+    project_id: Uuid,
+    run_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    let released = sqlx::query(
         "UPDATE documents SET locked_by_run = NULL WHERE project_id = $1 AND locked_by_run = $2",
     )
     .bind(project_id)
     .bind(run_id)
     .execute(db)
-    .await?;
+    .await?
+    .rows_affected();
+    if released > 0 {
+        docs.changed(project_id);
+    }
     Ok(())
 }

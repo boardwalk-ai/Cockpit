@@ -1,6 +1,6 @@
 # GhostWriter backend contract
 
-Status: **in progress** — phases 1a, 1b and 1c are built (see section 10).
+Status: **in progress** — phases 1a to 1d (the whole backend for phases 2 and 3) are built (see section 10).
 
 This is the agreement between the GhostWriter mobile app and its new Rust
 backend: what is stored, which endpoints exist, and which events the app
@@ -178,17 +178,19 @@ a restart is not built.
 Runs are driven by the agent loop (section 6.2). `GHOSTWRITER_DRIVER=scripted`
 switches to a scripted driver instead: the same steps and questions with canned
 content and no model calls, for building and demoing the app without spending
-credits.
+credits. It writes a placeholder essay into the document the way the agent does
+(locked, streamed to an open editor, saved as it goes), so the editor can be
+built against it too.
 
 ### Document
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/projects/:id/document` ✅ | The document, its `rev`, and `locked` |
-| PUT | `/projects/:id/document` | Save from the editor: `{ baseRev, style, title, fields, body, delta }`. **409** while locked, **409** if `baseRev` is stale. |
-| GET | `/projects/:id/document/stream` | SSE for the read-only editor (section 7) |
-| GET | `/projects/:id/versions` | Version list |
-| POST | `/projects/:id/versions/:versionId/restore` | Roll the document back (undo an agent edit) |
+| GET | `/projects/:id/document` | `{ rev, style, title, fields, body, delta, bibliography, sources, locked, wordCount, updatedAt }` |
+| PUT | `/projects/:id/document` | Save from the editor (7.2) → `{ rev, wordCount }` |
+| GET | `/projects/:id/document/stream` | SSE for an open editor (7.1) |
+| GET | `/projects/:id/versions` | `{ versions: [{ id, rev, reason, createdAt, title, preview, wordCount }] }`, newest first, at most 100 |
+| POST | `/projects/:id/versions/:versionId/restore` | Put that version back → the document, as `GET` returns it. **409** `document_locked` while a run writes. |
 
 ## 6. Run events
 
@@ -289,30 +291,60 @@ humanizer (phase 4).
    version, and emits `writing_started`.
 2. The writer streams from the model. The server keeps the text in memory,
    counts words, and emits `write_progress` once a second.
-3. The text is saved to `documents` at the end of each paragraph (and at least
-   every 2 seconds), bumping `rev` and emitting `document_updated`.
+3. The text is saved to `documents` every 2 seconds, bumping `rev` and
+   emitting `document_updated`.
 4. When writing ends the lock is released. From then on the editor can save.
 5. A revision takes the lock again, saves a version, rewrites, and releases.
-
-The lock is enforced on the server: a `PUT /document` during a write gets 409.
-
-### Live text for the read-only editor
-
-`GET /projects/:id/document/stream`:
-
-| Event | Payload | Meaning |
-|---|---|---|
-| `snapshot` | the whole document + `rev` + `locked` | Sent first |
-| `delta` | `text` | Characters to append to the body. Batched about every 50 ms. |
-| `committed` | `rev` | The text so far is saved |
-| `unlocked` | `rev` | The agent is done; the editor may become editable |
-
-Text is only pushed to clients connected to this stream, so a chat-only client
-costs nothing extra.
 
 The writer returns plain prose: the essay, a `===BIBLIOGRAPHY===` line, then the
 bibliography. Only the text before the marker is the body, so the stream is
 clean prose.
+
+The lock is enforced on the server: a `PUT /document` or a restore during a
+write gets 409.
+
+A restore keeps the document it replaces as a `restore` version first, so a
+restore can itself be undone.
+
+### 7.1 The editor's stream
+
+`GET /projects/:id/document/stream` stays open for as long as the editor is.
+Each frame is `data: <json>` with a `type`:
+
+| Event | Payload | What the editor does |
+|---|---|---|
+| `snapshot` | the document as `GET` returns it | Replace everything it shows. Sent first, when a write begins (`locked: true`, empty body), and after any other change. |
+| `delta` | `text` | Append to the body. Batched about every 50 ms. |
+| `committed` | `rev` | The text so far is saved |
+| `unlocked` | `rev` | Follows the final `snapshot` of a write: the editor may become editable |
+
+While a write is in progress the snapshot carries the text streamed so far,
+which is ahead of the database, so an editor opened mid-write starts from there
+and misses nothing. If an editor falls too far behind, it is sent a fresh
+`snapshot` and carries on.
+
+An editor's own save comes back to it as a `snapshot` with the `rev` the save
+returned. An unlocked snapshot with a `rev` the editor already has can be
+ignored; this keeps typing done since the save from being overwritten.
+
+Deleting the project ends the stream. Text is only pushed to clients connected
+to this stream, so a chat-only client costs nothing extra.
+
+### 7.2 Saving from the editor
+
+`PUT /projects/:id/document` with `{ baseRev, style?, title?, fields?, body?, delta?, bibliography? }`:
+
+- `baseRev` is the `rev` the editor's copy was loaded at. Fields left out are
+  kept. `delta` is the Quill delta for `body`; a `body` sent without one clears
+  the stored delta, since it would no longer match.
+- **409 `document_locked`** while a run writes; **409 `stale_rev`** if the
+  document changed since `baseRev`. Both carry `details.rev`, the current `rev`.
+- Sending what is already saved changes nothing and succeeds, so a save whose
+  reply was lost can simply be retried.
+- A save first keeps the document as it was as a `user_save` version, unless
+  the newest version is a `user_save` less than 10 minutes old. So the agent's
+  text is always kept before the first edit, and autosave adds at most one
+  version every 10 minutes.
 
 ## 8. Credits
 
@@ -359,7 +391,7 @@ Open:
 | 1a ✅ | Service skeleton, migrations, auth, `/me`, projects and folders |
 | 1b ✅ | Runs: start, durable events, SSE with replay, answer, message, cancel |
 | 1c ✅ | Agent loop + core tools: plan, focus question, outlines, search, scrape, compact, word count and citation questions, write, formatting questions. Also the document lock, version snapshots, progress events and credits. |
-| 1d | Document: saving from the editor, the live text stream, version list and restore |
+| 1d ✅ | Document: saving from the editor, the live text stream, version list and restore. The scripted driver writes a placeholder essay. |
 | 2 | Mobile chat: timeline, question cards, progress bar, pills |
 | 3 | Editor: shared core from `doc_oct`, mobile editor, read-only live text |
 | 4 | Revision mode, source review, humanizer |
