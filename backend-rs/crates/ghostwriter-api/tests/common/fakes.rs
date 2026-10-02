@@ -99,6 +99,8 @@ pub struct FakeLlm {
     pub essay_output: Mutex<String>,
     /// If set, the writer stream waits here after its first chunk.
     pub hold_writer: Option<Arc<Notify>>,
+    /// What the source evaluator replies, when not the default "sufficient".
+    pub evaluation: Mutex<Option<String>>,
     /// Makes the paragraph splitter change a word, which must be refused.
     pub careless_splitter: Mutex<bool>,
 }
@@ -179,6 +181,26 @@ impl FakeLlm {
                 "key_points": ["Faster since 1993"],
                 "relevant_quotes": ["\"Flooding is routine.\""],
             })
+        } else if system.contains("research quality evaluator") {
+            json!({
+                "sufficient": true,
+                "quality": "good",
+                "gaps": [],
+                "recommendation": "",
+            })
+        } else if system.contains("essay critic") {
+            json!({
+                "overallScore": 6,
+                "ready": false,
+                "issues": [
+                    { "paragraph": 2, "type": "evidence", "description": "The claim has one source.", "severity": "major" },
+                    { "paragraph": 3, "type": "odd", "description": "The ending is abrupt.", "severity": "minor" },
+                    { "paragraph": 9, "type": "clarity", "description": "No such paragraph.", "severity": "major" },
+                    { "paragraph": 1, "type": "clarity", "description": "", "severity": "minor" },
+                ],
+            })
+        } else if system.contains("You are Octo") {
+            json!({ "answer": "Tap the Open Editor pill at the top right." })
         } else {
             json!({ "error": "FakeLlm does not know this sub-agent" })
         }
@@ -204,6 +226,14 @@ impl Llm for FakeLlm {
                     content: Self::split(&asked, careless).to_string(),
                     tool_calls: Vec::new(),
                 });
+            }
+            if system.contains("research quality evaluator") {
+                if let Some(content) = self.evaluation.lock().unwrap().clone() {
+                    return Ok(ChatReply {
+                        content,
+                        tool_calls: Vec::new(),
+                    });
+                }
             }
             return Ok(ChatReply {
                 content: Self::sub_agent(&system).to_string(),

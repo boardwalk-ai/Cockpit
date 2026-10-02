@@ -6,13 +6,14 @@ import 'mobile_motion.dart';
 import 'mobile_theme.dart';
 
 /// Phone top bar: menu (opens the threads drawer), title, save (once there
-/// is a draft) and the OctoCredits balance.
+/// is a draft), Ask Octo and the OctoCredits balance.
 class GhostWriterMobileTopBar extends StatelessWidget {
   const GhostWriterMobileTopBar({
     super.key,
     required this.credits,
     required this.saving,
     this.onSave,
+    this.onAskOcto,
   });
 
   final int credits;
@@ -20,6 +21,9 @@ class GhostWriterMobileTopBar extends StatelessWidget {
 
   /// Null hides the save button (nothing to save on the landing screen).
   final VoidCallback? onSave;
+
+  /// Opens Ask Octo. Null hides its button.
+  final VoidCallback? onAskOcto;
 
   @override
   Widget build(BuildContext context) {
@@ -88,6 +92,24 @@ class GhostWriterMobileTopBar extends StatelessWidget {
                         ),
                       ),
                     ),
+                  if (onAskOcto != null) ...[
+                    GwPressable(
+                      tooltip: 'Ask Octo',
+                      onTap: onAskOcto,
+                      child: SizedBox(
+                        width: 40,
+                        height: kGwButton,
+                        child: Center(
+                          child: Image.asset(
+                            GwAssets.octo,
+                            width: 28,
+                            height: 28,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   OctoCreditsPill(credits: credits),
                 ],
               ),

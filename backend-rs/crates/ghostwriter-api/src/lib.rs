@@ -27,7 +27,7 @@ use crate::config::Config;
 use crate::humanize::{HttpHumanizer, Humanizer};
 use crate::live_docs::LiveDocs;
 use crate::llm::Llm;
-use crate::routes::{documents as doc_routes, folders, projects, runs as run_routes, system};
+use crate::routes::{documents as doc_routes, folders, octo, projects, runs as run_routes, system};
 use crate::runs::Hub;
 use crate::scrape::{HttpScraper, Scraper};
 
@@ -120,6 +120,7 @@ pub fn app(state: AppState) -> Router {
         .route("/health", get(system::health))
         .route("/ready", get(system::ready))
         .route("/v1/me", get(system::me))
+        .route("/v1/octo/ask", post(octo::ask))
         .route("/v1/projects", get(projects::list))
         .route(
             "/v1/projects/:id",

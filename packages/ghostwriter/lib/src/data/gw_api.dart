@@ -115,6 +115,12 @@ class GwApi {
   Future<void> message(String runId, String text) =>
       _json('POST', '/v1/runs/$runId/message', {'text': text});
 
+  /// Ask Octo: one question about using the app, one short answer.
+  Future<String> askOcto(String question) async {
+    final reply = await _json('POST', '/v1/octo/ask', {'question': question});
+    return reply['answer'] as String? ?? '';
+  }
+
   Future<void> cancel(String runId) =>
       _json('POST', '/v1/runs/$runId/cancel', {});
 

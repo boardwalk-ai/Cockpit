@@ -118,6 +118,7 @@ async fn a_change_request_revises_the_essay_in_place() {
         tools,
         [
             "revise_essay",
+            "critique_essay",
             "ask_user",
             "humanize_essay",
             "split_paragraphs"

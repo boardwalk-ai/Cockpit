@@ -6,6 +6,7 @@ import 'mobile_chat.dart';
 import 'mobile_drawer.dart';
 import 'mobile_editor.dart';
 import 'mobile_landing.dart';
+import 'mobile_octo_sheet.dart';
 import 'mobile_theme.dart';
 import 'mobile_top_bar.dart';
 
@@ -100,6 +101,8 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
                   GhostWriterMobileTopBar(
                     credits: session.credits ?? 0,
                     saving: false,
+                    onAskOcto: () =>
+                        showGwOctoSheet(context, ask: session.api.askOcto),
                   ),
                   if (session.libraryError case final error?)
                     _Notice(message: error, onRetry: session.load),

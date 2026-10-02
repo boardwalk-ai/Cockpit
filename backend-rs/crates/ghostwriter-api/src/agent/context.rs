@@ -38,9 +38,27 @@ pub struct Context {
     /// How many paragraphs the essay had before it was humanized: what
     /// `split_paragraphs` restores.
     pub paragraphs_before_humanize: usize,
+    /// Times the sources were evaluated in this run: only the first may ask
+    /// for another search.
+    pub source_evaluations: i64,
+    /// What the last `critique_essay` found.
+    pub critique_issues: Vec<CritiqueIssue>,
     /// The user's review of the sources: notes to steer each summary, and
     /// the ones to leave out.
     pub source_review: Vec<SourceNote>,
+}
+
+/// One weakness the critic found in the essay.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CritiqueIssue {
+    /// Which paragraph, numbered from 1.
+    pub paragraph: usize,
+    /// `thesis`, `evidence`, `clarity`, `citations`, `length` or `structure`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub description: String,
+    pub major: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]

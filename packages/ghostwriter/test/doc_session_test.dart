@@ -193,7 +193,10 @@ void main() {
       await settle(); // the save fails; the edit is still pending
 
       server.send(snapshot(rev: 9, body: 'From the web.'));
-      await settle();
+      // The snapshot can take a while to arrive when the suite runs in parallel.
+      for (var i = 0; i < 50 && doc.saveState != SaveState.conflict; i++) {
+        await settle();
+      }
       expect(doc.saveState, SaveState.conflict);
       expect(doc.body.document.toPlainText(), startsWith('Mine.'));
     },

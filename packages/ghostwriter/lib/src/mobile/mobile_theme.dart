@@ -28,6 +28,7 @@ abstract final class GwFonts {
 /// Bundled images.
 abstract final class GwAssets {
   static const ghost = 'packages/ghostwriter/assets/images/ghost.png';
+  static const octo = 'packages/ghostwriter/assets/images/octo.png';
 }
 
 /// Composer and top-bar button size.

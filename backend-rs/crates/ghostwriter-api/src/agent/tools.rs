@@ -12,7 +12,7 @@ use octo_common::llm::parse_json_loose;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use super::context::{CompactedSource, Outline, ScrapedSource, Source};
+use super::context::{CompactedSource, CritiqueIssue, Outline, ScrapedSource, Source};
 use super::{prompt, Agent};
 use crate::documents::{self, AgentSave, DocError};
 use crate::humanize::{self, Provider};
@@ -145,6 +145,14 @@ pub fn specs() -> Vec<Value> {
             }),
         ),
         function(
+            "evaluate_sources",
+            "Judge whether the summarised sources are enough for a well-cited essay. Call once after compact_sources. If the result has searchAgain = true, search again with its recommendation as the refinement, then scrape and compact, and move on.",
+            json!({
+                "type": "object", "additionalProperties": false,
+                "properties": { "notes": { "type": "string", "description": "Optional: what kinds of sources the essay needs." } },
+            }),
+        ),
+        function(
             "write_essay",
             "Draft the full essay and bibliography into the user's document. Needs outlines, compacted sources, wordCount and citationStyle.",
             json!({
@@ -191,6 +199,14 @@ pub fn revision_specs() -> Vec<Value> {
                 "properties": { "instructions": { "type": "string", "description": "Precisely what to change: which paragraphs (numbered from 1) and how." } },
             }),
         ),
+        function(
+            "critique_essay",
+            "Review the essay in the user's document for thesis, evidence, clarity, citations, length and structure. Returns the issues by paragraph number. Changes nothing.",
+            json!({
+                "type": "object", "additionalProperties": false,
+                "properties": { "notes": { "type": "string", "description": "Optional: what to look at, e.g. 'evidence in the body paragraphs'." } },
+            }),
+        ),
         ask,
         shared("humanize_essay"),
         shared("split_paragraphs"),
@@ -205,6 +221,8 @@ pub fn title(name: &str, args: &Value) -> String {
         "search_sources" => "Searching for sources".into(),
         "scrape_sources" => "Reading the sources".into(),
         "compact_sources" => "Summarising the sources".into(),
+        "evaluate_sources" => "Checking the sources".into(),
+        "critique_essay" => "Reviewing the essay".into(),
         "write_essay" => "Writing the essay".into(),
         "revise_essay" => "Revising the essay".into(),
         "finalize_document" => "Finishing the document".into(),
@@ -243,6 +261,8 @@ pub fn exists(name: &str) -> bool {
             | "search_sources"
             | "scrape_sources"
             | "compact_sources"
+            | "evaluate_sources"
+            | "critique_essay"
             | "write_essay"
             | "revise_essay"
             | "finalize_document"
@@ -263,6 +283,8 @@ pub async fn execute(
         "search_sources" => search_sources(agent, args).await,
         "scrape_sources" => scrape_sources(agent, step_id, args).await,
         "compact_sources" => compact_sources(agent, step_id, args).await,
+        "evaluate_sources" => evaluate_sources(agent, args).await,
+        "critique_essay" => critique_essay(agent, args).await,
         "write_essay" => write_essay(agent, args).await,
         "revise_essay" => revise_essay(agent, args).await,
         "finalize_document" => finalize_document(agent).await,
@@ -1344,6 +1366,202 @@ async fn split_paragraphs(agent: &mut Agent<'_>) -> Result<Done, Failure> {
         json!({ "paragraphs": pieces.len() }),
         format!("{} paragraphs restored.", pieces.len()),
     ))
+}
+
+/// `evaluate_sources`: asks whether the summarised sources can carry the
+/// essay. The run may look for more once; after that it writes with what it has.
+async fn evaluate_sources(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failure> {
+    let total = agent.ctx.compacted.len();
+    if total == 0 {
+        return Err("no summarised sources yet; call compact_sources first".into());
+    }
+    let sources: Vec<String> = agent
+        .ctx
+        .compacted
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let title = if c.source.title.is_empty() {
+                "(no title)"
+            } else {
+                &c.source.title
+            };
+            format!("Source {}: {title}\n{}", i + 1, c.summary)
+        })
+        .collect();
+    let outlines: Vec<String> = agent
+        .ctx
+        .outlines
+        .iter()
+        .map(|o| format!("- {}: {}", o.kind, o.title))
+        .collect();
+    let mut message = format!(
+        "Essay topic: {}\nEssay type: {}\nRequired paragraphs:\n{}",
+        agent.ctx.essay_topic.as_deref().unwrap_or("unknown"),
+        agent.ctx.essay_type.as_deref().unwrap_or("Essay"),
+        outlines.join("\n"),
+    );
+    if let Some(notes) = optional(&args["notes"]) {
+        message.push_str(&format!("\nNotes: {notes}"));
+    }
+    message.push_str(&format!(
+        "\n\nCompacted sources ({total} total):\n{}",
+        sources.join("\n\n")
+    ));
+
+    // An evaluator that fails must not stop the essay: fall back to a count.
+    let verdict = match ask_json(
+        agent,
+        &agent.models.secondary,
+        prompt::EVALUATOR,
+        message,
+        0.2,
+        true,
+    )
+    .await
+    {
+        Ok(verdict) => verdict,
+        Err(Failure::Run(error)) => return Err(Failure::Run(error)),
+        Err(Failure::Tool(_)) => Value::Null,
+    };
+    let sufficient = verdict["sufficient"].as_bool().unwrap_or(total >= 3);
+    let quality = verdict["quality"]
+        .as_str()
+        .filter(|quality| matches!(*quality, "good" | "fair" | "poor"))
+        .unwrap_or("fair");
+    let gaps = strings(&verdict["gaps"], 6);
+    let recommendation = text_of(&verdict["recommendation"]);
+
+    agent.ctx.source_evaluations += 1;
+    let search_again = !sufficient && agent.ctx.source_evaluations == 1;
+    let summary = if sufficient {
+        format!("{total} sources cover the essay.")
+    } else if search_again {
+        "The sources leave gaps. Looking for more.".to_string()
+    } else {
+        "The sources leave some gaps. Writing with what we have.".to_string()
+    };
+
+    Ok((
+        json!({
+            "sufficient": sufficient,
+            "quality": quality,
+            "gaps": gaps,
+            "recommendation": recommendation,
+            "searchAgain": search_again,
+        }),
+        summary,
+    ))
+}
+
+const ISSUE_KINDS: [&str; 6] = [
+    "thesis",
+    "evidence",
+    "clarity",
+    "citations",
+    "length",
+    "structure",
+];
+
+/// `critique_essay`: reviews the essay as it stands in the document and lists
+/// what is weak. It changes nothing and costs nothing; `revise_essay` acts on it.
+async fn critique_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failure> {
+    let (style, body): (String, String) =
+        sqlx::query_as("SELECT style, body FROM documents WHERE project_id = $1")
+            .bind(agent.run.project_id)
+            .fetch_one(&agent.run.st.db)
+            .await?;
+    let paragraphs = humanize::paragraphs(&body);
+    if paragraphs.is_empty() {
+        return Err("the document has no essay to review".into());
+    }
+    let numbered: Vec<String> = paragraphs
+        .iter()
+        .enumerate()
+        .map(|(i, p)| format!("[{}] {p}", i + 1))
+        .collect();
+    let outlines: Vec<String> = agent
+        .ctx
+        .outlines
+        .iter()
+        .enumerate()
+        .map(|(i, o)| format!("[{}] {} — {}: {}", i + 1, o.kind, o.title, o.description))
+        .collect();
+    let mut message = format!(
+        "Topic: {}\nCitation style: {}",
+        agent.ctx.essay_topic.as_deref().unwrap_or("unknown"),
+        style.to_uppercase(),
+    );
+    if let Some(notes) = optional(&args["notes"]) {
+        message.push_str(&format!("\nFocus: {notes}"));
+    }
+    if !outlines.is_empty() {
+        message.push_str(&format!("\n\nOutline structure:\n{}", outlines.join("\n")));
+    }
+    message.push_str(&format!(
+        "\n\nEssay (paragraphs numbered from 1):\n{}",
+        numbered.join("\n\n")
+    ));
+
+    let review = ask_json(
+        agent,
+        &agent.models.orchestrator,
+        prompt::CRITIC,
+        message,
+        0.3,
+        true,
+    )
+    .await?;
+
+    let issues: Vec<CritiqueIssue> = review["issues"]
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let paragraph = item["paragraph"].as_u64()? as usize;
+                    let description = text_of(&item["description"]);
+                    if !(1..=paragraphs.len()).contains(&paragraph) || description.is_empty() {
+                        return None;
+                    }
+                    let kind = item["type"]
+                        .as_str()
+                        .filter(|kind| ISSUE_KINDS.contains(kind))
+                        .unwrap_or("clarity");
+                    Some(CritiqueIssue {
+                        paragraph,
+                        kind: kind.to_string(),
+                        description,
+                        major: item["severity"] == "major",
+                    })
+                })
+                .take(12)
+                .collect()
+        })
+        .unwrap_or_default();
+    let major = issues.iter().filter(|issue| issue.major).count();
+    let score = review["overallScore"].as_i64().unwrap_or(7).clamp(1, 10);
+    let ready = review["ready"].as_bool().unwrap_or(major == 0);
+
+    agent
+        .run
+        .emit("context_update", json!({ "critiqueIssues": issues }))
+        .await?;
+    let summary = match (issues.len(), major) {
+        (0, _) => "No issues found.".to_string(),
+        (1, 0) => "1 thing could be better.".to_string(),
+        (count, 0) => format!("{count} things could be better."),
+        (count, major) => format!("{count} things to fix, {major} important."),
+    };
+    let result = json!({
+        "overallScore": score,
+        "ready": ready,
+        "majorIssues": major,
+        "issues": issues,
+    });
+    agent.ctx.critique_issues = issues;
+
+    Ok((result, summary))
 }
 
 #[cfg(test)]

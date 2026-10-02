@@ -143,6 +143,7 @@ All under `/v1`. JSON in, JSON out, camelCase.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/me` | `{ id, name, email, photoUrl, octoCredits }` |
+| POST | `/octo/ask` | Ask Octo. `{ question }` (max 500 characters) → `{ answer }`. Answers questions about using the app only; not saved, not charged. 503 when no model is available. |
 
 ### Projects and folders
 
@@ -215,7 +216,7 @@ Stored and replayed:
 | `thought` | `stepId?, text` | The agent's short reasoning, attached to the step |
 | `question` | see 6.1 | A question card |
 | `question_answered` | `field, value` | Question card collapses to the answer |
-| `context_update` | a patch: `essayTopic`, `essayType`, `thesis`, `outlines` | What the run has worked out so far |
+| `context_update` | a patch: `essayTopic`, `essayType`, `thesis`, `outlines`, `critiqueIssues` | What the run has worked out so far |
 | `awaiting_reply` | — | GhostWriter asked something in plain text and is waiting on the chat box |
 | `sources_ready` | `count`, `sources[]` (`url, title, author, publishedYear, publisher`) | **Sources pill appears** |
 | `writing_started` | `targetWords` | **Open Editor pill appears**; progress bar starts |
@@ -262,6 +263,7 @@ Fields, in the order the agent asks them:
 | `citationStyle` | select | APA / MLA / Chicago / Harvard / IEEE / None |
 | `studentName`, `instructorName`, `institutionName`, `courseInfo`, `essayDate` | text | Only the ones the chosen style needs |
 | `humanizerChoice` | select | StealthGPT / UndetectableAI / Skip. Asked after the essay is delivered. |
+| `critiqueChoice` | select | `Fix them` / `Leave it`, or a typed answer. Revision runs, after a review found issues. |
 | `paragraphSplitChoice` | select | `AI split` / `Skip split`. Only when the humanizer merged the paragraphs. |
 
 A chat message sent while `essayFocus` is pending is treated as a direction for
@@ -285,12 +287,31 @@ OctopilotWeb's loop.
 | `write_essay` | Streams the essay into the document (section 7); charges for generation | writer |
 | `finalize_document` | Puts the title-page answers on the document; the run then ends | — |
 | `revise_essay` | Revision runs only (6.3) | writer |
+| `evaluate_sources` | Judges whether the summarised sources can carry the essay. First run only, after `compact_sources` | secondary |
+| `critique_essay` | Reviews the essay in the document and lists its weaknesses by paragraph. Revision runs only. Changes nothing, costs nothing | orchestrator |
 | `humanize_essay` | Sends the essay as it stands through StealthGPT or UndetectableAI and puts the result in the document; charges for humanizing | — |
 | `split_paragraphs` | Restores paragraph breaks a humanizer merged. A split that changes any wording is thrown away. | secondary |
 
 A tool that fails is shown as a failed step and its error goes back to the
 model, which retries or tells the user. A run stops after 40 model round-trips.
-Not ported yet: evaluating sources and critique (phase 4).
+Not ported: the web's automatic removal of junk pages after scraping.
+
+### 6.5 Evaluating the sources
+
+`evaluate_sources` returns `{ sufficient, quality, gaps, recommendation, searchAgain }`.
+`searchAgain` is true only on the run's first evaluation and only when the sources
+are not sufficient: the agent then searches with `recommendation` as the
+refinement, scrapes and compacts once more, and writes. An evaluator that fails
+or answers nonsense never stops the run: three or more sources count as enough.
+
+### 6.6 Reviewing the essay
+
+In a revision run, "review my essay" or "make it better" calls `critique_essay`.
+It emits `context_update { critiqueIssues: [{ paragraph, type, description, major }] }`
+(`paragraph` from 1; `type` is thesis, evidence, clarity, citations, length or
+structure) and gives the model the same list. The agent tells the user the main
+issues, asks `critiqueChoice`, and only on a yes calls `revise_essay`, which is
+what costs credits.
 
 ### 6.4 Humanizing
 
@@ -437,5 +458,5 @@ Open:
 | 1d ✅ | Document: saving from the editor, the live text stream, version list and restore. The scripted driver writes a placeholder essay. |
 | 2 ✅ | Mobile chat: timeline, question cards, progress bar, pills, Google sign-in (desktop page: later) |
 | 3 ✅ | Editor: mobile editor on Doc Oct's foundation, read-only live text, autosave, history |
-| 4 | Revision mode ✅, source review ✅, humanizer ✅. Left: evaluating sources, critique. |
+| 4 | Revision mode ✅, source review ✅, humanizer ✅, evaluating sources ✅, critique ✅, Ask Octo ✅ |
 | 5 | Push notifications, Live Activities, Android ongoing notification |

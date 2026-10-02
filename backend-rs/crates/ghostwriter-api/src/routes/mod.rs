@@ -1,5 +1,6 @@
 pub mod documents;
 pub mod folders;
+pub mod octo;
 pub mod projects;
 pub mod runs;
 pub mod system;
