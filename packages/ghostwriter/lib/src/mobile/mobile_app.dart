@@ -4,10 +4,10 @@ import '../session/gw_session.dart';
 import 'mobile_background.dart';
 import 'mobile_chat.dart';
 import 'mobile_drawer.dart';
+import 'mobile_editor.dart';
 import 'mobile_landing.dart';
 import 'mobile_theme.dart';
 import 'mobile_top_bar.dart';
-import 'mobile_viewer.dart';
 
 /// GhostWriter on a phone: the landing screen until an essay is started or
 /// opened, then its chat. Everything comes from [session].
@@ -68,12 +68,7 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
   void _openEditor() {
     final project = session.projectId;
     if (project == null) return;
-    openGwDocumentViewer(
-      context,
-      api: session.api,
-      projectId: project,
-      title: session.title,
-    );
+    openGwEditor(context, api: session.api, projectId: project);
   }
 
   @override

@@ -68,8 +68,16 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
     if (!_scroll.hasClients) return;
     final position = _scroll.position;
     if (position.maxScrollExtent - position.pixels > 240) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToEnd(3));
+    // A replay brings many events in one go: one scroll per frame is enough.
+    if (_scrollQueued) return;
+    _scrollQueued = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollQueued = false;
+      _scrollToEnd(3);
+    });
   }
+
+  bool _scrollQueued = false;
 
   /// The list builds lazily, so its end is an estimate until the last items
   /// are laid out: scroll, look again, and finish the job.
@@ -82,7 +90,10 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
     );
     if (!mounted || !_scroll.hasClients) return;
     final position = _scroll.position;
-    if (position.maxScrollExtent - position.pixels > 1) {
+    // The estimate can also be too long: never stay past the real end.
+    if (position.pixels > position.maxScrollExtent) {
+      _scroll.jumpTo(position.maxScrollExtent);
+    } else if (position.maxScrollExtent - position.pixels > 1) {
       await _scrollToEnd(tries - 1);
     }
   }

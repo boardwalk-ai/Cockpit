@@ -123,6 +123,25 @@ class GwApi {
   Future<Map<String, dynamic>> document(String projectId) =>
       _json('GET', '/v1/projects/$projectId/document');
 
+  /// Saves the editor's copy (CONTRACT.md 7.2). [document] carries
+  /// `baseRev` and the fields that changed. Returns `{ rev, wordCount }`.
+  /// Throws a 409 [GwApiException] with code `stale_rev` or
+  /// `document_locked`, and the current `rev` in `details`.
+  Future<Map<String, dynamic>> saveDocument(
+    String projectId,
+    Map<String, dynamic> document,
+  ) => _json('PUT', '/v1/projects/$projectId/document', document);
+
+  /// `{ versions: [{ id, rev, reason, createdAt, title, preview, wordCount }] }`
+  Future<Map<String, dynamic>> versions(String projectId) =>
+      _json('GET', '/v1/projects/$projectId/versions');
+
+  /// Puts a version back; returns the document as [document] does.
+  Future<Map<String, dynamic>> restoreVersion(
+    String projectId,
+    String versionId,
+  ) => _json('POST', '/v1/projects/$projectId/versions/$versionId/restore', {});
+
   /// The document for an open editor: `snapshot`, `delta`, `committed`,
   /// `unlocked` (CONTRACT.md 7.1). Stays open until cancelled.
   Stream<Map<String, dynamic>> documentEvents(String projectId) =>

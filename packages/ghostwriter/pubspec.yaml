@@ -17,6 +17,10 @@ dependencies:
     path: ../cockpit_ui
   cockpit_module:
     path: ../cockpit_module
+  # The editor shares Doc Oct's foundation: quill, the field model, the fonts.
+  doc_oct:
+    path: ../doc_oct
+  flutter_quill: ^11.5.1
 
 dev_dependencies:
   flutter_test:
