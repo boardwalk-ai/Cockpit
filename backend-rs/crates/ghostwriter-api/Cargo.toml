@@ -1,0 +1,23 @@
+[package]
+name = "ghostwriter-api"
+version = "0.1.0"
+edition = "2021"
+description = "GhostWriter backend (axum): owns the ghostwriter database, reads identity and OctoCredits from the octopilot database."
+
+[dependencies]
+octo-common.workspace = true
+axum.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+sqlx.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
