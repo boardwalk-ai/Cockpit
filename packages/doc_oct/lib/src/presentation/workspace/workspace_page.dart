@@ -8,17 +8,14 @@ import '../../theme/doc_tokens.dart';
 import '../widgets/doc_scaffold.dart';
 import '../widgets/doc_top_bar.dart';
 import '../widgets/doc_widgets.dart';
+import '../widgets/motion.dart';
 import '../widgets/reveal.dart';
 
 /// The logged-in home — the web's "Your Doc Oct workspace". Start a new
 /// document from a template, or reopen a recent one. Restyled borderless: no
 /// card outlines or glows; the paper thumbnails and whitespace do the grouping.
 class WorkspacePage extends ConsumerWidget {
-  const WorkspacePage({
-    super.key,
-    this.onNewDocument,
-    this.onOpenDocument,
-  });
+  const WorkspacePage({super.key, this.onNewDocument, this.onOpenDocument});
 
   /// A template was chosen (null = Blank).
   final void Function(FormatStyle? style)? onNewDocument;
@@ -64,8 +61,9 @@ class WorkspacePage extends ConsumerWidget {
                           // Greeting
                           Text.rich(
                             TextSpan(
-                              style: theme.textTheme.headlineMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
+                              style: theme.textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                              ),
                               children: [
                                 const TextSpan(text: 'Your '),
                                 TextSpan(
@@ -80,8 +78,9 @@ class WorkspacePage extends ConsumerWidget {
                           Text(
                             'Start a new paper or pick up where you left off — '
                             'everything autosaves.',
-                            style: theme.textTheme.bodyLarge
-                                ?.copyWith(color: scheme.onSurfaceVariant),
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
                           ),
                           const SizedBox(height: CockpitSpacing.xxl),
 
@@ -238,32 +237,44 @@ class _TemplateCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return SizedBox(
-      width: 150,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(CockpitRadii.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _PaperThumb(
-              child: style == null
-                  ? Center(
-                      child: Icon(Icons.add_rounded,
-                          size: 26, color: scheme.primary),
-                    )
-                  : const _PaperLines(
-                      widths: [1.0, 0.92, 0.96, 0.84, 0.98, 0.9, 0.94, 0.7],
-                    ),
-            ),
-            const SizedBox(height: CockpitSpacing.sm),
-            Text(label,
-                style: theme.textTheme.labelLarge
-                    ?.copyWith(fontWeight: FontWeight.w600)),
-            Text(sub,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
-          ],
+    return Pressable(
+      pressedScale: 0.96,
+      child: SizedBox(
+        width: 150,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CockpitRadii.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PaperThumb(
+                child: style == null
+                    ? Center(
+                        child: Icon(
+                          Icons.add_rounded,
+                          size: 26,
+                          color: scheme.primary,
+                        ),
+                      )
+                    : const _PaperLines(
+                        widths: [1.0, 0.92, 0.96, 0.84, 0.98, 0.9, 0.94, 0.7],
+                      ),
+              ),
+              const SizedBox(height: CockpitSpacing.sm),
+              Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                sub,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -284,59 +295,66 @@ class _RecentCard extends StatelessWidget {
       if (style.isNotEmpty) style,
       '${item.wordCount} words',
     ].join(' · ');
-    return SizedBox(
-      width: 224,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(CockpitRadii.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _PaperThumb(
-              child: Padding(
-                padding: const EdgeInsets.all(CockpitSpacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 5,
-                      width: 72,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFC9CED6),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Expanded(
-                      child: Text(
-                        item.snippet.isEmpty
-                            ? 'Empty document'
-                            : item.snippet,
-                        maxLines: 9,
-                        overflow: TextOverflow.fade,
-                        style: const TextStyle(
-                          fontSize: 6,
-                          height: 1.7,
-                          color: Color(0xFF9AA0AA),
+    return Pressable(
+      pressedScale: 0.97,
+      child: SizedBox(
+        width: 224,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CockpitRadii.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _PaperThumb(
+                child: Padding(
+                  padding: const EdgeInsets.all(CockpitSpacing.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 5,
+                        width: 72,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFC9CED6),
+                          borderRadius: BorderRadius.circular(3),
                         ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: Text(
+                          item.snippet.isEmpty
+                              ? 'Empty document'
+                              : item.snippet,
+                          maxLines: 9,
+                          overflow: TextOverflow.fade,
+                          style: const TextStyle(
+                            fontSize: 6,
+                            height: 1.7,
+                            color: Color(0xFF9AA0AA),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: CockpitSpacing.sm),
-            Text(
-              item.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.labelLarge
-                  ?.copyWith(fontWeight: FontWeight.w600),
-            ),
-            Text(meta,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
-          ],
+              const SizedBox(height: CockpitSpacing.sm),
+              Text(
+                item.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Text(
+                meta,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -356,13 +374,13 @@ class _EmptyRecent extends StatelessWidget {
       child: Center(
         child: Column(
           children: [
-            Text('No saved documents yet',
-                style: theme.textTheme.titleSmall),
+            Text('No saved documents yet', style: theme.textTheme.titleSmall),
             const SizedBox(height: CockpitSpacing.xxs),
             Text(
               'Pick a template above — your work will appear here automatically.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

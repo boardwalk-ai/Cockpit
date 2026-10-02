@@ -16,16 +16,16 @@ void main() {
   );
 
   Widget host(void Function(String) onInsert) => MaterialApp(
-        home: Scaffold(
-          body: SourceModal(
-            source: source,
-            inText: '(Smith, 2020)',
-            humanize: (t) async => t,
-            canHumanize: false, // no humanize toggle → shows raw content
-            onInsert: onInsert,
-          ),
-        ),
-      );
+    home: Scaffold(
+      body: SourceModal(
+        source: source,
+        inText: '(Smith, 2020)',
+        humanize: (t) async => t,
+        canHumanize: false, // no humanize toggle → shows raw content
+        onInsert: onInsert,
+      ),
+    ),
+  );
 
   testWidgets('citation-only insert emits the in-text mark', (t) async {
     String? inserted;
@@ -48,5 +48,80 @@ void main() {
       ),
     );
     expect(button.onPressed, isNull); // disabled with no selection
+  });
+
+  group('Auto Humanize follows the panel, per-source override', () {
+    late List<String> calls;
+    late List<bool> changes;
+    late List<String> reported;
+
+    setUp(() {
+      calls = [];
+      changes = [];
+      reported = [];
+    });
+
+    Widget modal({bool initial = false, String? cached}) => MaterialApp(
+      home: Scaffold(
+        body: SourceModal(
+          source: source,
+          inText: '(Smith, 2020)',
+          humanize: (t) async {
+            calls.add(t);
+            return 'Humanized text.';
+          },
+          canHumanize: true,
+          initialHumanize: initial,
+          cachedHumanized: cached,
+          onHumanizeChanged: changes.add,
+          onHumanized: reported.add,
+          onInsert: (_) {},
+        ),
+      ),
+    );
+
+    bool switchOn(WidgetTester t) =>
+        t.widget<Switch>(find.byType(Switch)).value;
+
+    testWidgets('panel off → modal off, raw content, no humanize call', (
+      t,
+    ) async {
+      await t.pumpWidget(modal());
+      await t.pumpAndSettle();
+      expect(switchOn(t), isFalse);
+      expect(calls, isEmpty);
+      expect(find.text(source.fullContent), findsOneWidget);
+    });
+
+    testWidgets('panel on → modal humanizes and reports it for this source', (
+      t,
+    ) async {
+      await t.pumpWidget(modal(initial: true));
+      await t.pumpAndSettle();
+      expect(switchOn(t), isTrue);
+      expect(calls, hasLength(1));
+      expect(find.text('Humanized text.'), findsOneWidget);
+      expect(reported, ['Humanized text.']);
+      expect(changes, isEmpty, reason: 'no per-source override');
+    });
+
+    testWidgets('turning it on in the modal is reported as this source only', (
+      t,
+    ) async {
+      await t.pumpWidget(modal());
+      await t.pumpAndSettle();
+      await t.tap(find.byType(Switch));
+      await t.pumpAndSettle();
+      expect(changes, [true]);
+      expect(calls, hasLength(1));
+      expect(find.text('Humanized text.'), findsOneWidget);
+    });
+
+    testWidgets('reopening reuses this source\'s humanized text', (t) async {
+      await t.pumpWidget(modal(initial: true, cached: 'Earlier result.'));
+      await t.pumpAndSettle();
+      expect(calls, isEmpty);
+      expect(find.text('Earlier result.'), findsOneWidget);
+    });
   });
 }

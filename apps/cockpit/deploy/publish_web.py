@@ -80,7 +80,9 @@ def main() -> int:
         default=str(Path(__file__).resolve().parent / "nginx-app.conf"),
     )
     parser.add_argument("--skip-nginx", action="store_true")
+    parser.add_argument("--remote-dir", default=REMOTE_DIR)
     args = parser.parse_args()
+    remote_dir = args.remote_dir
 
     web_dir = Path(args.web_dir)
     if not web_dir.is_dir():
@@ -99,8 +101,8 @@ def main() -> int:
     )
     sftp = client.open_sftp()
     try:
-        print(f">> Uploading {web_dir} -> {REMOTE_DIR}")
-        n = upload_tree(sftp, web_dir, REMOTE_DIR)
+        print(f">> Uploading {web_dir} -> {remote_dir}")
+        n = upload_tree(sftp, web_dir, remote_dir)
         print(f">> Uploaded {n} files")
 
         if not args.skip_nginx:
@@ -122,7 +124,7 @@ def main() -> int:
             if code != 0:
                 return code
 
-        _, stdout, _ = client.exec_command(f"cat {REMOTE_DIR}/BUILD_ID")
+        _, stdout, _ = client.exec_command(f"cat {remote_dir}/BUILD_ID")
         build_id = stdout.read().decode().strip()
         print(f">> Live BUILD_ID={build_id or '(missing)'}")
     finally:

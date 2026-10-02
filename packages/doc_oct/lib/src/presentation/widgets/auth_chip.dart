@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/auth_providers.dart';
+import 'doc_button.dart';
 
 /// The top-bar account control: a "Sign in" pill when signed out, or the octo
 /// credits + avatar (with a sign-out menu) when signed in. Mirrors the web
@@ -40,18 +41,24 @@ class AuthChip extends ConsumerWidget {
               children: [
                 Icon(Icons.token_rounded, size: 13, color: scheme.primary),
                 const SizedBox(width: 5),
-                Text(_fmt(credits),
-                    style: TextStyle(
-                        color: scheme.primary,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700)),
+                Text(
+                  _fmt(credits),
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(width: 4),
-                Text('CREDITS',
-                    style: TextStyle(
-                        color: scheme.primary.withValues(alpha: 0.7),
-                        fontSize: 8.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.5)),
+                Text(
+                  'CREDITS',
+                  style: TextStyle(
+                    color: scheme.primary.withValues(alpha: 0.7),
+                    fontSize: 8.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.5,
+                  ),
+                ),
               ],
             ),
           ),
@@ -63,8 +70,10 @@ class AuthChip extends ConsumerWidget {
           itemBuilder: (_) => [
             PopupMenuItem(
               enabled: false,
-              child: Text(user.email ?? user.name ?? 'Signed in',
-                  style: theme.textTheme.bodySmall),
+              child: Text(
+                user.email ?? user.name ?? 'Signed in',
+                style: theme.textTheme.bodySmall,
+              ),
             ),
             const PopupMenuDivider(),
             const PopupMenuItem(value: 'signout', child: Text('Sign out')),
@@ -72,14 +81,16 @@ class AuthChip extends ConsumerWidget {
           child: CircleAvatar(
             radius: 14,
             backgroundColor: scheme.primary.withValues(alpha: 0.15),
-            foregroundImage:
-                user.photoUrl != null ? NetworkImage(user.photoUrl!) : null,
+            foregroundImage: user.photoUrl != null
+                ? NetworkImage(user.photoUrl!)
+                : null,
             child: Text(
               (user.name ?? user.email ?? '?').characters.first.toUpperCase(),
               style: TextStyle(
-                  color: scheme.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700),
+                color: scheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -92,9 +103,9 @@ class AuthChip extends ConsumerWidget {
       await ref.read(docAuthProvider).signIn();
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign-in failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sign-in failed: $e')));
       }
     }
   }
@@ -115,18 +126,10 @@ class _SignInPill extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: const Icon(Icons.login_rounded, size: 15),
-      label: const Text('Sign in'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: scheme.primary,
-        side: BorderSide(color: scheme.primary.withValues(alpha: 0.4)),
-        visualDensity: VisualDensity.compact,
-        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => DocButton(
+    kind: DocButtonKind.tonal,
+    label: 'Sign in',
+    icon: Icons.login_rounded,
+    onTap: onTap,
+  );
 }

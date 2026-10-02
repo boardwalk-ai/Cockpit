@@ -11,12 +11,17 @@ export 'src/application/auth_providers.dart';
 export 'src/application/backend_config.dart'
     show setAuthTokenSource, hasBackend, kDocOctApiBase;
 export 'src/application/essays_service.dart';
+export 'src/application/hein_service.dart';
+export 'src/application/lily_service.dart';
 export 'src/application/providers.dart';
 export 'src/application/sources.dart';
 export 'src/application/tools_service.dart';
+export 'src/application/wizard_session.dart';
 export 'src/domain/citation_templates.dart';
 export 'src/domain/doc_dates.dart';
+export 'src/domain/hein_analysis.dart';
 export 'src/domain/lookup_result.dart';
+export 'src/domain/outline.dart';
 export 'src/domain/saved_project.dart';
 export 'src/domain/source.dart';
 export 'src/presentation/doc_oct_app.dart';

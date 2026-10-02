@@ -49,7 +49,10 @@ class DocSurface extends StatelessWidget {
       color: scheme.surfaceContainerLow,
       borderRadius: radius,
       clipBehavior: Clip.antiAlias,
-      child: InkWell(onTap: onTap, child: Padding(padding: padding, child: child)),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(padding: padding, child: child),
+      ),
     );
   }
 }
@@ -150,6 +153,69 @@ class StyleTag extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// A citation style's logo: a small rounded-square badge in the style's colour
+/// (lit gradient, hairline highlight) carrying its initial in the document
+/// serif — the face the papers themselves are set in. Dimmed when [active] is
+/// false (e.g. an unselected pill); glows softly when active.
+class StyleMonogram extends StatelessWidget {
+  const StyleMonogram(
+    this.style, {
+    super.key,
+    this.size = 20,
+    this.active = true,
+  });
+
+  final FormatStyle style;
+  final double size;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = style.color;
+    final tone = active ? c : Color.lerp(c, const Color(0xFF8A8F8F), 0.5)!;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(size * 0.3),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(tone, Colors.white, 0.22)!,
+            Color.lerp(tone, Colors.black, 0.2)!,
+          ],
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: active ? 0.22 : 0.1),
+          width: 0.8,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: c.withValues(alpha: active ? 0.45 : 0),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Text(
+        style.abbr,
+        style: TextStyle(
+          fontFamily: 'packages/doc_oct/Tinos',
+          fontStyle: FontStyle.italic,
+          fontWeight: FontWeight.w700,
+          fontSize: size * 0.62,
+          height: 1,
+          color: Colors.white.withValues(alpha: active ? 1 : 0.8),
+        ),
+      ),
     );
   }
 }

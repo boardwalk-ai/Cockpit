@@ -1,9 +1,7 @@
 'use strict';
-// Cockpit deploy cleanup SW - regenerated every publish.
+// Deploy cleanup SW - regenerated every publish with a unique build_id so
+// browsers treat it as a new worker and drop the previous Flutter cache.
 // build_id: __BUILD_ID__
-//
-// Clears Cache Storage, unregisters itself, and reloads open tabs so users
-// never keep a stale Flutter/PWA cache after a deploy.
 
 const BUILD_ID = '__BUILD_ID__';
 
@@ -17,13 +15,13 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(keys.map((key) => caches.delete(key)));
     } catch (e) {
-      console.warn('[cockpit-sw] cache clear failed', BUILD_ID, e);
+      console.warn('[sw] cache clear failed', BUILD_ID, e);
     }
 
     try {
       await self.registration.unregister();
     } catch (e) {
-      console.warn('[cockpit-sw] unregister failed', BUILD_ID, e);
+      console.warn('[sw] unregister failed', BUILD_ID, e);
     }
 
     try {
@@ -34,7 +32,7 @@ self.addEventListener('activate', (event) => {
         }
       });
     } catch (e) {
-      console.warn('[cockpit-sw] client reload failed', BUILD_ID, e);
+      console.warn('[sw] client reload failed', BUILD_ID, e);
     }
   })());
 });

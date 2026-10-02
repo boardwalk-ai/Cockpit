@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../application/auth_providers.dart';
 import '../../application/essays_service.dart';
+import 'motion.dart';
 
 /// The Doc Oct top bar, borderless: the "Octopilot Doc Oct" wordmark on the
 /// left; Save · credits · avatar on the right. Auth-aware — real octo credits
@@ -31,12 +32,15 @@ class DocOctTopBar extends ConsumerWidget {
         children: [
           Text.rich(
             TextSpan(
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.2),
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.2,
+              ),
               children: [
                 TextSpan(
-                    text: 'Octopilot ',
-                    style: TextStyle(color: scheme.primary)),
+                  text: 'Octopilot ',
+                  style: TextStyle(color: scheme.primary),
+                ),
                 const TextSpan(text: 'Doc Oct'),
               ],
             ),
@@ -47,8 +51,9 @@ class DocOctTopBar extends ConsumerWidget {
               onPressed: onSave,
               icon: const Icon(Icons.bookmark_border_rounded, size: 18),
               label: const Text('Save'),
-              style:
-                  TextButton.styleFrom(foregroundColor: scheme.onSurfaceVariant),
+              style: TextButton.styleFrom(
+                foregroundColor: scheme.onSurfaceVariant,
+              ),
             ),
           if (credits != null) ...[
             const SizedBox(width: CockpitSpacing.md),
@@ -57,47 +62,58 @@ class DocOctTopBar extends ConsumerWidget {
               children: [
                 Icon(Icons.bolt_rounded, size: 16, color: scheme.tertiary),
                 const SizedBox(width: 4),
-                Text(_fmt(credits),
-                    style: theme.textTheme.labelLarge
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  _fmt(credits),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(width: 4),
-                Text('credits',
-                    style: theme.textTheme.labelSmall
-                        ?.copyWith(color: scheme.onSurfaceVariant)),
+                Text(
+                  'credits',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ],
           const SizedBox(width: CockpitSpacing.lg),
-          InkWell(
-            onTap: () {
-              if (user == null) {
-                _signIn(context, ref);
-              } else {
-                _showAccountCard(context, ref, user, me);
-              }
-            },
-            customBorder: const CircleBorder(),
-            child: CircleAvatar(
-              radius: 16,
-              backgroundColor: user == null
-                  ? scheme.surfaceContainerHigh
-                  : scheme.primary.withValues(alpha: 0.15),
-              foregroundImage: user?.photoUrl != null
-                  ? NetworkImage(user!.photoUrl!)
-                  : null,
-              child: user == null
-                  ? Icon(Icons.person_outline_rounded,
-                      size: 18, color: scheme.onSurfaceVariant)
-                  : Text(
-                      (user.name ?? user.email ?? '?')
-                          .characters
-                          .first
-                          .toUpperCase(),
-                      style: TextStyle(
+          Pressable(
+            pressedScale: 0.9,
+            child: InkWell(
+              onTap: () {
+                if (user == null) {
+                  _signIn(context, ref);
+                } else {
+                  _showAccountCard(context, ref, user, me);
+                }
+              },
+              customBorder: const CircleBorder(),
+              child: CircleAvatar(
+                radius: 16,
+                backgroundColor: user == null
+                    ? scheme.surfaceContainerHigh
+                    : scheme.primary.withValues(alpha: 0.15),
+                foregroundImage: user?.photoUrl != null
+                    ? NetworkImage(user!.photoUrl!)
+                    : null,
+                child: user == null
+                    ? Icon(
+                        Icons.person_outline_rounded,
+                        size: 18,
+                        color: scheme.onSurfaceVariant,
+                      )
+                    : Text(
+                        (user.name ?? user.email ?? '?').characters.first
+                            .toUpperCase(),
+                        style: TextStyle(
                           color: scheme.primary,
                           fontSize: 13,
-                          fontWeight: FontWeight.w700),
-                    ),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+              ),
             ),
           ),
         ],
@@ -110,23 +126,28 @@ class DocOctTopBar extends ConsumerWidget {
       await ref.read(docAuthProvider).signIn();
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sign-in failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sign-in failed: $e')));
       }
     }
   }
 
   void _showAccountCard(
-      BuildContext context, WidgetRef ref, dynamic user, Me? me) {
-    showDialog<void>(
+    BuildContext context,
+    WidgetRef ref,
+    dynamic user,
+    Me? me,
+  ) {
+    showDocDialog<void>(
       context: context,
       builder: (dialogCtx) {
         final theme = Theme.of(dialogCtx);
         final scheme = theme.colorScheme;
         return Dialog(
           shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(CockpitRadii.lg)),
+            borderRadius: BorderRadius.circular(CockpitRadii.lg),
+          ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 340),
             child: Padding(
@@ -150,8 +171,10 @@ class DocOctTopBar extends ConsumerWidget {
                                     .first
                                     .toUpperCase(),
                                 style: TextStyle(
-                                    color: scheme.primary,
-                                    fontWeight: FontWeight.w700))
+                                  color: scheme.primary,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              )
                             : null,
                       ),
                       const SizedBox(width: CockpitSpacing.md),
@@ -160,13 +183,19 @@ class DocOctTopBar extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (user.name != null)
-                              Text(user.name as String,
-                                  style: theme.textTheme.titleSmall
-                                      ?.copyWith(fontWeight: FontWeight.w700)),
+                              Text(
+                                user.name as String,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
                             if (user.email != null)
-                              Text(user.email as String,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                      color: scheme.onSurfaceVariant)),
+                              Text(
+                                user.email as String,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -198,19 +227,25 @@ class DocOctTopBar extends ConsumerWidget {
   }
 
   Widget _creditRow(ThemeData theme, String label, int value) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            Text(_fmt(value),
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(fontWeight: FontWeight.w700)),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 2),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
-      );
+        Text(
+          _fmt(value),
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
 
   static String _fmt(int v) {
     final s = v.toString();

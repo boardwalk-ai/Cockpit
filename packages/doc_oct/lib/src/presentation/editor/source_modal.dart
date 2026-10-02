@@ -5,7 +5,8 @@ import '../../domain/source.dart';
 
 /// The source modal — read a researched source, optionally humanize its content,
 /// select a passage, and insert it into the essay as a quote + in-text citation.
-/// Mirrors the web editor's source modal (Auto Humanize on by default).
+/// Auto Humanize starts from the Tools panel's setting; flipping it here only
+/// affects this source (the caller remembers the choice per source).
 class SourceModal extends StatefulWidget {
   const SourceModal({
     super.key,
@@ -14,6 +15,10 @@ class SourceModal extends StatefulWidget {
     required this.humanize,
     required this.canHumanize,
     required this.onInsert,
+    this.initialHumanize = false,
+    this.onHumanizeChanged,
+    this.cachedHumanized,
+    this.onHumanized,
   });
 
   final Source source;
@@ -29,14 +34,27 @@ class SourceModal extends StatefulWidget {
   /// Inserts the final text at the cursor (the caller closes the modal).
   final void Function(String text) onInsert;
 
+  /// Whether Auto Humanize starts on — this source's own choice, else the
+  /// panel's Auto Humanize setting.
+  final bool initialHumanize;
+
+  /// The user flipped Auto Humanize in this modal (for this source only).
+  final ValueChanged<bool>? onHumanizeChanged;
+
+  /// This source's humanized content from an earlier open (skips the call).
+  final String? cachedHumanized;
+
+  /// Reports freshly humanized content so reopening this source reuses it.
+  final ValueChanged<String>? onHumanized;
+
   @override
   State<SourceModal> createState() => _SourceModalState();
 }
 
 class _SourceModalState extends State<SourceModal> {
-  late bool _autoHumanize = widget.canHumanize;
+  late bool _autoHumanize = widget.canHumanize && widget.initialHumanize;
   String _selected = '';
-  String? _humanized; // cached humanized content
+  late String? _humanized = widget.cachedHumanized; // humanized content
   bool _humanizing = false;
 
   String get _raw => widget.source.fullContent.trim();
@@ -56,9 +74,9 @@ class _SourceModalState extends State<SourceModal> {
     setState(() => _humanizing = true);
     try {
       final h = await widget.humanize(_raw);
-      if (mounted) {
-        setState(() => _humanized = h.trim().isEmpty ? _raw : h.trim());
-      }
+      final out = h.trim().isEmpty ? _raw : h.trim();
+      if (h.trim().isNotEmpty) widget.onHumanized?.call(out);
+      if (mounted) setState(() => _humanized = out);
     } catch (_) {
       if (mounted) setState(() => _humanized = _raw); // fall back to raw
     } finally {
@@ -71,6 +89,7 @@ class _SourceModalState extends State<SourceModal> {
       _selected = '';
       _autoHumanize = on;
     });
+    widget.onHumanizeChanged?.call(on);
     if (on) _runHumanize();
   }
 
@@ -87,7 +106,8 @@ class _SourceModalState extends State<SourceModal> {
       backgroundColor: scheme.surface,
       insetPadding: const EdgeInsets.all(CockpitSpacing.lg),
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(CockpitRadii.lg)),
+        borderRadius: BorderRadius.circular(CockpitRadii.lg),
+      ),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 640, maxHeight: 620),
         child: Padding(
@@ -107,8 +127,9 @@ class _SourceModalState extends State<SourceModal> {
                   _selected.isEmpty
                       ? 'Select a passage above to insert it as a quote.'
                       : '${_selected.length} characters selected',
-                  style: theme.textTheme.labelSmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               const SizedBox(height: CockpitSpacing.sm),
               _actions(quote),
@@ -120,7 +141,11 @@ class _SourceModalState extends State<SourceModal> {
   }
 
   Widget _header(
-      ThemeData theme, ColorScheme scheme, String title, String domain) {
+    ThemeData theme,
+    ColorScheme scheme,
+    String title,
+    String domain,
+  ) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -128,15 +153,21 @@ class _SourceModalState extends State<SourceModal> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                title,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               if (domain.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 2),
-                  child: Text(domain,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: scheme.onSurfaceVariant)),
+                  child: Text(
+                    domain,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -153,18 +184,28 @@ class _SourceModalState extends State<SourceModal> {
   }
 
   Widget _citationAndToggle(
-      ThemeData theme, ColorScheme scheme, bool hasContent) {
+    ThemeData theme,
+    ColorScheme scheme,
+    bool hasContent,
+  ) {
     return Row(
       children: [
         Expanded(
-          child: Text('Citation: ${widget.inText}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.primary, fontWeight: FontWeight.w600)),
+          child: Text(
+            'Citation: ${widget.inText}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
         if (widget.canHumanize) ...[
-          Text('Auto Humanize',
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(
+            'Auto Humanize',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(width: 4),
           Switch(
             value: _autoHumanize,
@@ -191,23 +232,24 @@ class _SourceModalState extends State<SourceModal> {
       child: _humanizing
           ? const Center(child: CircularProgressIndicator())
           : hasContent
-              ? SingleChildScrollView(
-                  child: SelectableText(
-                    _shown,
-                    style: theme.textTheme.bodyMedium,
-                    onSelectionChanged: (sel, _) => setState(
-                        () => _selected = sel.textInside(_shown).trim()),
-                  ),
-                )
-              : Center(
-                  child: Text(
-                    'No readable content for this source yet — you can still '
-                    'insert its citation.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
-                  ),
+          ? SingleChildScrollView(
+              child: SelectableText(
+                _shown,
+                style: theme.textTheme.bodyMedium,
+                onSelectionChanged: (sel, _) =>
+                    setState(() => _selected = sel.textInside(_shown).trim()),
+              ),
+            )
+          : Center(
+              child: Text(
+                'No readable content for this source yet — you can still '
+                'insert its citation.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
                 ),
+              ),
+            ),
     );
   }
 
@@ -223,8 +265,7 @@ class _SourceModalState extends State<SourceModal> {
         const SizedBox(width: CockpitSpacing.sm),
         Expanded(
           child: FilledButton(
-            onPressed:
-                _selected.isEmpty ? null : () => widget.onInsert(quote),
+            onPressed: _selected.isEmpty ? null : () => widget.onInsert(quote),
             child: const Text('Insert quote + citation'),
           ),
         ),

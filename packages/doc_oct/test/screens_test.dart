@@ -3,6 +3,7 @@ import 'package:doc_oct/doc_oct.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Widget _wrap(Widget page, Brightness b) => ProviderScope(
       child: MaterialApp(
@@ -13,6 +14,11 @@ Widget _wrap(Widget page, Brightness b) => ProviderScope(
     );
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    await WizardSession.init();
+  });
+
   Future<void> desktop(WidgetTester t) async {
     t.view.devicePixelRatio = 1;
     t.view.physicalSize = const Size(1280, 720);
@@ -62,6 +68,13 @@ void main() {
         const WizardAnalysisPage(
           topic: 'The impact of social media on mental health',
           style: FormatStyle.apa,
+          initialAnalysis: HeinAnalysis(
+            analysis: 'Take a position and defend it with evidence.',
+            essayTopic: 'The impact of social media on mental health',
+            essayType: 'Argumentative essay',
+            scope: 'Focused — one core claim',
+            structure: 'Intro · body · conclusion',
+          ),
         ),
         b,
       ));

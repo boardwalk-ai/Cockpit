@@ -23,21 +23,26 @@ class Reveal extends StatefulWidget {
 }
 
 class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: widget.duration);
-  late final Animation<double> _curve =
-      CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+  // The delay is a leading idle stretch of the animation itself (no timer to
+  // leave pending or to fire after dispose).
+  late final Duration _total = widget.delay + widget.duration;
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: _total,
+  );
+  late final Animation<double> _curve = CurvedAnimation(
+    parent: _c,
+    curve: Interval(
+      widget.delay.inMicroseconds / _total.inMicroseconds,
+      1,
+      curve: Curves.easeOutCubic,
+    ),
+  );
 
   @override
   void initState() {
     super.initState();
-    if (widget.delay == Duration.zero) {
-      _c.forward();
-    } else {
-      Future.delayed(widget.delay, () {
-        if (mounted) _c.forward();
-      });
-    }
+    _c.forward();
   }
 
   @override

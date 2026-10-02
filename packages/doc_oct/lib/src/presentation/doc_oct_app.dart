@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/auth_providers.dart';
+import '../application/wizard_session.dart';
 import '../theme/doc_tokens.dart';
 import 'editor/editor_page.dart';
 import 'loading/doc_oct_loading_page.dart';
+import 'widgets/motion.dart';
 import 'wizard/wizard_analysis_page.dart';
 import 'wizard/wizard_setup_page.dart';
 import 'wizard/wizard_welcome_page.dart';
@@ -57,27 +61,42 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
   String _topic = '';
   FormatStyle _style = FormatStyle.mla;
 
-  /// Direction of the last navigation — drives which way the pages slide.
-  bool _forward = true;
+  @override
+  void initState() {
+    super.initState();
+    unawaited(WizardSession.init());
+  }
 
   /// When opening a saved document: its id + serialized state (else null = new).
   String? _openDocId;
   String? _openDocJson;
 
+  /// Loading animation finished. Auth may still be resolving a persisted session.
+  bool _introDone = false;
+
   void _go(_Screen s) => setState(() {
-        _forward = s.index >= _screen.index;
-        _screen = s;
-      });
+    _screen = s;
+  });
 
   bool get _signedIn => ref.read(authUserProvider).valueOrNull != null;
 
+  void _leaveLoadingIfReady() {
+    if (_screen != _Screen.loading || !_introDone) return;
+    final auth = ref.read(authUserProvider);
+    if (auth.isLoading) return;
+    _go(auth.valueOrNull != null ? _Screen.workspace : _Screen.welcome);
+  }
+
+  /// A new document without the topic wizard — so no topic/analysis/outline
+  /// from an earlier session may leak in; the editor asks for a topic itself.
   void _newDocument(FormatStyle? style) => setState(() {
-        _style = style ?? FormatStyle.mla;
-        _openDocId = null;
-        _openDocJson = null;
-        _forward = true;
-        _screen = _Screen.editor;
-      });
+    unawaited(WizardSession.clear());
+    _topic = '';
+    _style = style ?? FormatStyle.mla;
+    _openDocId = null;
+    _openDocJson = null;
+    _screen = _Screen.editor;
+  });
 
   Future<void> _openDocument(String id) async {
     final svc = ref.read(essaysServiceProvider);
@@ -88,58 +107,47 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
       setState(() {
         _openDocId = doc.id;
         _openDocJson = doc.content;
-        _forward = true;
         _screen = _Screen.editor;
       });
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Couldn\'t open document: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Couldn\'t open document: $e')));
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Navigate only on real sign-in/out *transitions* (not steady state), so a
-    // periodic token refresh — or visiting the welcome page while signed in —
-    // never bounces the user around. First resolution (loading → signed-in)
-    // restores a persisted session straight to the workspace.
+    // Keep the loading screen up until Firebase has finished reading the
+    // persisted session. A 2.6s animation finishing first used to dump signed-in
+    // users onto the guest wizard because `ref.listen` does not fire for the
+    // provider's initial value.
+    ref.watch(authUserProvider);
     ref.listen(authUserProvider, (prev, next) {
+      if (_screen == _Screen.loading) {
+        _leaveLoadingIfReady();
+        return;
+      }
       final was = prev?.valueOrNull != null;
       final now = next.valueOrNull != null;
       if (was == now) return;
-      if (now && (_screen == _Screen.welcome || _screen == _Screen.loading)) {
+      // The wizard session lives in this browser's storage — don't hand one
+      // user's topic/analysis/outlines to the next account on the machine.
+      if (!now) unawaited(WizardSession.clear());
+      if (now && _screen == _Screen.welcome) {
         _go(_Screen.workspace);
       } else if (!now && _screen != _Screen.welcome) {
         _go(_Screen.welcome);
       }
     });
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 420),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: _transition,
-      layoutBuilder: (current, previous) => Stack(
-        children: [...previous, if (current != null) current],
-      ),
-      child: KeyedSubtree(key: ValueKey(_screen), child: _current()),
-    );
-  }
-
-  /// A direction-aware cross-fade + horizontal slide. Incoming pages enter from
-  /// the forward side; the outgoing page fades and drifts the opposite way.
-  Widget _transition(Widget child, Animation<double> animation) {
-    final incoming = child.key == ValueKey(_screen);
-    final dir = _forward ? 1.0 : -1.0;
-    final begin = incoming ? Offset(0.05 * dir, 0) : Offset(-0.05 * dir, 0);
-    final slide = Tween<Offset>(begin: begin, end: Offset.zero)
-        .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
-    return FadeTransition(
-      opacity: animation,
-      child: SlideTransition(position: slide, child: child),
+    // Every screen change is a camera-shutter blink ([BlinkSwitcher]); the motion
+    // theme gives every button under Doc Oct ripples + hover/press states.
+    return Theme(
+      data: docMotionTheme(Theme.of(context)),
+      child: BlinkSwitcher(pageKey: _screen, child: _current()),
     );
   }
 
@@ -147,8 +155,11 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
     switch (_screen) {
       case _Screen.loading:
         return DocOctLoadingPage(
-            onDone: () =>
-                _go(_signedIn ? _Screen.workspace : _Screen.welcome));
+          onDone: () {
+            _introDone = true;
+            _leaveLoadingIfReady();
+          },
+        );
 
       case _Screen.welcome:
         return WizardWelcomePage(
@@ -158,14 +169,13 @@ class _DocOctFlowState extends ConsumerState<DocOctFlow> {
 
       case _Screen.setup:
         return WizardSetupPage(
-          initialTopic: _topic,
+          initialTopic: _topic.isNotEmpty ? _topic : WizardSession.prompt,
           initialStyle: _style,
           onBack: () => _go(_Screen.welcome),
           onAnalyze: (topic, style) {
             setState(() {
               _topic = topic;
               _style = style;
-              _forward = true;
               _screen = topic.isEmpty ? _Screen.editor : _Screen.analysis;
             });
           },
