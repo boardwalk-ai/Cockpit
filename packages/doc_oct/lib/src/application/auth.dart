@@ -49,7 +49,7 @@ class FirebaseDocAuth implements DocAuth {
   DocUser? get currentUser => _map(_auth.currentUser);
 
   @override
-  Stream<DocUser?> userChanges() => _auth.userChanges().map(_map);
+  Stream<DocUser?> userChanges() => _auth.authStateChanges().map(_map);
 
   @override
   Future<void> signIn() async {

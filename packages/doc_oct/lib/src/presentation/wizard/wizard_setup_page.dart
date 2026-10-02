@@ -1,9 +1,12 @@
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 
+import '../../application/wizard_session.dart';
 import '../../theme/doc_tokens.dart';
 import '../widgets/doc_scaffold.dart';
 import '../widgets/doc_top_bar.dart';
+import '../widgets/doc_widgets.dart';
+import '../widgets/motion.dart';
 import 'wizard_primary_button.dart';
 import 'wizard_shell.dart';
 
@@ -31,8 +34,13 @@ class WizardSetupPage extends StatefulWidget {
 }
 
 class _WizardSetupPageState extends State<WizardSetupPage> {
-  late final TextEditingController _topic =
-      TextEditingController(text: widget.initialTopic);
+  late final TextEditingController _topic = TextEditingController(
+    text: widget.initialTopic.isNotEmpty
+        ? widget.initialTopic
+        : (WizardSession.prompt.isNotEmpty
+              ? WizardSession.prompt
+              : WizardSession.topic),
+  );
   late FormatStyle _style = widget.initialStyle;
 
   @override
@@ -56,7 +64,10 @@ class _WizardSetupPageState extends State<WizardSetupPage> {
                 step: 2,
                 onBack: widget.onBack,
                 eyebrow: 'Step two',
-                headline: const Text('Set up\nyour paper.'),
+                headline: const [
+                  TextSpan(text: 'Set up'),
+                  TextSpan(text: 'your paper.'),
+                ],
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
@@ -75,22 +86,45 @@ class _WizardSetupPageState extends State<WizardSetupPage> {
                       valueListenable: _topic,
                       builder: (context, _, _) => TextField(
                         controller: _topic,
-                        style: theme.textTheme.titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w500),
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w500,
+                        ),
                         cursorColor: scheme.primary,
                         decoration: InputDecoration(
                           hintText:
                               'e.g. The impact of social media on mental health',
+                          hintStyle: theme.textTheme.titleMedium?.copyWith(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w400,
+                            color: scheme.onSurfaceVariant.withValues(
+                              alpha: 0.55,
+                            ),
+                          ),
                           filled: true,
-                          fillColor: scheme.surfaceContainerLow,
-                          border: OutlineInputBorder(
-                            borderRadius:
-                                BorderRadius.circular(CockpitRadii.md),
-                            borderSide: BorderSide.none,
+                          fillColor: scheme.surfaceContainerLow.withValues(
+                            alpha: 0.6,
+                          ),
+                          // A hairline edge that turns red on focus.
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              CockpitRadii.md,
+                            ),
+                            borderSide: BorderSide(
+                              color: scheme.onSurface.withValues(alpha: 0.08),
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(
+                              CockpitRadii.md,
+                            ),
+                            borderSide: BorderSide(
+                              color: scheme.primary.withValues(alpha: 0.7),
+                            ),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: CockpitSpacing.lg,
-                            vertical: CockpitSpacing.lg,
+                            vertical: 18,
                           ),
                         ),
                         onChanged: (_) => setState(() {}),
@@ -139,7 +173,11 @@ class _WizardSetupPageState extends State<WizardSetupPage> {
     );
   }
 
-  void _continue() => widget.onAnalyze?.call(_topic.text.trim(), _style);
+  Future<void> _continue() async {
+    final topic = _topic.text.trim();
+    await WizardSession.savePrompt(topic);
+    widget.onAnalyze?.call(topic, _style);
+  }
 }
 
 class _FormatPill extends StatelessWidget {
@@ -157,46 +195,45 @@ class _FormatPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return Material(
-      color: selected
-          ? style.color.withValues(alpha: 0.16)
-          : scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(CockpitRadii.pill),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: CockpitSpacing.md,
-            vertical: CockpitSpacing.sm,
+    return Pressable(
+      child: Material(
+        color: selected
+            ? style.color.withValues(alpha: 0.12)
+            : scheme.surfaceContainerLow.withValues(alpha: 0.6),
+        shape: StadiumBorder(
+          side: BorderSide(
+            color: selected
+                ? style.color.withValues(alpha: 0.55)
+                : scheme.onSurface.withValues(alpha: 0.06),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 22,
-                height: 22,
-                alignment: Alignment.center,
-                decoration:
-                    BoxDecoration(color: style.color, shape: BoxShape.circle),
-                child: Text(
-                  style.abbr,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              CockpitSpacing.sm,
+              CockpitSpacing.sm,
+              CockpitSpacing.md,
+              CockpitSpacing.sm,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // The style's logo — lit when chosen, dimmed otherwise.
+                StyleMonogram(style, active: selected),
+                const SizedBox(width: CockpitSpacing.sm),
+                Text(
+                  style.short,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: selected
+                        ? scheme.onSurface
+                        : scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ),
-              const SizedBox(width: CockpitSpacing.sm),
-              Text(
-                style.short,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

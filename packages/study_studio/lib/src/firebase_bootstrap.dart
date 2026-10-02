@@ -1,4 +1,6 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 
 import 'application/config.dart';
 
@@ -30,4 +32,14 @@ Future<void> initStudioFirebase() async {
           : '$projectId.appspot.com',
     ),
   );
+
+  if (!kIsWeb) return;
+
+  // FlutterFire initializes Auth with IndexedDB-first. That search also
+  // *migrates* a Next.js localStorage session into IndexedDB — so we must
+  // wait for that restore, then put the session back in localStorage where
+  // OctopilotWeb can still see it.
+  final auth = FirebaseAuth.instance;
+  await auth.authStateChanges().first;
+  await auth.setPersistence(Persistence.LOCAL);
 }

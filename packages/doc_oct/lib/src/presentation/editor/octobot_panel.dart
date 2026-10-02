@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../application/assist_service.dart';
 import '../../application/backend_config.dart';
+import '../widgets/motion.dart';
 
 const _octoRed = Color(0xFFEA4335);
 
@@ -23,7 +24,7 @@ class OctoBotLauncher extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    return Pressable(glowColor: _octoRed, child: Material(
       color: _octoRed,
       shape: const StadiumBorder(),
       elevation: 4,
@@ -52,7 +53,7 @@ class OctoBotLauncher extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ),);
   }
 
   static void _openOcto(BuildContext context, String Function() essayContext) {
@@ -412,7 +413,7 @@ class _OctoWindowState extends State<_OctoWindow> {
                 ),
               ),
               const SizedBox(width: 6),
-              Material(
+              Pressable(enabled: !_loading, pressedScale: 0.85, child: Material(
                 color: _octoRed,
                 shape: const CircleBorder(),
                 child: InkWell(
@@ -423,7 +424,7 @@ class _OctoWindowState extends State<_OctoWindow> {
                     child: Icon(Icons.send_rounded, size: 16, color: Colors.white),
                   ),
                 ),
-              ),
+              ),),
             ],
           ),
         ],

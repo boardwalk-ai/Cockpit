@@ -9,6 +9,7 @@ import 'package:study_studio/study_studio.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initStudioFirebase(); // no-op unless FIREBASE_* defines are provided
+  await WizardSession.init();
   // Wire the Firebase ID token into Doc Oct's API client so authed calls
   // (credits, saving) carry it.
   setAuthTokenSource(createDocAuth().idToken);

@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../domain/lookup_result.dart';
 import '../domain/source.dart';
+import 'idempotent_post.dart';
 import 'tools_service.dart';
 
 /// The real [ToolsService] — talks to our Rust backend (`backend-rs`), which is
@@ -45,6 +46,7 @@ class HttpToolsService implements ToolsService {
   }
 
   String _errorMessage(http.Response r) {
+    if (r.statusCode == 401) return signInRequired;
     try {
       final body = jsonDecode(r.body);
       if (body is Map && body['error'] is String) return body['error'] as String;
@@ -68,7 +70,8 @@ class HttpToolsService implements ToolsService {
 
   @override
   Future<String> paraphrase(String text) async {
-    final r = await _client.post(
+    final r = await postIdempotent(
+      _client,
       _u('/v1/paraphrase'),
       headers: await _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({'text': text}),
@@ -78,7 +81,8 @@ class HttpToolsService implements ToolsService {
 
   @override
   Future<List<Source>> searchSources(String query) async {
-    final r = await _client.post(
+    final r = await postIdempotent(
+      _client,
       _u('/v1/sources/search'),
       headers: await _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({'topic': query.trim()}),

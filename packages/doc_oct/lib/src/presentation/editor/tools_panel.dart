@@ -4,11 +4,14 @@ import 'package:flutter/services.dart';
 
 import '../../application/backend_config.dart';
 import '../../application/tools_service.dart';
+import '../../application/wizard_session.dart';
 import '../../domain/citation_templates.dart';
 import '../../domain/lookup_result.dart';
 import '../../domain/source.dart';
 import '../../theme/doc_tokens.dart';
+import '../widgets/doc_button.dart';
 import '../widgets/doc_widgets.dart';
+import '../widgets/motion.dart';
 import '../widgets/reveal.dart';
 import 'source_modal.dart';
 
@@ -46,7 +49,8 @@ class ToolsPanel extends StatefulWidget {
 enum _Tab { citations, source, paraphraser, dictionary, thesaurus }
 
 class _ToolsPanelState extends State<ToolsPanel> {
-  final ToolsService _tools = createToolsService(); // mock, or backend via --dart-define
+  final ToolsService _tools =
+      createToolsService(); // mock, or backend via --dart-define
 
   _Tab _tab = _Tab.citations;
 
@@ -63,7 +67,15 @@ class _ToolsPanelState extends State<ToolsPanel> {
 
   // Source
   int _sourceSub = 0; // Auto Search / Keyword / Intelligence / Uploads
+  /// Panel-wide Auto Humanize — the default for every source modal.
   bool _autoHumanize = false;
+
+  /// Per-source overrides set inside a modal (key = source url/title) and the
+  /// humanized text already fetched for a source.
+  final Map<String, bool> _humanizeFor = {};
+  final Map<String, String> _humanizedText = {};
+
+  String _sourceKey(Source s) => s.url.isNotEmpty ? s.url : s.title;
   final _sourceKeyword = TextEditingController();
 
   // Lookups
@@ -81,13 +93,23 @@ class _ToolsPanelState extends State<ToolsPanel> {
   void initState() {
     super.initState();
     _citStyle = widget.currentStyle;
+    final stored = WizardSession.searchTopic;
+    if (stored.isNotEmpty) _sourceKeyword.text = stored;
   }
 
   @override
   void dispose() {
     for (final c in [
-      _citAuthor, _citTitle, _citPublisher, _citYear, _citContent, _citUrl,
-      _sourceKeyword, _dictInput, _thesInput, _paraInput,
+      _citAuthor,
+      _citTitle,
+      _citPublisher,
+      _citYear,
+      _citContent,
+      _citUrl,
+      _sourceKeyword,
+      _dictInput,
+      _thesInput,
+      _paraInput,
     ]) {
       c.dispose();
     }
@@ -124,33 +146,45 @@ class _ToolsPanelState extends State<ToolsPanel> {
       child: Row(
         children: [
           for (final t in _Tab.values)
-            GestureDetector(
-              onTap: () => setState(() => _tab = t),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: CockpitSpacing.sm, vertical: CockpitSpacing.sm),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(_label(t),
+            Pressable(
+              pressedScale: 0.9,
+              child: GestureDetector(
+                onTap: () => setState(() => _tab = t),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: CockpitSpacing.sm,
+                    vertical: CockpitSpacing.sm,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _label(t),
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: _tab == t
                               ? scheme.onSurface
                               : scheme.onSurfaceVariant,
                           fontWeight: FontWeight.w700,
                           letterSpacing: 0.3,
-                        )),
-                    const SizedBox(height: 4),
-                    Container(
-                      height: 2,
-                      width: 22,
-                      decoration: BoxDecoration(
-                        color: _tab == t ? scheme.primary : Colors.transparent,
-                        borderRadius: BorderRadius.circular(2),
+                        ),
                       ),
-                    ),
-                  ],
+                      const SizedBox(height: 4),
+                      // The active-tab underline grows in / shrinks out.
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutBack,
+                        height: 2,
+                        width: _tab == t ? 22 : 0,
+                        decoration: BoxDecoration(
+                          color: _tab == t
+                              ? scheme.primary
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -160,20 +194,20 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   String _label(_Tab t) => switch (t) {
-        _Tab.citations => 'Citations',
-        _Tab.source => 'Source',
-        _Tab.paraphraser => 'Paraphraser',
-        _Tab.dictionary => 'Dictionary',
-        _Tab.thesaurus => 'Thesaurus',
-      };
+    _Tab.citations => 'Citations',
+    _Tab.source => 'Source',
+    _Tab.paraphraser => 'Paraphraser',
+    _Tab.dictionary => 'Dictionary',
+    _Tab.thesaurus => 'Thesaurus',
+  };
 
   Widget _body(BuildContext context) => switch (_tab) {
-        _Tab.citations => _citationsTab(context),
-        _Tab.source => _sourceTab(context),
-        _Tab.paraphraser => _paraphraserTab(context),
-        _Tab.dictionary => _dictionaryTab(context),
-        _Tab.thesaurus => _thesaurusTab(context),
-      };
+    _Tab.citations => _citationsTab(context),
+    _Tab.source => _sourceTab(context),
+    _Tab.paraphraser => _paraphraserTab(context),
+    _Tab.dictionary => _dictionaryTab(context),
+    _Tab.thesaurus => _thesaurusTab(context),
+  };
 
   // ══════════════ CITATIONS (Manual / Auto) ══════════════
   Widget _citationsTab(BuildContext context) {
@@ -182,15 +216,21 @@ class _ToolsPanelState extends State<ToolsPanel> {
     return ListView(
       padding: const EdgeInsets.all(CockpitSpacing.md),
       children: [
-        _segmented(const ['Manual', 'Auto'], _citMode,
-            (i) => setState(() => _citMode = i)),
+        _segmented(
+          const ['Manual', 'Auto'],
+          _citMode,
+          (i) => setState(() => _citMode = i),
+        ),
         const SizedBox(height: CockpitSpacing.lg),
         if (_citMode == 0) ...[
           _field(_citAuthor, 'Author name', 'e.g. John Smith'),
           _field(_citPublisher, 'Publisher name', 'e.g. Penguin Books'),
           _field(_citYear, 'Published year', 'e.g. 2023'),
-          _fieldMultiline(_citContent, 'Full content (helps AI)',
-              'Paste a summary or excerpt…'),
+          _fieldMultiline(
+            _citContent,
+            'Full content (helps AI)',
+            'Paste a summary or excerpt…',
+          ),
           const SizedBox(height: CockpitSpacing.md),
           const Eyebrow('Which format?'),
           const SizedBox(height: CockpitSpacing.sm),
@@ -230,8 +270,9 @@ class _ToolsPanelState extends State<ToolsPanel> {
             _citMode == 1
                 ? 'Scrape a URL above to generate citations.'
                 : 'Fill in the form above to generate a citation.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
           ),
       ],
     );
@@ -244,8 +285,7 @@ class _ToolsPanelState extends State<ToolsPanel> {
       children: [
         for (final s in FormatStyle.values)
           _FormatPill(
-            label: s.short,
-            color: s.color,
+            style: s,
             selected: _citStyle == s,
             isCurrent: s == widget.currentStyle,
             onTap: () => setState(() {
@@ -258,12 +298,12 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   Source get _manualSource => Source(
-        url: '',
-        title: _citTitle.text,
-        author: _citAuthor.text,
-        publishedYear: _citYear.text,
-        publisher: _citPublisher.text,
-      );
+    url: '',
+    title: _citTitle.text,
+    author: _citAuthor.text,
+    publishedYear: _citYear.text,
+    publisher: _citPublisher.text,
+  );
 
   void _generateManual() {
     final s = _manualSource;
@@ -274,7 +314,9 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   void _scrapeUrl() {
-    final host = Uri.tryParse(_citUrl.text.trim())?.host.replaceFirst('www.', '');
+    final host = Uri.tryParse(
+      _citUrl.text.trim(),
+    )?.host.replaceFirst('www.', '');
     if (host == null || host.isEmpty) return;
     // Mock scrape → a Source from the URL; backend does the real scrape.
     final s = Source(
@@ -303,9 +345,10 @@ class _ToolsPanelState extends State<ToolsPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _segmented(
-                  const ['Auto Search', 'Keyword', 'Intelligence', 'Uploads'],
-                  _sourceSub,
-                  (i) => setState(() => _sourceSub = i)),
+                const ['Auto Search', 'Keyword', 'Intelligence', 'Uploads'],
+                _sourceSub,
+                (i) => setState(() => _sourceSub = i),
+              ),
               const SizedBox(height: CockpitSpacing.sm),
               _humanizeToggle(),
             ],
@@ -319,44 +362,60 @@ class _ToolsPanelState extends State<ToolsPanel> {
   Widget _humanizeToggle() {
     const teal = Color(0xFF0D9488);
     final on = _autoHumanize;
-    return GestureDetector(
-      onTap: () => setState(() => _autoHumanize = !on),
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(
-            horizontal: CockpitSpacing.sm, vertical: 5),
-        decoration: BoxDecoration(
-          color: on ? teal.withValues(alpha: 0.12) : Colors.transparent,
-          borderRadius: BorderRadius.circular(CockpitRadii.pill),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                color: on ? teal : Theme.of(context).colorScheme.onSurfaceVariant,
-                shape: BoxShape.circle,
+    return Pressable(
+      pressedScale: 0.95,
+      child: GestureDetector(
+        // The panel switch sets every source; per-source modal choices reset.
+        onTap: () => setState(() {
+          _autoHumanize = !on;
+          _humanizeFor.clear();
+        }),
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: CockpitSpacing.sm,
+            vertical: 5,
+          ),
+          decoration: BoxDecoration(
+            color: on ? teal.withValues(alpha: 0.12) : Colors.transparent,
+            borderRadius: BorderRadius.circular(CockpitRadii.pill),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: on
+                      ? teal
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  shape: BoxShape.circle,
+                ),
               ),
-            ),
-            const SizedBox(width: 6),
-            Text('Auto Humanize',
+              const SizedBox(width: 6),
+              Text(
+                'Auto Humanize',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: on
                       ? teal
                       : Theme.of(context).colorScheme.onSurfaceVariant,
-                )),
-          ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _sourceSubBody(
-      BuildContext context, ThemeData theme, ColorScheme scheme) {
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
     switch (_sourceSub) {
       case 3: // Uploads
         return _uploadsBody(context, theme, scheme);
@@ -366,19 +425,30 @@ class _ToolsPanelState extends State<ToolsPanel> {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(
-                  CockpitSpacing.md, 0, CockpitSpacing.md, CockpitSpacing.md),
+                CockpitSpacing.md,
+                0,
+                CockpitSpacing.md,
+                CockpitSpacing.md,
+              ),
               child: _sourceInputArea(context, theme, scheme),
             ),
             if (_tools.isMock) _sampleBanner(context),
             Expanded(
               child: _sources == null
-                  ? _idle(context, Icons.travel_explore_rounded,
+                  ? _idle(
+                      context,
+                      Icons.travel_explore_rounded,
                       _sourceSub == 2
                           ? 'Select text in your essay above'
-                          : 'Search a topic to find sources')
+                          : 'Search a topic to find sources',
+                    )
                   : ListView(
-                      padding: const EdgeInsets.fromLTRB(CockpitSpacing.md, 0,
-                          CockpitSpacing.md, CockpitSpacing.md),
+                      padding: const EdgeInsets.fromLTRB(
+                        CockpitSpacing.md,
+                        0,
+                        CockpitSpacing.md,
+                        CockpitSpacing.md,
+                      ),
                       children: [
                         for (var i = 0; i < _sources!.length; i++)
                           Reveal(
@@ -394,28 +464,44 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   Widget _sourceInputArea(
-      BuildContext context, ThemeData theme, ColorScheme scheme) {
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
     void search() => _run(() async {
-          final r = await _tools.searchSources(_sourceKeyword.text);
-          if (mounted) {
-            setState(() => _sources = r);
-            widget.onSourcesFound?.call(r);
-          }
-        });
+      final query = _sourceKeyword.text.trim().isNotEmpty
+          ? _sourceKeyword.text.trim()
+          : WizardSession.searchTopic;
+      if (query.isEmpty) return;
+      if (_sourceKeyword.text.trim().isEmpty) {
+        _sourceKeyword.text = query;
+      }
+      final r = await _tools.searchSources(query);
+      if (mounted) {
+        setState(() => _sources = r);
+        widget.onSourcesFound?.call(r);
+      }
+    });
     switch (_sourceSub) {
       case 0: // Auto Search
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'AI reads your essay and finds the most relevant academic '
-              'sources — no keyword needed.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
+              WizardSession.searchTopic.isEmpty
+                  ? 'Uses the essay topic from setup, or type a keyword '
+                        'in the Keyword tab.'
+                  : 'Searches sources for “${WizardSession.searchTopic}” '
+                        '(saved from your essay topic).',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: CockpitSpacing.sm),
             _RedButton(
-                label: _loading ? 'Searching…' : 'Auto Search', onTap: search),
+              label: _loading ? 'Searching…' : 'Auto Search',
+              onTap: search,
+            ),
           ],
         );
       case 1: // Keyword
@@ -424,20 +510,29 @@ class _ToolsPanelState extends State<ToolsPanel> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Select any text in your essay to find supporting sources.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
+            Text(
+              'Select any text in your essay to find supporting sources.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
             const SizedBox(height: CockpitSpacing.sm),
             DocSurface(
               padding: const EdgeInsets.all(CockpitSpacing.md),
-              child: Text('Highlight text in your essay…',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontStyle: FontStyle.italic)),
+              child: Text(
+                'Highlight text in your essay…',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
             const SizedBox(height: CockpitSpacing.sm),
             _RedButton(
-                label: 'Search for sources', outline: true, onTap: search),
+              label: 'Search for sources',
+              outline: true,
+              onTap: search,
+            ),
           ],
         );
       default:
@@ -446,13 +541,20 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   Widget _uploadsBody(
-      BuildContext context, ThemeData theme, ColorScheme scheme) {
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme scheme,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              CockpitSpacing.md, 0, CockpitSpacing.md, CockpitSpacing.md),
+            CockpitSpacing.md,
+            0,
+            CockpitSpacing.md,
+            CockpitSpacing.md,
+          ),
           child: Material(
             color: scheme.primary.withValues(alpha: 0.06),
             borderRadius: BorderRadius.circular(CockpitRadii.pill),
@@ -460,21 +562,29 @@ class _ToolsPanelState extends State<ToolsPanel> {
               onTap: () {},
               borderRadius: BorderRadius.circular(CockpitRadii.pill),
               child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: CockpitSpacing.md),
+                padding: const EdgeInsets.symmetric(
+                  vertical: CockpitSpacing.md,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.upload_rounded, size: 15, color: scheme.primary),
                     const SizedBox(width: CockpitSpacing.xs),
-                    Text('Upload File',
-                        style: TextStyle(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 12)),
+                    Text(
+                      'Upload File',
+                      style: TextStyle(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
                     const SizedBox(width: CockpitSpacing.xs),
-                    Text('PDF · IMG',
-                        style: theme.textTheme.labelSmall
-                            ?.copyWith(color: scheme.onSurfaceVariant)),
+                    Text(
+                      'PDF · IMG',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -482,8 +592,12 @@ class _ToolsPanelState extends State<ToolsPanel> {
           ),
         ),
         Expanded(
-            child: _idle(context, Icons.description_outlined,
-                'Upload a PDF or image to cite it')),
+          child: _idle(
+            context,
+            Icons.description_outlined,
+            'Upload a PDF or image to cite it',
+          ),
+        ),
       ],
     );
   }
@@ -499,40 +613,55 @@ class _ToolsPanelState extends State<ToolsPanel> {
     final domain = Uri.tryParse(s.url)?.host.replaceFirst('www.', '') ?? '';
     return Padding(
       padding: const EdgeInsets.only(bottom: CockpitSpacing.sm),
-      child: DocSurface(
-        padding: EdgeInsets.zero,
-        child: InkWell(
-          onTap: () => _openSourceModal(s, index),
-          borderRadius: BorderRadius.circular(CockpitRadii.md),
-          child: Padding(
-            padding: const EdgeInsets.all(CockpitSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(s.title,
+      child: Pressable(
+        pressedScale: 0.98,
+        borderRadius: BorderRadius.circular(CockpitRadii.md),
+        child: DocSurface(
+          padding: EdgeInsets.zero,
+          child: InkWell(
+            onTap: () => _openSourceModal(s, index),
+            borderRadius: BorderRadius.circular(CockpitRadii.md),
+            child: Padding(
+              padding: const EdgeInsets.all(CockpitSpacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.title,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w600)),
-                if (meta.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(meta,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: scheme.onSurfaceVariant)),
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (meta.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      meta,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  if (domain.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      domain,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: CockpitSpacing.sm),
+                  Row(
+                    children: [
+                      _miniAction('Quote', () => _openSourceModal(s, index)),
+                      const SizedBox(width: CockpitSpacing.xs),
+                      _miniAction('Cite', () => _insertCitation(s, index)),
+                    ],
+                  ),
                 ],
-                if (domain.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(domain,
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: scheme.onSurfaceVariant)),
-                ],
-                const SizedBox(height: CockpitSpacing.sm),
-                Row(children: [
-                  _miniAction('Quote', () => _openSourceModal(s, index)),
-                  const SizedBox(width: CockpitSpacing.xs),
-                  _miniAction('Cite', () => _insertCitation(s, index)),
-                ]),
-              ],
+              ),
             ),
           ),
         ),
@@ -552,13 +681,17 @@ class _ToolsPanelState extends State<ToolsPanel> {
   /// Opens the source modal — read the content, optionally humanize it, select a
   /// passage, and insert it as a quote + in-text citation at the cursor.
   Future<void> _openSourceModal(Source s, int index) async {
-    await showDialog<void>(
+    await showDocDialog<void>(
       context: context,
       builder: (dialogCtx) => SourceModal(
         source: s,
         inText: _inTextFor(s, index),
         humanize: (text) => _tools.paraphrase(text),
         canHumanize: !_tools.isMock,
+        initialHumanize: _humanizeFor[_sourceKey(s)] ?? _autoHumanize,
+        onHumanizeChanged: (on) => _humanizeFor[_sourceKey(s)] = on,
+        cachedHumanized: _humanizedText[_sourceKey(s)],
+        onHumanized: (text) => _humanizedText[_sourceKey(s)] = text,
         onInsert: (text) {
           widget.onInsertText?.call(text);
           Navigator.of(dialogCtx).pop();
@@ -614,37 +747,56 @@ class _ToolsPanelState extends State<ToolsPanel> {
         if (_tools.isMock) _sampleBanner(context),
         Expanded(
           child: _dict == null
-              ? _idle(context, Icons.menu_book_rounded,
-                  'Type a word and press search')
+              ? _idle(
+                  context,
+                  Icons.menu_book_rounded,
+                  'Type a word and press search',
+                )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(CockpitSpacing.md, 0,
-                      CockpitSpacing.md, CockpitSpacing.md),
+                  padding: const EdgeInsets.fromLTRB(
+                    CockpitSpacing.md,
+                    0,
+                    CockpitSpacing.md,
+                    CockpitSpacing.md,
+                  ),
                   children: [
-                    Text(_dict!.word,
-                        style: theme.textTheme.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      _dict!.word,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     if (_dict!.phonetic != null)
-                      Text(_dict!.phonetic!,
-                          style: theme.textTheme.bodySmall
-                              ?.copyWith(color: scheme.onSurfaceVariant)),
+                      Text(
+                        _dict!.phonetic!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                     const SizedBox(height: CockpitSpacing.md),
                     for (final m in _dict!.meanings) ...[
                       DocChip(m.partOfSpeech, color: scheme.primary),
                       const SizedBox(height: CockpitSpacing.xs),
                       for (final d in m.definitions)
                         Padding(
-                          padding:
-                              const EdgeInsets.only(bottom: CockpitSpacing.sm),
+                          padding: const EdgeInsets.only(
+                            bottom: CockpitSpacing.sm,
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(d.definition,
-                                  style: theme.textTheme.bodyMedium),
+                              Text(
+                                d.definition,
+                                style: theme.textTheme.bodyMedium,
+                              ),
                               if (d.example != null)
-                                Text('“${d.example}”',
-                                    style: theme.textTheme.bodySmall?.copyWith(
-                                        color: scheme.onSurfaceVariant,
-                                        fontStyle: FontStyle.italic)),
+                                Text(
+                                  '“${d.example}”',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -683,11 +835,18 @@ class _ToolsPanelState extends State<ToolsPanel> {
         if (_tools.isMock) _sampleBanner(context),
         Expanded(
           child: _thes == null
-              ? _idle(context, Icons.compare_arrows_rounded,
-                  'Find synonyms and antonyms')
+              ? _idle(
+                  context,
+                  Icons.compare_arrows_rounded,
+                  'Find synonyms and antonyms',
+                )
               : ListView(
-                  padding: const EdgeInsets.fromLTRB(CockpitSpacing.md, 0,
-                      CockpitSpacing.md, CockpitSpacing.md),
+                  padding: const EdgeInsets.fromLTRB(
+                    CockpitSpacing.md,
+                    0,
+                    CockpitSpacing.md,
+                    CockpitSpacing.md,
+                  ),
                   children: [
                     const Eyebrow('Synonyms'),
                     const SizedBox(height: CockpitSpacing.xs),
@@ -695,7 +854,7 @@ class _ToolsPanelState extends State<ToolsPanel> {
                       spacing: CockpitSpacing.xs,
                       runSpacing: CockpitSpacing.xs,
                       children: [
-                        for (final w in _thes!.synonyms) DocChip(w.word)
+                        for (final w in _thes!.synonyms) DocChip(w.word),
                       ],
                     ),
                     if (_thes!.antonyms.isNotEmpty) ...[
@@ -707,8 +866,10 @@ class _ToolsPanelState extends State<ToolsPanel> {
                         runSpacing: CockpitSpacing.xs,
                         children: [
                           for (final w in _thes!.antonyms)
-                            DocChip(w.word,
-                                color: Theme.of(context).colorScheme.primary)
+                            DocChip(
+                              w.word,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
                         ],
                       ),
                     ],
@@ -720,7 +881,11 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   // ── shared pieces ────────────────────────────────────────────────────────────
-  Widget _segmented(List<String> labels, int selected, ValueChanged<int> onTap) {
+  Widget _segmented(
+    List<String> labels,
+    int selected,
+    ValueChanged<int> onTap,
+  ) {
     final scheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(3),
@@ -732,28 +897,31 @@ class _ToolsPanelState extends State<ToolsPanel> {
         children: [
           for (var i = 0; i < labels.length; i++)
             Expanded(
-              child: GestureDetector(
-                onTap: () => onTap(i),
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  decoration: BoxDecoration(
-                    color: selected == i
-                        ? scheme.surfaceContainerHighest
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(CockpitRadii.pill),
-                  ),
-                  child: Text(
-                    labels[i],
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+              child: Pressable(
+                pressedScale: 0.94,
+                child: GestureDetector(
+                  onTap: () => onTap(i),
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
                       color: selected == i
-                          ? scheme.onSurface
-                          : scheme.onSurfaceVariant,
+                          ? scheme.surfaceContainerHighest
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(CockpitRadii.pill),
+                    ),
+                    child: Text(
+                      labels[i],
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: selected == i
+                            ? scheme.onSurface
+                            : scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                 ),
@@ -772,9 +940,12 @@ class _ToolsPanelState extends State<ToolsPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: 2),
           TextField(
             controller: c,
@@ -795,9 +966,12 @@ class _ToolsPanelState extends State<ToolsPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: 2),
           _multiline(c, hint),
         ],
@@ -818,7 +992,10 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   Widget _searchBar(
-      TextEditingController c, String hint, VoidCallback onSearch) {
+    TextEditingController c,
+    String hint,
+    VoidCallback onSearch,
+  ) {
     final scheme = Theme.of(context).colorScheme;
     return Row(
       children: [
@@ -851,18 +1028,32 @@ class _ToolsPanelState extends State<ToolsPanel> {
   }
 
   InputDecoration _dec(String hint, ColorScheme scheme) => InputDecoration(
-        hintText: hint,
-        isDense: true,
-        filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        hintStyle: TextStyle(color: scheme.onSurfaceVariant, fontSize: 13),
-        contentPadding: const EdgeInsets.symmetric(
-            horizontal: CockpitSpacing.md, vertical: CockpitSpacing.sm),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(CockpitRadii.md),
-          borderSide: BorderSide.none,
-        ),
-      );
+    hintText: hint,
+    isDense: true,
+    filled: true,
+    // A light fill + hairline edge that turns red on focus (as in the wizard).
+    fillColor: scheme.onSurface.withValues(alpha: 0.04),
+    hintStyle: TextStyle(
+      color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+      fontSize: 13,
+    ),
+    contentPadding: const EdgeInsets.symmetric(
+      horizontal: CockpitSpacing.md,
+      vertical: 11,
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(CockpitRadii.md),
+      borderSide: BorderSide(color: scheme.onSurface.withValues(alpha: 0.08)),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(CockpitRadii.md),
+      borderSide: BorderSide(color: scheme.primary.withValues(alpha: 0.6)),
+    ),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(CockpitRadii.md),
+      borderSide: BorderSide.none,
+    ),
+  );
 
   Widget _resultBlock(BuildContext context, String label, String value) {
     final theme = Theme.of(context);
@@ -872,23 +1063,29 @@ class _ToolsPanelState extends State<ToolsPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Expanded(child: Eyebrow(label)),
-            InkWell(
-              onTap: () async {
-                await Clipboard.setData(ClipboardData(text: value));
-                if (context.mounted) {
-                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                    const SnackBar(
+          Row(
+            children: [
+              Expanded(child: Eyebrow(label)),
+              InkWell(
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: value));
+                  if (context.mounted) {
+                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                      const SnackBar(
                         content: Text('Copied'),
-                        duration: Duration(seconds: 1)),
-                  );
-                }
-              },
-              child: Icon(Icons.copy_rounded,
-                  size: 15, color: scheme.onSurfaceVariant),
-            ),
-          ]),
+                        duration: Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
+                child: Icon(
+                  Icons.copy_rounded,
+                  size: 15,
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: CockpitSpacing.xs),
           Text(value, style: theme.textTheme.bodyMedium),
         ],
@@ -898,20 +1095,27 @@ class _ToolsPanelState extends State<ToolsPanel> {
 
   Widget _miniAction(String label, VoidCallback onTap) {
     final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: scheme.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(CockpitRadii.pill),
-      child: InkWell(
-        onTap: onTap,
+    return Pressable(
+      child: Material(
+        color: scheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(CockpitRadii.pill),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: CockpitSpacing.md, vertical: 4),
-          child: Text(label,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(CockpitRadii.pill),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: CockpitSpacing.md,
+              vertical: 4,
+            ),
+            child: Text(
+              label,
               style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: scheme.onSurfaceVariant)),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -923,15 +1127,19 @@ class _ToolsPanelState extends State<ToolsPanel> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon,
-              size: 30, color: scheme.onSurfaceVariant.withValues(alpha: 0.4)),
+          Icon(
+            icon,
+            size: 30,
+            color: scheme.onSurfaceVariant.withValues(alpha: 0.4),
+          ),
           const SizedBox(height: CockpitSpacing.sm),
-          Text(text,
-              textAlign: TextAlign.center,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant)),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+          ),
         ],
       ),
     );
@@ -941,68 +1149,86 @@ class _ToolsPanelState extends State<ToolsPanel> {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          CockpitSpacing.md, 0, CockpitSpacing.md, CockpitSpacing.sm),
-      child: Text('Sample results — live tools arrive with the backend.',
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.onSurfaceVariant.withValues(alpha: 0.7))),
+        CockpitSpacing.md,
+        0,
+        CockpitSpacing.md,
+        CockpitSpacing.sm,
+      ),
+      child: Text(
+        'Sample results — live tools arrive with the backend.',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+        ),
+      ),
     );
   }
 }
 
 class _FormatPill extends StatelessWidget {
   const _FormatPill({
-    required this.label,
-    required this.color,
+    required this.style,
     required this.selected,
     required this.isCurrent,
     required this.onTap,
   });
-  final String label;
-  final Color color;
+  final FormatStyle style;
   final bool selected;
+
+  /// The document's own style — marked with a small dot.
   final bool isCurrent;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color:
-          selected ? color.withValues(alpha: 0.18) : scheme.surfaceContainerLow,
-      borderRadius: BorderRadius.circular(CockpitRadii.pill),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-              horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xs),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color:
-                        selected ? scheme.onSurface : scheme.onSurfaceVariant,
-                  )),
-              if (isCurrent) ...[
-                const SizedBox(width: 5),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: scheme.primary,
-                    borderRadius: BorderRadius.circular(3),
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Pressable(
+      child: Tooltip(
+        message: isCurrent ? "Your document's style" : '',
+        child: Material(
+          color: selected
+              ? style.color.withValues(alpha: 0.14)
+              : scheme.onSurface.withValues(alpha: 0.03),
+          shape: StadiumBorder(
+            side: BorderSide(
+              color: selected
+                  ? style.color.withValues(alpha: 0.55)
+                  : scheme.onSurface.withValues(alpha: 0.08),
+            ),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(5, 5, 11, 5),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  StyleMonogram(style, size: 17, active: selected),
+                  const SizedBox(width: 7),
+                  Text(
+                    style.short,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: selected
+                          ? scheme.onSurface
+                          : scheme.onSurfaceVariant,
+                    ),
                   ),
-                  child: const Text('current',
-                      style: TextStyle(
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white)),
-                ),
-              ],
-            ],
+                  if (isCurrent) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 5,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: scheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1022,27 +1248,14 @@ class _RedButton extends StatelessWidget {
   final bool compact;
   final bool outline;
 
+  /// A panel action on the shared [DocButton]: full width and a touch taller
+  /// unless [compact]; [outline] is the quieter tonal variant.
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final fg = outline ? scheme.primary : Colors.white;
-    return Material(
-      color: outline ? scheme.primary.withValues(alpha: 0.10) : scheme.primary,
-      borderRadius: BorderRadius.circular(CockpitRadii.md),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-              horizontal: compact ? CockpitSpacing.lg : CockpitSpacing.md,
-              vertical: CockpitSpacing.md),
-          child: Center(
-            child: Text(label,
-                style: TextStyle(
-                    color: fg, fontWeight: FontWeight.w700, fontSize: 13)),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => DocButton(
+    label: label,
+    onTap: onTap,
+    kind: outline ? DocButtonKind.tonal : DocButtonKind.primary,
+    expand: !compact,
+    height: compact ? 36 : 40,
+  );
 }

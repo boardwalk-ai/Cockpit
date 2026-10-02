@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'idempotent_post.dart';
 
 /// The signed-in user + credits, from `/v1/me`.
 class Me {
@@ -121,6 +122,7 @@ class EssaysService {
   }
 
   String _err(http.Response r) {
+    if (r.statusCode == 401) return signInRequired;
     try {
       final b = jsonDecode(r.body);
       if (b is Map && b['error'] is String) return b['error'] as String;
@@ -158,7 +160,8 @@ class EssaysService {
     int wordCount = 0,
     String? citationStyle,
   }) async {
-    final r = await _client.post(
+    final r = await postIdempotent(
+      _client,
       _u('/v1/essays'),
       headers: await _headers({'Content-Type': 'application/json'}),
       body: jsonEncode({

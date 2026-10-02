@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../domain/outline.dart';
+import 'idempotent_post.dart';
 
 /// One chat turn in the OctoBot conversation.
 class ChatTurn {
@@ -147,7 +148,8 @@ class HttpAssistService implements AssistService {
     required String mode,
     required String essay,
   }) async {
-    final r = await _client.post(
+    final r = await postIdempotent(
+      _client,
       _u('/v1/octobot/chat'),
       headers: await _headers(),
       body: jsonEncode({
@@ -170,7 +172,8 @@ class HttpAssistService implements AssistService {
     required String topic,
     String assignment = '',
   }) async {
-    final r = await _client.post(
+    final r = await postIdempotent(
+      _client,
       _u('/v1/outline'),
       headers: await _headers(),
       body: jsonEncode({'topic': topic, 'assignment': assignment}),
@@ -184,6 +187,7 @@ class HttpAssistService implements AssistService {
   }
 
   String _err(http.Response r) {
+    if (r.statusCode == 401) return signInRequired;
     try {
       final b = jsonDecode(r.body);
       if (b is Map && b['error'] is String) return b['error'] as String;

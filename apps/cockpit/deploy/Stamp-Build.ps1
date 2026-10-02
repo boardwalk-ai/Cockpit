@@ -9,7 +9,8 @@
 
 param(
     [string]$BuildId = (Get-Date -Format "yyyyMMddHHmmss"),
-    [string]$WebDir = ""
+    [string]$WebDir = "",
+    [string]$AppName = "cockpit"
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,11 +50,11 @@ Write-Host ">> index.html bootstrap ?v=$BuildId"
 # 3) Stamp version.json (handy for debugging which build is live).
 $VersionPath = Join-Path $WebDir "version.json"
 $VersionObj = [ordered]@{
-    app_name     = "cockpit"
+    app_name     = $AppName
     version      = "1.0.0"
     build_number = $BuildId
     build_id     = $BuildId
-    package_name = "cockpit"
+    package_name = $AppName
     stamped_at   = (Get-Date).ToUniversalTime().ToString("o")
 }
 $VersionJson = ($VersionObj | ConvertTo-Json -Compress)

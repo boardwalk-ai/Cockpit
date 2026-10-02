@@ -199,15 +199,31 @@ extension _Paper on FormatSpec {
           style: f.baseStyle
               .copyWith(fontWeight: meta.bold ? FontWeight.bold : FontWeight.normal),
         ),
-        for (var i = 0; i < entries.length; i++)
+        if (entries.isEmpty)
+          // No fake/placeholder citations — a new document has none until the
+          // user adds a real source.
           Padding(
-            padding: EdgeInsets.only(bottom: meta.entryGap),
-            child: IndentedText(
-              CitationTemplates.reference(style, entries[i], i + 1),
-              style: f.baseStyle,
-              restIndent: hang,
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'No sources yet. Add sources from the Tools panel to build your '
+              '${meta.heading.toLowerCase()}.',
+              textAlign: TextAlign.center,
+              style: f.baseStyle.copyWith(
+                color: f.hintColor,
+                fontStyle: FontStyle.italic,
+              ),
             ),
-          ),
+          )
+        else
+          for (var i = 0; i < entries.length; i++)
+            Padding(
+              padding: EdgeInsets.only(bottom: meta.entryGap),
+              child: IndentedText(
+                CitationTemplates.reference(style, entries[i], i + 1),
+                style: f.baseStyle,
+                restIndent: hang,
+              ),
+            ),
       ],
     );
   }
