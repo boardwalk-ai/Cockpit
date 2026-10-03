@@ -341,8 +341,10 @@ credits; at most 10 a minute per run). The model also reads it as one of:
 - **question / chat**: answered, nothing else.
 
 Then the agent hears it, marked as already answered, so it does not answer it
-again. If the run was waiting on a question, the question is set aside
-(`question_answered` with `skipped: true`) and asked again. A reply to a
+again. If the run was waiting on a question and the message is an instruction,
+the question is set aside (`question_answered` with `skipped: true`) and asked
+again in its light; a question or chat leaves the card alone (the agent hears
+it once the card is answered). A reply to a
 question the agent asked in plain text is just the reply (no quick answer).
 Without a model available the message goes to the agent as it is.
 

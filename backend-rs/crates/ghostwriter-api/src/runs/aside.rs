@@ -53,7 +53,7 @@ pub async fn handle(st: AppState, run_id: Uuid, project_id: Uuid, text: String) 
     .await
     .unwrap_or(None);
     if awaited == Some(true) {
-        if let Err(error) = deliver(&st, run_id, text).await {
+        if let Err(error) = deliver(&st, run_id, text, true).await {
             tracing::warn!(%run_id, %error, "aside: reply not delivered");
         }
         return;
@@ -67,6 +67,10 @@ pub async fn handle(st: AppState, run_id: Uuid, project_id: Uuid, text: String) 
         }
     };
 
+    // Only a message that may change the work sets a waiting question aside
+    // (to be asked again in its light); a question or a "thanks" leaves the
+    // card where it is.
+    let mut changes_the_work = true;
     let for_run = match quick {
         None => text,
         Some((reply, kind)) => {
@@ -95,13 +99,13 @@ pub async fn handle(st: AppState, run_id: Uuid, project_id: Uuid, text: String) 
                     }
                     st.hub.request_rewrite(run_id, &text);
                 }
-                Kind::Question | Kind::Chat => {}
+                Kind::Question | Kind::Chat => changes_the_work = false,
             }
             prompt::aside_note(&text, &reply)
         }
     };
 
-    if let Err(error) = deliver(&st, run_id, for_run).await {
+    if let Err(error) = deliver(&st, run_id, for_run, changes_the_work).await {
         tracing::warn!(%run_id, %error, "aside: message not delivered");
     }
 }
@@ -220,10 +224,15 @@ async fn add_directive(st: &AppState, run_id: Uuid, text: &str) -> Result<(), sq
     Ok(())
 }
 
-/// Hands the message to the run: the answer to a question it is waiting on
-/// (so it hears the message and asks again), a message to a run that is
-/// working, or one kept for when a worker picks it up.
-async fn deliver(st: &AppState, run_id: Uuid, text: String) -> Result<(), sqlx::Error> {
+/// Hands the message to the run: set against a question it is waiting on
+/// (`set_aside`: it hears the message and asks again), to a run that is
+/// working, or kept for when a worker picks it up.
+async fn deliver(
+    st: &AppState,
+    run_id: Uuid,
+    text: String,
+    set_aside: bool,
+) -> Result<(), sqlx::Error> {
     let pending: Option<String> = sqlx::query_scalar(
         "SELECT pending_question->>'field' FROM runs WHERE id = $1 AND status = 'waiting_for_user'",
     )
@@ -232,8 +241,23 @@ async fn deliver(st: &AppState, run_id: Uuid, text: String) -> Result<(), sqlx::
     .await?
     .flatten();
     if let Some(field) = pending {
-        let value = json!({ "userMessage": text });
-        if super::answer(st, run_id, &field, value, true).await? {
+        if set_aside {
+            let value = json!({ "userMessage": text });
+            if super::answer(st, run_id, &field, value, true).await? {
+                return Ok(());
+            }
+        } else {
+            // For the agent, which reads it once the question is answered.
+            if st.hub.deliver_message(run_id, text.clone()) {
+                return Ok(());
+            }
+            sqlx::query(
+                "UPDATE runs SET inbox = inbox || jsonb_build_array($2::text) WHERE id = $1",
+            )
+            .bind(run_id)
+            .bind(&text)
+            .execute(&st.db)
+            .await?;
             return Ok(());
         }
     }

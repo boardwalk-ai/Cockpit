@@ -408,6 +408,8 @@ async fn a_message_sent_during_a_question_is_heard_and_the_question_asked_again(
         ask("essayFocus", json!({})),
         turn("Noted, I will keep it formal.", &[]),
     ]));
+    *llm.aside.lock().unwrap() =
+        Some(json!({ "reply": "Will do.", "kind": "instruction" }).to_string());
     let t = app_with(llm.clone()).await;
     let (_, run) = start_run(&t, "alice").await;
 

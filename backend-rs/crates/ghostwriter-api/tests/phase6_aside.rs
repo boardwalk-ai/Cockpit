@@ -313,3 +313,36 @@ async fn the_scripted_driver_asks_again_after_a_message_instead_of_an_answer() {
 
     t.cleanup().await;
 }
+
+#[tokio::test]
+async fn a_question_asked_while_a_card_waits_leaves_the_card_alone() {
+    let llm = Arc::new(FakeLlm::new(fakes::full_script()));
+    *llm.aside.lock().unwrap() =
+        Some(json!({ "reply": "A few minutes.", "kind": "question" }).to_string());
+    let t = TestApp::agent(llm.clone(), Arc::new(FakeScraper)).await;
+    let (_, run) = start(&t).await;
+    run_when(&t, run, |r| r["pendingQuestion"]["field"] == "essayFocus").await;
+
+    say(&t, run, "How long does this take?").await;
+    logged(&t, run, "assistant_message", |e| e["aside"] == true).await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    // Still the same question, not set aside.
+    let state = run_when(&t, run, |r| r["status"] == "waiting_for_user").await;
+    assert_eq!(state["pendingQuestion"]["field"], "essayFocus");
+    let set_aside: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM run_events WHERE run_id = $1 AND type = 'question_answered'",
+    )
+    .bind(run)
+    .fetch_one(&t.state.db)
+    .await
+    .unwrap();
+    assert_eq!(set_aside, 0);
+
+    // Once answered, the agent hears it too, marked as already answered.
+    assert_eq!(answer_all(&t, run).await, "finished");
+    assert!(llm
+        .last_transcript()
+        .contains("[Mid-run message, already answered] The user said: How long does this take?"));
+
+    t.cleanup().await;
+}
