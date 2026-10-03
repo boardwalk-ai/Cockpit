@@ -114,7 +114,7 @@ class ShellColumn extends StatelessWidget {
   Widget build(BuildContext context) => Center(
     child: ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
-      child: child,
+      child: SizedBox(width: double.infinity, child: child),
     ),
   );
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../chat/main_chat.dart';
+import '../motion.dart';
 import '../shell_scope.dart';
 import '../shell_theme.dart';
 import '../widgets.dart';
@@ -118,14 +119,20 @@ class _ShellDrawerState extends State<ShellDrawer> {
                         vertical: 4,
                       ),
                       children: [
-                        for (final thread in shown)
-                          _ThreadTile(
-                            thread: thread,
-                            selected: thread.id == conversation.threadId,
-                            onOpen: () {
-                              conversation.open(thread.id);
-                              close();
-                            },
+                        for (final (i, thread) in shown.indexed)
+                          Reveal(
+                            key: ValueKey(thread.id),
+                            delay: Duration(milliseconds: 40 * (i % 12)),
+                            offset: const Offset(-0.12, 0),
+                            scale: 1,
+                            child: _ThreadTile(
+                              thread: thread,
+                              selected: thread.id == conversation.threadId,
+                              onOpen: () {
+                                conversation.open(thread.id);
+                                close();
+                              },
+                            ),
                           ),
                       ],
                     ),

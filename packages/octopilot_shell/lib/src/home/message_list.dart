@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../chat/chat_controller.dart';
 import '../chat/main_chat.dart';
+import '../motion.dart';
 import '../shell_theme.dart';
 import '../widgets.dart';
 
@@ -58,8 +59,18 @@ class _ShellMessageListState extends State<ShellMessageList> {
       controller: _scroll,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        for (final message in conversation.messages)
-          ShellColumn(child: _Bubble(message)),
+        for (final (i, message) in conversation.messages.indexed)
+          ShellColumn(
+            key: ValueKey(i),
+            // A finished reply was already streamed in; only the user's
+            // own messages fly in.
+            child: message.role == ChatRole.user
+                ? Reveal(
+                    offset: const Offset(0.08, 0.3),
+                    child: _Bubble(message),
+                  )
+                : _Bubble(message),
+          ),
         if (streaming != null)
           ShellColumn(
             child: streaming.isEmpty
@@ -121,17 +132,10 @@ class _Thinking extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = ShellColors.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 14),
-      child: Row(
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(color: c.accent, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Text('Thinking…', style: TextStyle(color: c.hint, fontSize: 14)),
-        ],
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: BouncingDots(color: c.accent),
       ),
     );
   }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../aurora.dart';
+import '../motion.dart';
 import '../shell_scope.dart';
 import '../shell_theme.dart';
 import '../widgets.dart';
@@ -30,146 +32,149 @@ class ShellSettingsPage extends StatelessWidget {
     }
 
     return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            ShellTopBar(
-              title: 'Settings',
-              leading: ShellIconButton(
-                icon: Icons.arrow_back_rounded,
-                tooltip: 'Back',
-                onPressed: () => Navigator.of(context).maybePop(),
+      body: AuroraBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              ShellTopBar(
+                title: 'Settings',
+                leading: ShellIconButton(
+                  icon: Icons.arrow_back_rounded,
+                  tooltip: 'Back',
+                  onPressed: () => Navigator.of(context).maybePop(),
+                ),
               ),
-            ),
-            Expanded(
-              child: ValueListenableBuilder(
-                valueListenable: services.account,
-                builder: (context, account, _) => ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                  children: [
-                    ShellColumn(
-                      maxWidth: 640,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _Card(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Row(
-                                  children: [
-                                    ShellAvatar(account: account, size: 52),
-                                    const SizedBox(width: 14),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            account?.name ?? 'Not signed in',
-                                            style: TextStyle(
-                                              color: c.text,
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          if (account?.email != null)
-                                            Text(
-                                              account!.email!,
-                                              style: TextStyle(
-                                                color: c.muted,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          if (account?.plan != null)
-                                            Text(
-                                              account!.plan!,
-                                              style: TextStyle(
-                                                color: c.hint,
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          const _Label('AI'),
-                          _Card(
-                            children: [
-                              row(
-                                Icons.auto_awesome_outlined,
-                                'Model and voice',
-                                services.onAiSettings,
-                              ),
-                            ],
-                          ),
-                          const _Label('App'),
-                          _Card(
-                            children: [
-                              row(
-                                Icons.notifications_none_rounded,
-                                'Notifications',
-                                services.onNotifications,
-                              ),
-                              const _Appearance(),
-                            ],
-                          ),
-                          const _Label('Account'),
-                          _Card(
-                            children: [
-                              row(
-                                Icons.bolt_rounded,
-                                'OctoCredits',
-                                services.onCredits,
-                                value: account?.credits == null
-                                    ? null
-                                    : formatCredits(account!.credits!),
-                              ),
-                              row(
-                                Icons.info_outline_rounded,
-                                'About, privacy and terms',
-                                services.onAbout,
-                              ),
-                              if (account == null && services.onSignIn != null)
-                                _Row(
-                                  icon: Icons.login_rounded,
-                                  title: 'Sign in',
-                                  onTap: () => services.onSignIn!(),
-                                ),
-                              if (account != null && services.onSignOut != null)
-                                _Row(
-                                  icon: Icons.logout_rounded,
-                                  title: 'Sign out',
-                                  onTap: () => services.onSignOut!(),
-                                ),
-                            ],
-                          ),
-                          if (account != null &&
-                              services.onDeleteAccount != null) ...[
-                            const SizedBox(height: 20),
+              Expanded(
+                child: ValueListenableBuilder(
+                  valueListenable: services.account,
+                  builder: (context, account, _) => ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    children: [
+                      ShellColumn(
+                        maxWidth: 640,
+                        child: _Staggered(
+                          children: [
                             _Card(
                               children: [
-                                _Row(
-                                  icon: Icons.delete_outline_rounded,
-                                  title: 'Delete account',
-                                  danger: true,
-                                  onTap: () => _deleteAccount(context),
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Row(
+                                    children: [
+                                      ShellAvatar(account: account, size: 52),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              account?.name ?? 'Not signed in',
+                                              style: TextStyle(
+                                                color: c.text,
+                                                fontSize: 17,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                            if (account?.email != null)
+                                              Text(
+                                                account!.email!,
+                                                style: TextStyle(
+                                                  color: c.muted,
+                                                  fontSize: 13,
+                                                ),
+                                              ),
+                                            if (account?.plan != null)
+                                              Text(
+                                                account!.plan!,
+                                                style: TextStyle(
+                                                  color: c.hint,
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
+                            const _Label('AI'),
+                            _Card(
+                              children: [
+                                row(
+                                  Icons.auto_awesome_outlined,
+                                  'Model and voice',
+                                  services.onAiSettings,
+                                ),
+                              ],
+                            ),
+                            const _Label('App'),
+                            _Card(
+                              children: [
+                                row(
+                                  Icons.notifications_none_rounded,
+                                  'Notifications',
+                                  services.onNotifications,
+                                ),
+                                const _Appearance(),
+                              ],
+                            ),
+                            const _Label('Account'),
+                            _Card(
+                              children: [
+                                row(
+                                  Icons.bolt_rounded,
+                                  'OctoCredits',
+                                  services.onCredits,
+                                  value: account?.credits == null
+                                      ? null
+                                      : formatCredits(account!.credits!),
+                                ),
+                                row(
+                                  Icons.info_outline_rounded,
+                                  'About, privacy and terms',
+                                  services.onAbout,
+                                ),
+                                if (account == null &&
+                                    services.onSignIn != null)
+                                  _Row(
+                                    icon: Icons.login_rounded,
+                                    title: 'Sign in',
+                                    onTap: () => services.onSignIn!(),
+                                  ),
+                                if (account != null &&
+                                    services.onSignOut != null)
+                                  _Row(
+                                    icon: Icons.logout_rounded,
+                                    title: 'Sign out',
+                                    onTap: () => services.onSignOut!(),
+                                  ),
+                              ],
+                            ),
+                            if (account != null &&
+                                services.onDeleteAccount != null) ...[
+                              const SizedBox(height: 20),
+                              _Card(
+                                children: [
+                                  _Row(
+                                    icon: Icons.delete_outline_rounded,
+                                    title: 'Delete account',
+                                    danger: true,
+                                    onTap: () => _deleteAccount(context),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -204,6 +209,27 @@ class ShellSettingsPage extends StatelessWidget {
       await services.onDeleteAccount!(context);
     }
   }
+}
+
+/// Settings sections, each coming in a moment after the one above.
+class _Staggered extends StatelessWidget {
+  const _Staggered({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      for (final (i, child) in children.indexed)
+        Reveal(
+          delay: Duration(milliseconds: 60 * i),
+          offset: const Offset(0, 0.2),
+          scale: 0.98,
+          child: child,
+        ),
+    ],
+  );
 }
 
 class _Label extends StatelessWidget {

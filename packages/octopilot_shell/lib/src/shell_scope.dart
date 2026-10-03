@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'chat/chat_controller.dart';
 import 'chat/main_chat.dart';
 import 'shell_models.dart';
+import 'voice/voice_engine.dart';
 
 /// Everything the shell needs from the host app. The shell owns the screens;
 /// the host owns sign-in, the account, settings that touch a server, and the
@@ -11,6 +12,7 @@ import 'shell_models.dart';
 class ShellServices {
   ShellServices({
     required this.chat,
+    VoiceEngine? voice,
     required this.modules,
     required this.account,
     required this.themeMode,
@@ -23,9 +25,13 @@ class ShellServices {
     this.onSignOut,
     this.onDeleteAccount,
     void Function(BuildContext context, ShellModuleEntry module)? openModule,
-  }) : openModule = openModule ?? _push;
+  }) : voice = voice ?? DemoVoiceEngine(),
+       openModule = openModule ?? _push;
 
   final MainChat chat;
+
+  /// Microphone and speaker for voice chat.
+  final VoiceEngine voice;
 
   /// Every module, out or not, in Library order.
   final List<ShellModuleEntry> modules;

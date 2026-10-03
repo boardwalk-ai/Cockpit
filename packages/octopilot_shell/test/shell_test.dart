@@ -11,12 +11,17 @@ class Harness {
   final ValueNotifier<ShellAccount?> account;
   final ValueNotifier<ThemeMode> theme;
   final chat = DemoMainChat(wordDelay: const Duration(milliseconds: 10));
+  final voice = DemoVoiceEngine(
+    wordTime: const Duration(milliseconds: 20),
+    frame: const Duration(milliseconds: 10),
+  );
   final opened = <String>[];
   var deleted = 0;
   var aiSettings = 0;
 
   late final services = ShellServices(
     chat: chat,
+    voice: voice,
     modules: const [
       ShellModuleEntry(
         id: 'ghostwriter',
@@ -57,6 +62,11 @@ class Harness {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    // The glows and the orb move forever; with reduced motion they hold
+    // still, so frames can settle.
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
     await tester.pumpWidget(
       OctopilotShellApp(
         services: services,
@@ -88,6 +98,12 @@ void main() {
       expect(find.text(mode), findsOneWidget);
     }
     expect(find.text('AL'), findsOneWidget, reason: 'the account initials');
+    expect(find.textContaining(', Ada'), findsOneWidget);
+    // Voice first; the message box is one tap away.
+    expect(find.text('Tap to talk'), findsOneWidget);
+    expect(find.text('Message Octopilot'), findsNothing);
+    await tester.tap(find.byTooltip('Type a message'));
+    await tester.pumpAndSettle();
     expect(find.text('Message Octopilot'), findsOneWidget);
   });
 
@@ -99,7 +115,7 @@ void main() {
 
     await tester.tap(find.text('Create'));
     await tester.pumpAndSettle();
-    expect(find.text('Create library'), findsOneWidget);
+    expect(find.text('Write and make things'), findsOneWidget);
     expect(find.text('GhostWriter'), findsOneWidget);
     expect(find.text('Slides'), findsOneWidget);
     expect(find.text('Soon'), findsOneWidget);
@@ -117,7 +133,7 @@ void main() {
     // Back to the library, then home.
     tester.state<NavigatorState>(find.byType(Navigator).first).pop();
     await tester.pumpAndSettle();
-    expect(find.text('Create library'), findsOneWidget);
+    expect(find.text('Write and make things'), findsOneWidget);
     await tester.tap(find.byTooltip('Back'));
     await tester.pumpAndSettle();
     expect(find.text('What will you do today?'), findsOneWidget);
@@ -138,6 +154,8 @@ void main() {
   ) async {
     final h = Harness(account: ada);
     await h.pump(tester);
+    await tester.tap(find.byTooltip('Type a message'));
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'How do I write an essay?');
     await tester.pump();
@@ -147,9 +165,9 @@ void main() {
     expect(find.text('What will you do today?'), findsNothing);
     expect(find.byTooltip('Stop'), findsOneWidget);
 
-    await tester.pumpAndSettle();
+    await pumpUntil(tester, find.byTooltip('Talk'));
     expect(find.textContaining('pick GhostWriter'), findsOneWidget);
-    expect(find.byTooltip('Send'), findsOneWidget);
+    expect(find.byTooltip('Talk'), findsOneWidget, reason: 'empty box: mic');
 
     // The history has it; a new chat brings the modes back.
     await tester.tap(find.byTooltip('Chats'));
@@ -170,6 +188,8 @@ void main() {
   testWidgets('stop keeps what was said', (tester) async {
     final h = Harness(account: ada);
     await h.pump(tester);
+    await tester.tap(find.byTooltip('Type a message'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'hello');
     await tester.pump();
     await tester.tap(find.byTooltip('Send'));
@@ -177,7 +197,7 @@ void main() {
     await tester.tap(find.byTooltip('Stop'));
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Send'), findsOneWidget);
+    expect(find.byTooltip('Talk'), findsOneWidget);
     expect(find.textContaining("I'm Octopilot"), findsOneWidget);
     expect(find.textContaining('What would you like to do?'), findsNothing);
   });
@@ -185,12 +205,14 @@ void main() {
   testWidgets('chats can be renamed, searched and deleted', (tester) async {
     final h = Harness(account: ada);
     await h.pump(tester);
+    await tester.tap(find.byTooltip('Type a message'));
+    await tester.pumpAndSettle();
     for (final text in ['first question', 'second question']) {
       h.services.conversation.newChat();
       await tester.enterText(find.byType(TextField), text);
       await tester.pump();
       await tester.tap(find.byTooltip('Send'));
-      await tester.pumpAndSettle();
+      await pumpUntil(tester, find.byTooltip('Talk'));
     }
 
     await tester.tap(find.byTooltip('Chats'));
@@ -271,10 +293,56 @@ void main() {
     expect(find.text('Delete account'), findsNothing);
   });
 
+  testWidgets('voice: listens, answers, and the turn lands in the chat', (
+    tester,
+  ) async {
+    final h = Harness(account: ada);
+    await h.pump(tester);
+
+    await tester.tap(find.byTooltip('Talk'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.text('Connecting'), findsNothing);
+
+    await pumpUntil(tester, find.text('Listening'));
+    await pumpUntil(tester, find.text('How do I write an essay here?'));
+    await pumpUntil(tester, find.text('Speaking'));
+    expect(h.chat.threads.value.single.title, 'How do I write an essay here?');
+    await pumpUntil(tester, find.text('Listening'));
+
+    // Mute holds it; end goes back to the chat with the turn in it.
+    await tester.tap(find.byTooltip('Mute'));
+    await tester.pump();
+    expect(find.text('Muted'), findsOneWidget);
+    await tester.tap(find.byTooltip('End voice'));
+    await tester.pumpAndSettle();
+    expect(find.text('How do I write an essay here?'), findsOneWidget);
+    expect(find.textContaining('pick GhostWriter'), findsOneWidget);
+  });
+
+  testWidgets('voice: type instead opens the message box', (tester) async {
+    await Harness(account: ada).pump(tester);
+    await tester.tap(find.byTooltip('Talk'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.tap(find.byTooltip('Type instead'));
+    await tester.pumpAndSettle();
+    expect(find.text('Message Octopilot'), findsOneWidget);
+  });
+
   test('credits are written short', () {
     expect(formatCredits(980), '980');
     expect(formatCredits(1240), '1,240');
     expect(formatCredits(12400), '12.4k');
     expect(formatCredits(250000), '250k');
   });
+}
+
+/// Pumps frames until [finder] finds something (at most ~6 s).
+Future<void> pumpUntil(WidgetTester tester, Finder finder) async {
+  for (var i = 0; i < 300; i++) {
+    if (finder.evaluate().isNotEmpty) return;
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+  fail('never found: $finder');
 }

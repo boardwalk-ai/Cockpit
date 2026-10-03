@@ -21,6 +21,7 @@
 | ဖြေတဲ့ အကြောင်းအရာ | **App နဲ့ ဆိုင်တာပဲ** |
 | Module ဆီ လွှဲတာ | မထည့်သေး၊ နောက်မှ |
 | Ask Octo | Module ထဲမှာပဲ (main shell မှာ main chat ရှိလို့ မလို) |
+| **Voice first** (CEO) | Home ရဲ့ အဓိကခလုတ် = voice orb၊ typing က ဘေးက keyboard ခလုတ်။ Voice turn တွေ chat history ထဲ ဝင် |
 
 ## Code
 
@@ -30,7 +31,7 @@
 
 ## အစဉ်
 
-1. ✅ Shell UI (demo chat)
+1. ✅ Shell UI (demo chat) + animation (aurora၊ hero၊ stagger) + voice mode UI (demo engine)
 2. `app-api` service + main chat backend (thread၊ stream၊ limit)
 3. Settings ကို တကယ်ချိတ် (AI settings sheet ရွှေ့၊ delete account endpoint၊ notifications)
 4. Version / maintenance gate (`/v1/app/status`)
