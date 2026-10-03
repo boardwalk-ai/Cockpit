@@ -15,6 +15,7 @@ class GwProject {
     this.targetWords,
     this.folderId,
     this.updatedAt,
+    this.needsAnswer = false,
   });
 
   factory GwProject.fromJson(Map<String, dynamic> j) => GwProject(
@@ -25,6 +26,7 @@ class GwProject {
     targetWords: (j['targetWords'] as num?)?.toInt(),
     folderId: j['folderId']?.toString(),
     updatedAt: DateTime.tryParse(j['updatedAt']?.toString() ?? ''),
+    needsAnswer: j['needsAnswer'] == true,
   );
 
   final String id;
@@ -36,6 +38,9 @@ class GwProject {
   final int? targetWords;
   final String? folderId;
   final DateTime? updatedAt;
+
+  /// GhostWriter asked something here and waits for the answer.
+  final bool needsAnswer;
 }
 
 class GwFolder {

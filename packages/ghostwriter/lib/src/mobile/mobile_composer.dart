@@ -17,6 +17,7 @@ class GwComposer extends StatefulWidget {
     required this.onSend,
     this.hintText = 'Drop your brief',
     this.sendLabel = 'Start',
+    this.onStop,
   });
 
   final TextEditingController controller;
@@ -25,6 +26,10 @@ class GwComposer extends StatefulWidget {
   final VoidCallback onSend;
   final String hintText;
   final String sendLabel;
+
+  /// While GhostWriter is working: with nothing typed, the send button
+  /// becomes Stop (as in ChatGPT). Typing turns it back into Send.
+  final VoidCallback? onStop;
 
   @override
   State<GwComposer> createState() => _GwComposerState();
@@ -183,6 +188,9 @@ class _GwComposerState extends State<GwComposer> with TickerProviderStateMixin {
                           label: widget.sendLabel,
                           enabled: widget.canSend,
                           onTap: widget.onSend,
+                          onStop: widget.controller.text.trim().isEmpty
+                              ? widget.onStop
+                              : null,
                         ),
                       ],
                     ),
@@ -250,44 +258,60 @@ class _SourcePill extends StatelessWidget {
 
 /// Grey arrow circle while there is nothing to send; grows into a glowing
 /// red pill with a label once there is.
+/// Send (a red pill with its label once there is something to send), or,
+/// while GhostWriter works and nothing is typed, Stop: a white disc with a
+/// dark square, as in ChatGPT. One button that morphs, so its width moves in
+/// step with the Source pill beside it.
 class _SendButton extends StatelessWidget {
   const _SendButton({
     required this.label,
     required this.enabled,
     required this.onTap,
+    this.onStop,
   });
 
   final String label;
   final bool enabled;
   final VoidCallback onTap;
 
+  /// Set while the button is Stop.
+  final VoidCallback? onStop;
+
   static const _duration = Duration(milliseconds: 280);
 
   @override
   Widget build(BuildContext context) {
+    final onStop = this.onStop;
+    final stopping = onStop != null;
+    final ready = enabled && !stopping;
+
     return GwPressable(
       key: const ValueKey('gw-start'),
-      tooltip: label,
+      tooltip: stopping ? 'Stop' : label,
       haptic: GwHaptic.medium,
-      onTap: enabled ? onTap : null,
+      onTap: stopping ? onStop : (enabled ? onTap : null),
       child: AnimatedContainer(
         duration: _duration,
         curve: Curves.easeOutCubic,
         height: kGwButton,
-        padding: EdgeInsets.symmetric(horizontal: enabled ? 16 : 12),
+        padding: EdgeInsets.symmetric(horizontal: ready ? 16 : 12),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: enabled
+            colors: stopping
+                ? const [Colors.white, Color(0xFFE9E9EA)]
+                : ready
                 ? const [Color(0xFFFF4A4F), Color(0xFFE8202A)]
                 : const [Color(0xFF34363A), Color(0xFF2C2E31)],
           ),
           borderRadius: BorderRadius.circular(999),
           boxShadow: [
             BoxShadow(
-              color: GwColors.accent.withValues(alpha: enabled ? 0.42 : 0),
-              blurRadius: 22,
+              color: stopping
+                  ? const Color(0x33FFFFFF)
+                  : GwColors.accent.withValues(alpha: ready ? 0.42 : 0),
+              blurRadius: stopping ? 14 : 22,
               spreadRadius: 1,
             ),
           ],
@@ -298,7 +322,7 @@ class _SendButton extends StatelessWidget {
             AnimatedSize(
               duration: _duration,
               curve: Curves.easeOutCubic,
-              child: enabled
+              child: ready
                   ? Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: Text(
@@ -314,15 +338,37 @@ class _SendButton extends StatelessWidget {
                     )
                   : const SizedBox(height: 20),
             ),
-            AnimatedRotation(
-              duration: _duration,
-              curve: Curves.easeOutBack,
-              // Arrow points up while idle and swings right when ready.
-              turns: enabled ? 0 : -0.25,
-              child: Icon(
-                Icons.arrow_forward_rounded,
-                size: 20,
-                color: enabled ? Colors.white : GwColors.muted,
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder: (child, animation) =>
+                    ScaleTransition(scale: animation, child: child),
+                child: stopping
+                    ? Center(
+                        key: const ValueKey('stop'),
+                        child: Container(
+                          width: 13,
+                          height: 13,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF151616),
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      )
+                    : AnimatedRotation(
+                        key: const ValueKey('arrow'),
+                        duration: _duration,
+                        curve: Curves.easeOutBack,
+                        // Arrow points up while idle and swings right when ready.
+                        turns: ready ? 0 : -0.25,
+                        child: Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 20,
+                          color: ready ? Colors.white : GwColors.muted,
+                        ),
+                      ),
               ),
             ),
           ],

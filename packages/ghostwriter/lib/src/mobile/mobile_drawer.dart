@@ -75,6 +75,7 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
 
   /// The second line of an essay's row, and its dot colour.
   static (String, Color) _statusOf(GwProject p) => switch (p.status) {
+    _ when p.needsAnswer => ('Your turn', GwColors.accentSoft),
     'writing' => ('Writing…', GwColors.gold),
     'ready' => ('${p.wordCount} words', const Color(0xFF3DDC84)),
     _ => ('Draft', GwColors.hint),

@@ -155,6 +155,8 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
     final ended = timeline.ended;
     final running = !ended && session.runId != null && !session.starting;
     final canType = running || session.canRevise;
+    final working =
+        session.starting || (running && timeline.phase == RunPhase.running);
     final writing = timeline.writing;
 
     return Column(
@@ -165,7 +167,6 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
           starting: session.starting,
           citationStyle: _citationStyle,
           words: writing?.words ?? 0,
-          onStop: running ? session.cancel : null,
         ),
         Expanded(
           child: Stack(
@@ -212,6 +213,8 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
           onSend: _send,
           sendLabel: 'Send',
           hintText: _hint,
+          // Only while GhostWriter is working, not while it waits on you.
+          onStop: working ? session.cancel : null,
         ),
       ],
     );
@@ -281,7 +284,6 @@ class _ThreadStrip extends StatelessWidget {
     required this.starting,
     required this.citationStyle,
     required this.words,
-    required this.onStop,
   });
 
   final String title;
@@ -289,7 +291,6 @@ class _ThreadStrip extends StatelessWidget {
   final bool starting;
   final String? citationStyle;
   final int words;
-  final VoidCallback? onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -335,28 +336,6 @@ class _ThreadStrip extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (onStop != null) ...[
-                    const SizedBox(width: 8),
-                    GwPressable(
-                      tooltip: 'Stop',
-                      haptic: GwHaptic.medium,
-                      onTap: onStop,
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFF2A1416),
-                          border: Border.all(color: const Color(0xFF7A2D31)),
-                        ),
-                        child: const Icon(
-                          Icons.stop_rounded,
-                          size: 18,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

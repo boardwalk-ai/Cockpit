@@ -115,4 +115,28 @@ void main() {
 
     expect(find.text('No essays yet'), findsOneWidget);
   });
+
+  testWidgets('an essay waiting on your answer says so', (tester) async {
+    await openDrawer(
+      tester,
+      withThreads: const [
+        GwProject(
+          id: 'p1',
+          title: 'Coastal cities and tides',
+          status: 'writing',
+          wordCount: 0,
+          needsAnswer: true,
+        ),
+        GwProject(
+          id: 'p2',
+          title: 'History of the printing press',
+          status: 'writing',
+          wordCount: 0,
+        ),
+      ],
+    );
+
+    expect(find.text('Your turn'), findsOneWidget);
+    expect(find.text('Writing…'), findsOneWidget);
+  });
 }

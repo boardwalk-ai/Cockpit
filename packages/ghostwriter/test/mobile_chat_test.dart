@@ -208,4 +208,49 @@ void main() {
     expect(find.text('Stopped'), findsOneWidget);
     expect(find.text('Stopped.'), findsOneWidget);
   });
+
+  testWidgets('while GhostWriter works, Send becomes Stop until you type', (
+    tester,
+  ) async {
+    await open(tester);
+    await send(tester, [
+      ev(1, 'user_message', {'text': 'An essay on tides'}),
+      ev(2, 'step_start', {
+        'stepId': 's1',
+        'tool': 'plan_essay',
+        'title': 'Planning the essay',
+      }),
+    ]);
+    expect(find.byTooltip('Stop'), findsOneWidget);
+    expect(find.byTooltip('Send'), findsNothing);
+
+    // Typing a message to steer it brings Send back.
+    await tester.enterText(find.byType(TextField).last, 'Keep it formal');
+    expect(composer.text, 'Keep it formal');
+    // The swap starts on the next frame, then takes its time.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byTooltip('Stop'), findsNothing);
+    expect(find.byTooltip('Send'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).last, '');
+    // The swap starts on the next frame, then takes its time.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byTooltip('Stop'), findsOneWidget);
+
+    // Waiting on you: nothing to stop, the question is yours to answer.
+    await send(tester, [
+      ev(3, 'step_done', {'stepId': 's1', 'summary': 'Planned.'}),
+      ev(4, 'question', {
+        'field': 'wordCount',
+        'question': 'How long?',
+        'inputType': 'number',
+        'suggestions': ['500'],
+        'allowCustom': true,
+      }),
+    ]);
+    expect(find.byTooltip('Stop'), findsNothing);
+    expect(find.byTooltip('Send'), findsOneWidget);
+  });
 }

@@ -196,7 +196,13 @@ conversation are saved after every tool call.
   stream stays open and reads the log until a worker picks the run up.
 - Chat messages sent while no worker holds the run are kept in `inbox` and given
   to the model when it resumes.
-- `WORKER_SLOTS` (default 32) caps the runs one worker drives at once.
+- `WORKER_SLOTS` (default 32) caps the runs one worker drives at once. A run
+  waiting on its user gives its place back and takes one again when answered,
+  so waiting runs never hold anyone else up.
+- Nothing is logged after a run's terminal event.
+- One user may run any number of essays at once; each project has at most one
+  active run. Projects carry `needsAnswer` (a run on it waits for the user).
+- The whole test suite also passes with `PARK_AFTER_MS=0` (park at once).
 
 Today the worker runs inside the API process. Running workers as separate
 processes needs one more piece: answers and messages reach a live run through
