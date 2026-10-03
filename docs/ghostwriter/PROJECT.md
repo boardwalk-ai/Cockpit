@@ -518,3 +518,5 @@ Dev server config `ghostwriter-api` (scripted၊ :8791) နဲ့ `ghostwriter-a
 | 10-03 | Phase 4d: source evaluate၊ critique၊ Ask Octo (header icon)။ Phase 4 ပြီး |
 | 10-03 | Phase 5a: push notification (server + app)။ ဖုန်းအစစ်မှာ မစမ်းရသေး |
 | 10-04 | Phase 5b: run queue + worker (lease)၊ park / resume၊ restart ကျော်ပြီး ဆက်ရေးတာ |
+| 10-04 | Stop ခလုတ်ကို composer ထဲ၊ concurrent run ("Your turn")၊ park ချက်ချင်း (`0`) |
+| 10-05 | ကြားဖြတ် message: ချက်ချင်းဖြေ၊ directive၊ ရေးနေတုန်း ပြန်ရေး၊ မေးခွန်းစောင့်နေတုန်း ပြန်မေး (PLAN-ai-settings.md အပိုင်း A) |

@@ -170,7 +170,7 @@ All under `/v1`. JSON in, JSON out, camelCase.
 | POST | `/projects/:id/runs` | Start a run: `{ runId, instruction }` → `{ runId }`. Same `runId` twice is a no-op. 409 if a run is already active. |
 | GET | `/runs/:runId/events?sinceSeq=N` | Server-Sent Events (section 6). Replays stored events after `N`, then stays live. |
 | POST | `/runs/:runId/answer` | `{ field, value }` — answers the pending question. 409 if that question is not pending. |
-| POST | `/runs/:runId/message` | `{ text }` — a free chat message to the agent |
+| POST | `/runs/:runId/message` | `{ text }` — a chat message to the run while it goes. Answered at once (6.8), then handed to the agent |
 | GET | `/runs/:runId` | `{ status, pendingQuestion, lastSeq, error }` — where the run stands, for an app coming back to it |
 | POST | `/runs/:runId/cancel` | Stop the run and release the document lock. Harmless if it already ended. |
 
@@ -239,14 +239,14 @@ Stored and replayed:
 | Type | Payload | Shown as |
 |---|---|---|
 | `user_message` | `text` | User bubble |
-| `assistant_message` | `text` | GhostWriter bubble |
+| `assistant_message` | `text`, `aside?` | GhostWriter bubble. `aside: true` = the quick reply to a mid-run message (its own bubble) |
 | `step_start` | `stepId, tool, title` | A step card, running |
 | `step_progress` | `stepId, detail` | Detail line on that card |
 | `step_done` | `stepId, summary?` | Card turns to done |
 | `step_error` | `stepId, error, retryable` | Card turns to failed |
 | `thought` | `stepId?, text` | The agent's short reasoning, attached to the step |
 | `question` | see 6.1 | A question card |
-| `question_answered` | `field, value` | Question card collapses to the answer |
+| `question_answered` | `field, value, skipped?` | Question card collapses to the answer. `skipped: true` = the user wrote a message instead; the question is asked again |
 | `context_update` | a patch: `essayTopic`, `essayType`, `thesis`, `outlines`, `critiqueIssues` | What the run has worked out so far |
 | `awaiting_reply` | — | GhostWriter asked something in plain text and is waiting on the chat box |
 | `sources_ready` | `count`, `sources[]` (`url, title, author, publishedYear, publisher`) | **Sources pill appears** |
@@ -326,6 +326,25 @@ OctopilotWeb's loop.
 A tool that fails is shown as a failed step and its error goes back to the
 model, which retries or tells the user. A run stops after 40 model round-trips.
 Not ported: the web's automatic removal of junk pages after scraping.
+
+### 6.8 Messages while a run goes
+
+A message the user sends while a run is going is answered at once by the fast
+model, without stopping the run (`assistant_message` with `aside: true`; no
+credits; at most 10 a minute per run). The model also reads it as one of:
+
+- **instruction** ("keep it formal"): kept in `runs.directives`; every later
+  outline, writer and reviser brief on the project carries all of them. If the
+  essay is being written, the writer stops, the document goes back to what it
+  was, nothing is charged, and the agent writes again with the instruction.
+- **stop**: the run is cancelled.
+- **question / chat**: answered, nothing else.
+
+Then the agent hears it, marked as already answered, so it does not answer it
+again. If the run was waiting on a question, the question is set aside
+(`question_answered` with `skipped: true`) and asked again. A reply to a
+question the agent asked in plain text is just the reply (no quick answer).
+Without a model available the message goes to the agent as it is.
 
 ### 6.7 Push notifications
 

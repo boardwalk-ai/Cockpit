@@ -121,6 +121,54 @@ void main() {
     });
   });
 
+  group('mid-run messages', () {
+    test('a quick reply is its own bubble, not part of a streaming one', () {
+      final t = RunTimeline()
+        ..apply(ev(null, 'assistant_delta', {'chunk': 'Planning '}))
+        ..apply(
+          ev(1, 'assistant_message', {
+            'text': 'About a minute more.',
+            'aside': true,
+          }),
+        )
+        ..apply(ev(2, 'assistant_message', {'text': 'Planning the essay.'}));
+      final texts = t.items.whereType<AssistantItem>().map((a) => a.text);
+      expect(texts, ['Planning the essay.', 'About a minute more.']);
+    });
+
+    test('a question set aside by a message shows no answer', () {
+      final t = RunTimeline()
+        ..apply(
+          ev(1, 'question', {
+            'field': 'wordCount',
+            'question': 'How long?',
+            'inputType': 'number',
+          }),
+        )
+        ..apply(
+          ev(2, 'question_answered', {
+            'field': 'wordCount',
+            'value': {'userMessage': 'Keep it short'},
+            'skipped': true,
+          }),
+        );
+      final question = t.items.whereType<QuestionItem>().single;
+      expect(question.answered, isTrue);
+      expect(question.skipped, isTrue);
+      expect(question.answer, isNull);
+      expect(t.pending, isNull);
+    });
+
+    test('writing that starts again starts its count again', () {
+      final t = RunTimeline()
+        ..apply(ev(1, 'writing_started', {'targetWords': 800}))
+        ..apply(ev(2, 'write_progress', {'words': 300, 'targetWords': 800}))
+        ..apply(ev(3, 'writing_started', {'targetWords': 800}));
+      expect(t.writing!.words, 0);
+      expect(t.items.whereType<WritingItem>(), hasLength(1));
+    });
+  });
+
   group('GwSession', () {
     late FakeServer server;
     late GwSession session;

@@ -402,8 +402,9 @@ async fn a_plain_text_question_waits_for_a_chat_reply() {
 }
 
 #[tokio::test]
-async fn a_message_sent_during_a_question_reaches_the_model() {
+async fn a_message_sent_during_a_question_is_heard_and_the_question_asked_again() {
     let llm = Arc::new(FakeLlm::new(vec![
+        ask("essayFocus", json!({})),
         ask("essayFocus", json!({})),
         turn("Noted, I will keep it formal.", &[]),
     ]));
@@ -418,12 +419,23 @@ async fn a_message_sent_during_a_question_reaches_the_model() {
         json!({ "text": "Keep it formal" }),
     )
     .await;
+    // Answered at once, set against the question, and the question asked again.
+    let between = events.until("question").await;
+    let reply = between
+        .iter()
+        .find(|e| e["type"] == "assistant_message")
+        .unwrap();
+    assert_eq!(reply["aside"], true);
+    assert!(between
+        .iter()
+        .any(|e| e["type"] == "question_answered" && e["skipped"] == true));
+    let transcript = llm.last_transcript();
+    assert!(transcript.contains("userMessage"));
+    assert!(transcript.contains("Keep it formal"));
+
     answer(&t, "alice", run, "essayFocus", json!("__suggest_more__")).await;
     events.until("assistant_message").await;
-
-    let transcript = llm.last_transcript();
-    assert!(transcript.contains("Keep it formal"));
-    assert!(transcript.contains("__suggest_more__"));
+    assert!(llm.last_transcript().contains("__suggest_more__"));
 
     t.cleanup().await;
 }

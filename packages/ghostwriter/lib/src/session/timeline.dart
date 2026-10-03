@@ -87,6 +87,10 @@ class QuestionItem extends TimelineItem {
 
   bool answered = false;
   Object? answer;
+
+  /// The user wrote a message instead of answering; the question is asked
+  /// again below.
+  bool skipped = false;
 }
 
 /// The word-count progress bar shown while the essay is written.
@@ -155,9 +159,9 @@ class RunTimeline {
         items.add(UserItem(_text(event)));
 
       case 'assistant_delta':
-        final last = items.isEmpty ? null : items.last;
-        if (last is AssistantItem && last.streaming) {
-          last.text += event['chunk']?.toString() ?? '';
+        final open = _streamingMessage();
+        if (open != null) {
+          open.text += event['chunk']?.toString() ?? '';
         } else {
           items.add(
             AssistantItem(event['chunk']?.toString() ?? '', streaming: true),
@@ -165,9 +169,11 @@ class RunTimeline {
         }
 
       case 'assistant_message':
-        final last = items.isEmpty ? null : items.last;
-        if (last is AssistantItem && last.streaming) {
-          last
+        // A quick reply to a mid-run message is its own bubble; it never
+        // takes over the agent's message while that streams.
+        final open = event['aside'] == true ? null : _streamingMessage();
+        if (open != null) {
+          open
             ..text = _text(event)
             ..streaming = false;
         } else {
@@ -211,9 +217,11 @@ class RunTimeline {
         final field = event['field']?.toString();
         for (final item in items.reversed) {
           if (item is QuestionItem && item.field == field && !item.answered) {
+            final skipped = event['skipped'] == true;
             item
               ..answered = true
-              ..answer = event['value'];
+              ..skipped = skipped
+              ..answer = skipped ? null : event['value'];
             break;
           }
         }
@@ -245,8 +253,10 @@ class RunTimeline {
           );
           items.add(writing!);
         } else {
+          // Started again (the user sent an instruction mid-write).
           writing!
             ..targetWords = target
+            ..words = 0
             ..done = false;
         }
 
@@ -291,6 +301,15 @@ class RunTimeline {
       phase = RunPhase.running;
     }
     return true;
+  }
+
+  /// The agent's message that is still streaming, if any (a quick reply may
+  /// have been added after it).
+  AssistantItem? _streamingMessage() {
+    for (final item in items.reversed) {
+      if (item is AssistantItem && item.streaming) return item;
+    }
+    return null;
   }
 
   void _end(RunPhase end) {

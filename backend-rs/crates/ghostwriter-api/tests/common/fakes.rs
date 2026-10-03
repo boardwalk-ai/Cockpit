@@ -100,6 +100,10 @@ pub struct FakeLlm {
     pub essay_output: Mutex<String>,
     /// If set, the writer stream waits here after its first chunk.
     pub hold_writer: Option<Arc<Notify>>,
+    /// What the quick reply returns: JSON `{reply, kind}`.
+    pub aside: Mutex<Option<String>>,
+    /// Every writer request, in order.
+    pub stream_requests: Mutex<Vec<ChatRequest>>,
     /// What the source evaluator replies, when not the default "sufficient".
     pub evaluation: Mutex<Option<String>>,
     /// Makes the paragraph splitter change a word, which must be refused.
@@ -228,6 +232,16 @@ impl Llm for FakeLlm {
                     tool_calls: Vec::new(),
                 });
             }
+            if system.contains("quick-reply voice") {
+                let content =
+                    self.aside.lock().unwrap().clone().unwrap_or_else(|| {
+                        json!({ "reply": "Got it.", "kind": "chat" }).to_string()
+                    });
+                return Ok(ChatReply {
+                    content,
+                    tool_calls: Vec::new(),
+                });
+            }
             if system.contains("research quality evaluator") {
                 if let Some(content) = self.evaluation.lock().unwrap().clone() {
                     return Ok(ChatReply {
@@ -249,7 +263,8 @@ impl Llm for FakeLlm {
             .ok_or_else(|| "FakeLlm ran out of scripted turns".to_string())
     }
 
-    async fn stream(&self, _request: ChatRequest) -> Result<TextStream, String> {
+    async fn stream(&self, request: ChatRequest) -> Result<TextStream, String> {
+        self.stream_requests.lock().unwrap().push(request);
         let output = self.essay_output.lock().unwrap().clone();
         let hold = self.hold_writer.clone();
         // Small chunks that split words and the marker, like a real stream.

@@ -297,44 +297,11 @@ pub async fn answer(
         return Err(ApiError::bad_request("value is required"));
     }
 
-    let _guard = st.hub.lock(run_id).await;
-    // Only the question that is pending right now can be answered, and only
-    // once: this update is what a second or stale answer loses to.
-    // A run no worker holds (parked) is queued with the answer, to be
-    // picked up from where it stopped.
-    let live = st.hub.is_live(run_id);
-    let answered = sqlx::query(
-        "UPDATE runs SET pending_question = NULL, updated_at = now(), \
-             status = CASE WHEN $3 THEN 'running' ELSE 'queued' END, \
-             resume = CASE WHEN $3 THEN NULL ELSE jsonb_build_object('field', $2::text, 'value', $4::jsonb) END \
-         WHERE id = $1 AND status = 'waiting_for_user' \
-           AND pending_question->>'field' = $2",
-    )
-    .bind(run_id)
-    .bind(&body.field)
-    .bind(live)
-    .bind(&body.value)
-    .execute(&st.db)
-    .await?
-    .rows_affected();
-    if answered == 0 {
+    if !runs::answer(&st, run_id, &body.field, body.value, false).await? {
         return Err(conflict(
             &format!("no question is waiting for \"{}\"", body.field),
             "no_pending_question",
         ));
-    }
-
-    runs::append(
-        &st,
-        run_id,
-        "question_answered",
-        json!({ "field": body.field, "value": body.value }),
-    )
-    .await?;
-    if live {
-        st.hub.deliver_answer(run_id, body.field, body.value);
-    } else {
-        st.worker.wake();
     }
     Ok(Json(json!({ "ok": true })))
 }
@@ -358,26 +325,14 @@ pub async fn message(
         return Err(conflict("this run has ended", "run_ended"));
     }
 
-    let _guard = st.hub.lock(run_id).await;
-    runs::append(&st, run_id, "user_message", json!({ "text": text })).await?;
-    if st.hub.deliver_message(run_id, text.clone()) {
-        return Ok(Json(json!({ "ok": true })));
-    }
-    // No worker holds the run: keep the message for whoever picks it up, and
-    // wake a run that is parked waiting for exactly this.
-    let woken: Option<String> = sqlx::query_scalar(
-        "UPDATE runs SET inbox = inbox || jsonb_build_array($2::text), updated_at = now(), \
-             status = CASE WHEN status = 'waiting_for_user' AND pending_question IS NULL \
-                 THEN 'queued' ELSE status END \
-         WHERE id = $1 RETURNING status",
-    )
-    .bind(run_id)
-    .bind(&text)
-    .fetch_optional(&st.db)
-    .await?;
-    if woken.as_deref() == Some("queued") {
-        st.worker.wake();
-    }
+    runs::emit(&st, run_id, "user_message", json!({ "text": text })).await?;
+    // Answered at once by the fast model, then handed to the run.
+    tokio::spawn(runs::aside::handle(
+        st.clone(),
+        run_id,
+        run.project_id,
+        text,
+    ));
     Ok(Json(json!({ "ok": true })))
 }
 

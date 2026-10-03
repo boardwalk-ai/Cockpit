@@ -28,6 +28,8 @@ type Done = (Value, String);
 pub enum Failure {
     Tool(String),
     Run(RunError),
+    /// The user asked for the write to start again with this instruction.
+    Interrupted(String),
 }
 
 impl From<String> for Failure {
@@ -316,6 +318,18 @@ fn strings(value: &Value, max: usize) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The user's instructions on this project ("keep it formal"), for a brief.
+async fn user_instructions(agent: &Agent<'_>) -> Result<String, Failure> {
+    let all = crate::runs::aside::directives(&agent.run.st, agent.run.project_id).await?;
+    if all.is_empty() {
+        return Ok(String::new());
+    }
+    Ok(format!(
+        "\n\nTHE USER'S INSTRUCTIONS (follow them):\n- {}",
+        all.join("\n- ")
+    ))
+}
+
 /// One JSON-returning sub-agent call.
 async fn ask_json(
     agent: &Agent<'_>,
@@ -427,6 +441,7 @@ async fn generate_outlines(agent: &mut Agent<'_>, args: &Value) -> Result<Done, 
         }
     }
     message.push_str(&format!("\n\nUser Instruction:\n{}", agent.ctx.instruction));
+    message.push_str(&user_instructions(agent).await?);
 
     let reply = ask_json(
         agent,
@@ -772,7 +787,7 @@ async fn compact_sources(
         .await;
         let summary = match reply {
             Ok(reply) => compaction_summary(&reply),
-            Err(Failure::Run(error)) => return Err(Failure::Run(error)),
+            Err(failure @ (Failure::Run(_) | Failure::Interrupted(_))) => return Err(failure),
             Err(Failure::Tool(_)) => String::new(),
         };
         if summary.is_empty() {
@@ -928,6 +943,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
     if let Some(notes) = optional(&args["notes"]) {
         message.push_str(&format!("\n\nOrchestrator notes:\n{notes}"));
     }
+    message.push_str(&user_instructions(agent).await?);
 
     let db = agent.run.st.db.clone();
     let project_id = agent.run.project_id;
@@ -987,8 +1003,15 @@ async fn stream_into_document(
     let docs = agent.run.st.docs.clone();
     let (project_id, run_id) = (agent.run.project_id, agent.run.run_id);
 
+    // What the document held, to put back if the user asks for a rewrite.
+    let (before_body, before_bibliography): (String, String) =
+        sqlx::query_as("SELECT body, bibliography FROM documents WHERE project_id = $1")
+            .bind(project_id)
+            .fetch_one(&db)
+            .await?;
     documents::begin_agent_write(&db, project_id, run_id, reason).await?;
     docs.begin(project_id);
+    let writing = agent.run.st.hub.begin_write(run_id);
     agent
         .run
         .emit("writing_started", json!({ "targetWords": target }))
@@ -1001,7 +1024,26 @@ async fn stream_into_document(
     let mut last_live: Option<Instant> = None;
     let mut reported = -1;
     let mut streamed = 0;
-    while let Some(chunk) = stream.next().await {
+    loop {
+        let chunk = tokio::select! {
+            chunk = stream.next() => chunk,
+            instruction = writing.signal.requested() => {
+                // Put the document back as it was, unlocked; nothing is charged.
+                let save = AgentSave {
+                    body: Some(&before_body),
+                    bibliography: Some(&before_bibliography),
+                    ..AgentSave::default()
+                };
+                let (rev, words) = documents::save_agent(&db, project_id, run_id, save).await?;
+                documents::unlock(&db, &docs, project_id, run_id).await?;
+                agent
+                    .run
+                    .emit("document_updated", json!({ "rev": rev, "wordCount": words }))
+                    .await?;
+                return Err(Failure::Interrupted(instruction));
+            }
+        };
+        let Some(chunk) = chunk else { break };
         output.push_str(&chunk?);
         let (body, _) = split_output(&output);
 
@@ -1127,6 +1169,7 @@ async fn revise_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failu
     if !sources.is_empty() {
         message.push_str(&format!("\n\nSOURCES\n{}", sources.join("\n\n")));
     }
+    message.push_str(&user_instructions(agent).await?);
 
     let request = ChatRequest {
         model: agent.models.writer.clone(),
@@ -1421,7 +1464,7 @@ async fn evaluate_sources(agent: &mut Agent<'_>, args: &Value) -> Result<Done, F
     .await
     {
         Ok(verdict) => verdict,
-        Err(Failure::Run(error)) => return Err(Failure::Run(error)),
+        Err(failure @ (Failure::Run(_) | Failure::Interrupted(_))) => return Err(failure),
         Err(Failure::Tool(_)) => Value::Null,
     };
     let sufficient = verdict["sufficient"].as_bool().unwrap_or(total >= 3);

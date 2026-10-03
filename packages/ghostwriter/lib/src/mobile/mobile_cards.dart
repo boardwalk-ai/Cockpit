@@ -532,7 +532,7 @@ class _GwQuestionCardState extends State<GwQuestionCard> {
                   height: 1.45,
                 ),
               ),
-              if (answered) ...[
+              if (answered && !q.skipped) ...[
                 const SizedBox(height: 8),
                 _AnswerChips(answer: q.answer, options: q.options),
               ] else if (widget.active) ...[

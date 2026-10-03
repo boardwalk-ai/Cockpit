@@ -379,10 +379,16 @@ async fn chat_messages_reach_the_run() {
     let echoed = events.until("user_message").await;
     assert_eq!(echoed.last().unwrap()["text"], "Keep it formal");
 
-    // The run acknowledges it once it moves on.
+    // Written instead of an answer: the run hears it and asks again, and the
+    // answer then moves it on.
+    let again = events.until("question").await;
+    assert!(again
+        .iter()
+        .any(|e| e["type"] == "question_answered" && e["skipped"] == true));
+    assert_eq!(again.last().unwrap()["field"], "essayFocus");
     answer(&t, run, "essayFocus", json!(["Social impact"])).await;
-    let next = events.until("assistant_message").await;
-    assert_eq!(next.last().unwrap()["text"], "Noted: Keep it formal");
+    let next = events.until("question").await;
+    assert_eq!(next.last().unwrap()["field"], "sourceReviewChoice");
 
     // Blank text is refused.
     let (status, _) = t

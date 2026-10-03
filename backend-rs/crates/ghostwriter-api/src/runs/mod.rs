@@ -9,6 +9,7 @@
 //! A worker ([`worker`]) claims a run from the queue and drives it. A run cut
 //! off by a restart is claimed again once its lease runs out, and resumed.
 
+pub mod aside;
 pub mod driver;
 pub mod worker;
 
@@ -80,6 +81,8 @@ pub struct Hub {
     /// Rung whenever a run goes live here, so streams following a run no
     /// worker held pick it up at once.
     opened: Arc<tokio::sync::Notify>,
+    /// Runs writing into their document right now.
+    writes: Arc<Mutex<HashMap<Uuid, Arc<WriteSignal>>>>,
     /// Clients following each run's events, whether or not it is live here.
     followers: Arc<Mutex<HashMap<Uuid, usize>>>,
 }
@@ -104,6 +107,28 @@ impl Drop for Following {
 
 impl Hub {
     /// Registers a run that is about to start and returns its inbox.
+    /// The run is writing into its document until the guard is dropped.
+    pub fn begin_write(&self, run_id: Uuid) -> Writing {
+        let signal = Arc::new(WriteSignal::default());
+        self.writes.lock().unwrap().insert(run_id, signal.clone());
+        Writing {
+            writes: self.writes.clone(),
+            run_id,
+            signal,
+        }
+    }
+
+    /// Asks a run that is writing to start again with `instruction`.
+    /// False if it is not writing.
+    pub fn request_rewrite(&self, run_id: Uuid, instruction: &str) -> bool {
+        let Some(signal) = self.writes.lock().unwrap().get(&run_id).cloned() else {
+            return false;
+        };
+        *signal.instruction.lock().unwrap() = Some(instruction.to_string());
+        signal.notify.notify_one();
+        true
+    }
+
     /// Waits until some run goes live here.
     pub fn opened(&self) -> tokio::sync::futures::Notified<'_> {
         self.opened.notified()
@@ -227,6 +252,80 @@ impl Hub {
         // Dropping the sender ends every subscriber's stream.
         self.live.lock().unwrap().remove(&run_id);
         self.locks.lock().unwrap().remove(&run_id);
+    }
+}
+
+/// Answers the question the run is waiting on, if it is `field`. A run no
+/// worker holds (parked) is queued with the answer; a live one gets it
+/// directly. `skipped`: the user wrote a message instead of answering, which
+/// the run hears and then asks again. False if no such question is waiting.
+pub async fn answer(
+    st: &AppState,
+    run_id: Uuid,
+    field: &str,
+    value: Value,
+    skipped: bool,
+) -> Result<bool, sqlx::Error> {
+    let _guard = st.hub.lock(run_id).await;
+    // Only the question that is pending right now can be answered, and only
+    // once: this update is what a second or stale answer loses to.
+    let live = st.hub.is_live(run_id);
+    let answered = sqlx::query(
+        "UPDATE runs SET pending_question = NULL, updated_at = now(), \
+             status = CASE WHEN $3 THEN 'running' ELSE 'queued' END, \
+             resume = CASE WHEN $3 THEN NULL ELSE jsonb_build_object('field', $2::text, 'value', $4::jsonb) END \
+         WHERE id = $1 AND status = 'waiting_for_user' \
+           AND pending_question->>'field' = $2",
+    )
+    .bind(run_id)
+    .bind(field)
+    .bind(live)
+    .bind(&value)
+    .execute(&st.db)
+    .await?
+    .rows_affected();
+    if answered == 0 {
+        return Ok(false);
+    }
+
+    let mut payload = json!({ "field": field, "value": value });
+    if skipped {
+        payload["skipped"] = json!(true);
+    }
+    append(st, run_id, "question_answered", payload).await?;
+    if live {
+        st.hub.deliver_answer(run_id, field.to_string(), value);
+    } else {
+        st.worker.wake();
+    }
+    Ok(true)
+}
+
+/// A write in progress, and the user's wish to have it started again.
+#[derive(Default)]
+pub struct WriteSignal {
+    notify: tokio::sync::Notify,
+    instruction: Mutex<Option<String>>,
+}
+
+impl WriteSignal {
+    /// Resolves when the user asks for a rewrite, with their instruction.
+    pub async fn requested(&self) -> String {
+        self.notify.notified().await;
+        self.instruction.lock().unwrap().take().unwrap_or_default()
+    }
+}
+
+/// Marks a run as writing until dropped.
+pub struct Writing {
+    writes: Arc<Mutex<HashMap<Uuid, Arc<WriteSignal>>>>,
+    run_id: Uuid,
+    pub signal: Arc<WriteSignal>,
+}
+
+impl Drop for Writing {
+    fn drop(&mut self) {
+        self.writes.lock().unwrap().remove(&self.run_id);
     }
 }
 

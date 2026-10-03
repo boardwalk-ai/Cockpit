@@ -42,7 +42,22 @@ async fn run_when(t: &TestApp, run: Uuid, ready: impl Fn(&Value) -> bool) -> Val
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
     let (_, state) = t.get(&format!("/v1/runs/{run}"), "alice").await;
-    panic!("the run never got there: {state}");
+    let row: (Option<String>, Option<String>, String) =
+        sqlx::query_as("SELECT worker, lease_until::text, now()::text FROM runs WHERE id = $1")
+            .bind(run)
+            .fetch_one(&t.state.db)
+            .await
+            .unwrap();
+    let activity: Vec<(Option<String>, Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT state, wait_event, left(query, 100) FROM pg_stat_activity          WHERE datname = current_database() AND pid <> pg_backend_pid()",
+    )
+    .fetch_all(&t.state.db)
+    .await
+    .unwrap();
+    panic!(
+        "the run never got there: {state} worker/lease/now={row:?} live={} activity={activity:#?}",
+        t.state.hub.is_live(run)
+    );
 }
 
 /// True once no worker holds the run.
@@ -112,6 +127,17 @@ async fn answer_all(t: &TestApp, run: Uuid, answers: &[(&str, Value)]) -> String
     .await
     .unwrap();
     panic!("the run never ended: {state} {row:?} {waits:#?}");
+}
+
+/// The run's events so far, read from the log (the run may still be going).
+async fn all_events_now(t: &TestApp, run: Uuid) -> Vec<Value> {
+    sqlx::query_scalar::<_, Value>(
+        "SELECT jsonb_build_object('type', type) || payload FROM run_events          WHERE run_id = $1 ORDER BY seq",
+    )
+    .bind(run)
+    .fetch_all(&t.state.db)
+    .await
+    .unwrap()
 }
 
 async fn all_events(t: &TestApp, run: Uuid) -> Vec<Value> {
@@ -405,7 +431,7 @@ async fn a_parked_run_can_be_cancelled_and_a_new_one_started() {
 }
 
 #[tokio::test]
-async fn a_message_to_a_run_parked_on_a_question_waits_for_its_answer() {
+async fn a_message_to_a_run_parked_on_a_question_wakes_it_to_ask_again() {
     let t = TestApp::with(|config| config.park_after = PARK_AFTER).await;
     let (_, run) = start(&t, "An essay on tides").await;
     run_when(&t, run, |r| r["status"] == "waiting_for_user").await;
@@ -417,15 +443,34 @@ async fn a_message_to_a_run_parked_on_a_question_waits_for_its_answer() {
         json!({ "text": "Keep it short" }),
     )
     .await;
-    // Still parked on its question: a chat message is not the answer.
-    tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(parked(&t, run).await);
+    // Picked up, it hears the message (set against the question) and asks
+    // the question again; nothing is left waiting in its inbox.
+    for _ in 0..2000 {
+        let asked: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM run_events WHERE run_id = $1 AND type = 'question'",
+        )
+        .bind(run)
+        .fetch_one(&t.state.db)
+        .await
+        .unwrap();
+        if asked == 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let state = run_when(&t, run, |r| r["status"] == "waiting_for_user").await;
+    assert_eq!(state["pendingQuestion"]["field"], "essayFocus");
+    let events = all_events_now(&t, run).await;
+    assert_eq!(
+        kinds(&events).iter().filter(|k| **k == "question").count(),
+        2
+    );
     let inbox: Value = sqlx::query_scalar("SELECT inbox FROM runs WHERE id = $1")
         .bind(run)
         .fetch_one(&t.state.db)
         .await
         .unwrap();
-    assert_eq!(inbox, json!(["Keep it short"]));
+    assert_eq!(inbox, json!([]));
 
     t.cleanup().await;
 }

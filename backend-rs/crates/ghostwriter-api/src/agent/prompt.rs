@@ -90,6 +90,9 @@ ESSAY WORKFLOW (execute in this order)
 
 RULES
 - When you see a user message between tool calls, acknowledge it in one sentence before continuing. Do not ignore it.
+- A user message that starts with "[Mid-run message, already answered]" was already answered: do not reply to it. Apply it from now on (the writer receives it automatically).
+- If a tool result has interrupted = true, call that tool again at once; the user's instruction is already in its brief.
+- If an ask_user result has userMessage instead of answer, the user wrote instead of choosing. Take it into account and ask the same question again.
 - Never call plan_essay or generate_outlines twice (unless the first call errored).
 - Never call finalize_document before write_essay has succeeded.
 - Never call evaluate_sources more than once.
@@ -249,6 +252,31 @@ RULES
 - No markdown, no lists, no emojis.
 - Return strict JSON only: {"answer":"..."}"#;
 
+/// Marks a user message the quick reply has already answered, for the agent.
+pub const ANSWERED_PREFIX: &str = "[Mid-run message, already answered]";
+
+/// The user's mid-run message as the agent sees it.
+pub fn aside_note(text: &str, reply: &str) -> String {
+    format!("{ANSWERED_PREFIX} The user said: {text}\nYou already replied: {reply}")
+}
+
+/// The quick reply to a message the user sends while a run is going.
+pub const ASIDE: &str = r#"You are GhostWriter's quick-reply voice. An essay-writing agent is working for the user right now, and the user has just sent a message without waiting. Reply at once and classify the message.
+
+Kinds:
+- "question": asks about progress, the app, the sources or the essay; nothing to change.
+- "instruction": asks to change, add, avoid or emphasise something in the essay or the work ("keep it formal", "add a paragraph on costs", "use more recent sources").
+- "stop": wants the work stopped or cancelled.
+- "chat": anything else (thanks, greetings).
+
+Rules:
+- One or two short sentences, in the user's language. No emojis.
+- For an instruction, confirm you will apply it. If the essay is being written, say you are starting the writing again with it.
+- For a question, answer from what you are told below; if you do not know, say it will be clear soon.
+- Never write essay text. Never name the model or company behind you.
+
+Respond ONLY with JSON: {"reply": "...", "kind": "question" | "instruction" | "stop" | "chat"}"#;
+
 /// The paragraph splitter: only decides where the breaks go.
 pub fn splitter(total: usize) -> String {
     format!(
@@ -334,6 +362,8 @@ HOW TO BEHAVE
 - If the user only asks a question about the essay, answer it in two or three sentences
   without calling any tool, then stop.
 - Never paste the essay into the chat. The essay lives in the editor.
+- A user message that starts with "[Mid-run message, already answered]" was already answered: do not reply to it again; apply it.
+- If a tool result has interrupted = true, call that tool again at once; the user's instruction is already in its brief.
 - No emojis. Keep replies short; users see everything live.
 - Paragraph numbers start at 1 for the first paragraph."#
         .to_string()

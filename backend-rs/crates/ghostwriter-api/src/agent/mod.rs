@@ -26,6 +26,7 @@ use crate::documents;
 use crate::llm::{self, ChatRequest, Llm, OpenRouter, ToolCall};
 use crate::runs::driver::{RunCtx, RunError};
 use crate::scrape::Scraper;
+use crate::AppState;
 
 /// Model round-trips a run may take before it is stopped.
 const MAX_STEPS: usize = 40;
@@ -42,9 +43,9 @@ pub struct Models {
 }
 
 impl Models {
-    async fn load(run: &RunCtx) -> Self {
+    async fn load(st: &AppState) -> Self {
         const PRIMARY: &str = "anthropic/claude-sonnet-4-6";
-        let Some(pool) = &run.st.octopilot else {
+        let Some(pool) = &st.octopilot else {
             return Self {
                 orchestrator: PRIMARY.into(),
                 writer: PRIMARY.into(),
@@ -76,11 +77,11 @@ pub struct Agent<'a> {
 
 /// The model for this run: the injected one (tests), or OpenRouter with a key
 /// from the shared pool.
-async fn model_client(run: &RunCtx) -> Result<Arc<dyn Llm>, RunError> {
-    if let Some(llm) = &run.st.llm {
+async fn model_client(st: &AppState) -> Result<Arc<dyn Llm>, RunError> {
+    if let Some(llm) = &st.llm {
         return Ok(llm.clone());
     }
-    let key = match &run.st.octopilot {
+    let key = match &st.octopilot {
         Some(pool) => octo_common::llm::openrouter_key(pool).await,
         None => None,
     };
@@ -88,13 +89,20 @@ async fn model_client(run: &RunCtx) -> Result<Arc<dyn Llm>, RunError> {
         tracing::error!("no active OpenRouter key in api_keys");
         RunError::Failed("GhostWriter is not set up to write right now.".to_string())
     })?;
-    Ok(Arc::new(OpenRouter::new(run.st.http.clone(), key)))
+    Ok(Arc::new(OpenRouter::new(st.http.clone(), key)))
+}
+
+/// A model client and the models to use, outside a run (the quick reply).
+/// `None` when no model is available.
+pub(crate) async fn client(st: &AppState) -> Option<(Arc<dyn Llm>, Models)> {
+    let llm = model_client(st).await.ok()?;
+    Some((llm, Models::load(st).await))
 }
 
 /// Drives one run to the delivered essay.
 pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
-    let llm = model_client(run).await?;
-    let models = Models::load(run).await;
+    let llm = model_client(&run.st).await?;
+    let models = Models::load(&run.st).await;
     let scraper = run.st.scraper.clone();
     let instruction = run.instruction.clone();
 
@@ -230,9 +238,8 @@ async fn resume(
                 .filter(|_| pending_call.as_deref() == Some(id));
             let result = match resumed {
                 Some(resume) => {
-                    let field = resume["field"].as_str().unwrap_or_default();
-                    agent.ctx.apply_answer(field, &resume["value"]);
-                    json!({ "answer": resume["value"] })
+                    let field = resume["field"].as_str().unwrap_or_default().to_string();
+                    answer_result(&mut agent.ctx, &field, resume["value"].clone())
                 }
                 None => json!({
                     "error": "This call was interrupted before it finished. Call it again if it is still needed.",
@@ -422,6 +429,22 @@ async fn dispatch(
             return Ok(result);
         }
         Ok(Err(Failure::Run(error))) => return Err(error),
+        // The user asked for a rewrite while it wrote: nothing was kept or
+        // charged, and the model starts it again.
+        Ok(Err(Failure::Interrupted(instruction))) => {
+            agent
+                .run
+                .emit(
+                    "step_done",
+                    json!({ "stepId": step_id, "summary": "Starting again with your note." }),
+                )
+                .await?;
+            return Ok(json!({
+                "interrupted": true,
+                "instruction": instruction,
+                "next": format!("Call {} again now; the instruction is already in the brief.", call.name),
+            }));
+        }
         Ok(Err(Failure::Tool(message))) => message,
         Err(_) => format!("{} took too long", call.name),
     };
@@ -517,6 +540,19 @@ async fn ask_user(agent: &mut Agent<'_>, args: &Value) -> Result<Value, RunError
     }
 
     let answer = agent.run.ask(&field, payload).await?;
-    agent.ctx.apply_answer(&field, &answer);
-    Ok(json!({ "answer": answer }))
+    Ok(answer_result(&mut agent.ctx, &field, answer))
+}
+
+/// What the model is told about the user's reply to a question: their
+/// answer, or a message they wrote instead (already answered), after which
+/// it asks again.
+fn answer_result(ctx: &mut Context, field: &str, answer: Value) -> Value {
+    if let Some(message) = answer.get("userMessage") {
+        return json!({
+            "userMessage": message,
+            "note": "The user wrote this instead of answering. Take it into account, then ask the same question again with ask_user.",
+        });
+    }
+    ctx.apply_answer(field, &answer);
+    json!({ "answer": answer })
 }

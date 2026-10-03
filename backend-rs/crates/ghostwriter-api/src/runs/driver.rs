@@ -100,7 +100,19 @@ impl RunCtx {
     }
 
     /// Asks the user a question and waits for the answer to `field`.
-    pub async fn ask(&mut self, field: &str, mut question: Value) -> Result<Value, RunError> {
+    pub async fn ask(&mut self, field: &str, question: Value) -> Result<Value, RunError> {
+        loop {
+            let value = self.ask_once(field, question.clone()).await?;
+            // The user wrote a message instead of answering. The agent hears
+            // it and asks again itself; the scripted driver just asks again.
+            if self.st.config.driver == "scripted" && value.get("userMessage").is_some() {
+                continue;
+            }
+            return Ok(value);
+        }
+    }
+
+    async fn ask_once(&mut self, field: &str, mut question: Value) -> Result<Value, RunError> {
         // A resuming scripted run already has this answer.
         if let Some((answered, value)) = self.replay.pop_front() {
             if answered == field {
@@ -507,7 +519,10 @@ async fn scripted(ctx: &mut RunCtx) -> Result<(), RunError> {
     let angles = focus.as_array().map_or(1, Vec::len).max(1);
 
     for message in ctx.take_messages() {
-        ctx.say(&format!("Noted: {message}")).await?;
+        // The quick reply has answered it already.
+        if !message.starts_with(crate::agent::prompt::ANSWERED_PREFIX) {
+            ctx.say(&format!("Noted: {message}")).await?;
+        }
     }
 
     ctx.step(

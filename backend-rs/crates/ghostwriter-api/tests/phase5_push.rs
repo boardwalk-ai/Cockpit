@@ -216,12 +216,15 @@ async fn an_unwatched_run_pushes_every_question_and_its_ending() {
     run_when(&t, run, |r| r["status"] == "finished").await;
 
     let notices = sent(&pusher, 5).await;
-    let kinds: Vec<&str> = notices.iter().map(|(_, kind, _)| kind.as_str()).collect();
+    // Each goes out on its own task, so the last two may swap under load.
+    let mut kinds: Vec<&str> = notices.iter().map(|(_, kind, _)| kind.as_str()).collect();
+    kinds.sort_unstable();
     assert_eq!(
         kinds,
-        ["question", "question", "question", "question", "done"]
+        ["done", "question", "question", "question", "question"]
     );
-    assert_eq!(notices[4].2, "GhostWriter has finished. Tap to open.");
+    let done = notices.iter().find(|(_, kind, _)| kind == "done").unwrap();
+    assert_eq!(done.2, "GhostWriter has finished. Tap to open.");
 
     t.cleanup().await;
 }
