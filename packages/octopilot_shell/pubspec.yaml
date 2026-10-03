@@ -1,0 +1,25 @@
+name: octopilot_shell
+description: "The Octopilot app shell: main chat home, mode libraries, settings."
+version: 0.0.1
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  go_router: ^14.6.2
+  # Plus Jakarta Sans, the shared face.
+  cockpit_ui:
+    path: ../cockpit_ui
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

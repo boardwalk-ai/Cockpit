@@ -8,3 +8,4 @@ export 'src/ghostwriter_module.dart';
 export 'src/ghostwriter_root.dart';
 export 'src/gw_auth.dart';
 export 'src/gw_push.dart';
+export 'src/host_hooks.dart';
