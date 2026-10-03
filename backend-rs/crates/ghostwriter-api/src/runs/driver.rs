@@ -9,7 +9,9 @@ use std::collections::VecDeque;
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use tokio::sync::OwnedSemaphorePermit;
+use std::sync::Arc;
+
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
 use super::worker::{self, Job};
@@ -34,7 +36,12 @@ pub enum RunError {
 
 impl From<sqlx::Error> for RunError {
     fn from(e: sqlx::Error) -> Self {
-        RunError::Db(e)
+        match e {
+            // The run ended under the driver (its log takes no more events),
+            // or its project was deleted.
+            sqlx::Error::RowNotFound => RunError::Stopped,
+            e => RunError::Db(e),
+        }
     }
 }
 
@@ -65,6 +72,13 @@ pub struct RunCtx {
     pub call_id: Option<String>,
     /// Answers already given, re-walked by a resuming scripted run.
     replay: VecDeque<(String, Value)>,
+    /// The worker's place this run holds while it works. Given back while
+    /// it waits on the user, so waiting runs do not hold up anyone else's.
+    slot: Option<OwnedSemaphorePermit>,
+    slots: Arc<Semaphore>,
+    /// Chat messages kept while no worker held the run, for a resuming
+    /// scripted run (the agent reads them itself).
+    stored: Vec<String>,
 }
 
 impl RunCtx {
@@ -133,6 +147,13 @@ impl RunCtx {
             }
         }
 
+        self.slot = None;
+        let answer = self.wait_answer(field).await?;
+        self.take_slot().await;
+        Ok(answer)
+    }
+
+    async fn wait_answer(&mut self, field: &str) -> Result<Value, RunError> {
         let limit = self.st.config.park_after;
         loop {
             match tokio::time::timeout(limit, self.inbox.answers.recv()).await {
@@ -152,6 +173,13 @@ impl RunCtx {
                     return Err(self.park().await?);
                 }
             }
+        }
+    }
+
+    /// Takes a worker place again, waiting in line if all are busy.
+    async fn take_slot(&mut self) {
+        if self.slot.is_none() {
+            self.slot = self.slots.clone().acquire_owned().await.ok();
         }
     }
 
@@ -201,6 +229,7 @@ impl RunCtx {
             .fetch_all(&st.db)
             .await?;
             self.replay = answers.into();
+            self.stored = self.take_stored_messages().await?;
         }
         Ok(())
     }
@@ -246,6 +275,7 @@ impl RunCtx {
             append(&self.st, self.run_id, "awaiting_reply", json!({})).await?;
         }
 
+        self.slot = None;
         let text = match tokio::time::timeout(self.st.config.park_after, self.inbox.messages.recv())
             .await
         {
@@ -265,12 +295,13 @@ impl RunCtx {
         .bind(self.run_id)
         .execute(&self.st.db)
         .await?;
+        self.take_slot().await;
         Ok(text)
     }
 
     /// Chat messages the user sent since the last call.
     pub fn take_messages(&mut self) -> Vec<String> {
-        let mut messages = Vec::new();
+        let mut messages = std::mem::take(&mut self.stored);
         while let Ok(text) = self.inbox.messages.try_recv() {
             messages.push(text);
         }
@@ -316,7 +347,7 @@ impl RunCtx {
 
 /// Drives a claimed run in the background. The worker's slot is held until
 /// the run ends or is parked.
-pub fn spawn(st: AppState, job: Job, slot: OwnedSemaphorePermit) {
+pub fn spawn(st: AppState, job: Job, slots: Arc<Semaphore>, slot: OwnedSemaphorePermit) {
     let run_id = job.run_id;
     let inbox = st.hub.open(run_id);
     let mut ctx = RunCtx {
@@ -330,10 +361,12 @@ pub fn spawn(st: AppState, job: Job, slot: OwnedSemaphorePermit) {
         resuming: job.resuming,
         call_id: None,
         replay: VecDeque::new(),
+        slot: Some(slot),
+        slots,
+        stored: Vec::new(),
     };
 
     let task = tokio::spawn(async move {
-        let _slot = slot;
         let result = async {
             if ctx.resuming {
                 ctx.prepare_resume().await?;
@@ -658,6 +691,16 @@ async fn scripted_humanize(ctx: &mut RunCtx) -> Result<(), RunError> {
         )
         .await?;
     if split == "AI split" {
+        // The essay as it was before humanizing, from the version kept then
+        // (not from memory: the run may have been parked on the question).
+        let kept: Option<String> = sqlx::query_scalar(
+            "SELECT snapshot->>'body' FROM document_versions              WHERE project_id = $1 AND reason = 'humanize' ORDER BY rev DESC, created_at DESC LIMIT 1",
+        )
+        .bind(ctx.project_id)
+        .fetch_optional(&ctx.st.db)
+        .await?
+        .flatten();
+        let original = kept.unwrap_or(original);
         let step_id = Uuid::new_v4();
         scripted_rewrite(
             ctx,

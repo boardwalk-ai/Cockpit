@@ -80,7 +80,7 @@ pub fn start(st: AppState) -> Worker {
             }
             while let Ok(permit) = slots.clone().try_acquire_owned() {
                 match claim(&st).await {
-                    Ok(Some(job)) => driver::spawn(st.clone(), job, permit),
+                    Ok(Some(job)) => driver::spawn(st.clone(), job, slots.clone(), permit),
                     Ok(None) => break,
                     Err(error) => {
                         tracing::warn!(%error, "worker: could not claim a run");
@@ -107,7 +107,8 @@ struct Claimed {
     user_id: Uuid,
     instruction: Option<String>,
     resume: Option<Value>,
-    last_seq: i64,
+    /// It has done something already (more than echo a chat message).
+    started: bool,
 }
 
 /// Takes the oldest queued run, if there is one.
@@ -118,7 +119,8 @@ async fn claim(st: &AppState) -> Result<Option<Job>, sqlx::Error> {
          FROM (SELECT id, resume FROM runs WHERE status = 'queued' \
                ORDER BY updated_at FOR UPDATE SKIP LOCKED LIMIT 1) next \
          WHERE r.id = next.id \
-         RETURNING r.id, r.project_id, r.user_id, r.context->>'instruction' AS instruction, \n                   next.resume, r.last_seq",
+         RETURNING r.id, r.project_id, r.user_id, r.context->>'instruction' AS instruction, \n                   next.resume, EXISTS (SELECT 1 FROM run_events e \
+                       WHERE e.run_id = r.id AND e.type <> 'user_message') AS started",
     )
     .bind(st.worker.id.as_ref())
     .bind(lease_secs(st))
@@ -130,7 +132,7 @@ async fn claim(st: &AppState) -> Result<Option<Job>, sqlx::Error> {
         user_id: row.user_id,
         instruction: row.instruction.unwrap_or_default(),
         resume: row.resume,
-        resuming: row.last_seq > 0,
+        resuming: row.started,
     }))
 }
 

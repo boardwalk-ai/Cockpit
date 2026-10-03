@@ -479,3 +479,44 @@ async fn a_scripted_run_cut_off_mid_write_finishes_its_essay() {
 
     t.cleanup().await;
 }
+
+#[tokio::test]
+async fn a_run_waiting_on_its_user_does_not_hold_up_anyone_else() {
+    // One worker place: a waiting run must not keep it.
+    let t = TestApp::with(|config| config.worker_slots = 1).await;
+    let (first_project, first) = start(&t, "An essay on tides").await;
+    run_when(&t, first, |r| r["status"] == "waiting_for_user").await;
+
+    let (_, second) = start(&t, "An essay on rivers").await;
+    run_when(&t, second, |r| r["status"] == "waiting_for_user").await;
+
+    // Both go on when answered.
+    answer(&t, first, "essayFocus", json!(["Economic impact"])).await;
+    answer(&t, second, "essayFocus", json!(["Social impact"])).await;
+    run_when(&t, first, |r| {
+        r["pendingQuestion"]["field"] == "sourceReviewChoice"
+    })
+    .await;
+    run_when(&t, second, |r| {
+        r["pendingQuestion"]["field"] == "sourceReviewChoice"
+    })
+    .await;
+
+    // The list says which essays wait on the user.
+    let (_, list) = t.get("/v1/projects", "alice").await;
+    let waiting: Vec<bool> = list["projects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["needsAnswer"].as_bool().unwrap())
+        .collect();
+    assert_eq!(waiting, [true, true]);
+    t.post(&format!("/v1/runs/{first}/cancel"), "alice", json!({}))
+        .await;
+    let (_, project) = t
+        .get(&format!("/v1/projects/{first_project}"), "alice")
+        .await;
+    assert_eq!(project["needsAnswer"], false);
+
+    t.cleanup().await;
+}

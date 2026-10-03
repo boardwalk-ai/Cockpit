@@ -77,6 +77,9 @@ pub struct Hub {
     /// Serializes "append event + broadcast" per run, so broadcasts leave in
     /// `seq` order and a subscriber can drop anything at or below its cursor.
     locks: Arc<Mutex<HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>>,
+    /// Rung whenever a run goes live here, so streams following a run no
+    /// worker held pick it up at once.
+    opened: Arc<tokio::sync::Notify>,
     /// Clients following each run's events, whether or not it is live here.
     followers: Arc<Mutex<HashMap<Uuid, usize>>>,
 }
@@ -101,6 +104,11 @@ impl Drop for Following {
 
 impl Hub {
     /// Registers a run that is about to start and returns its inbox.
+    /// Waits until some run goes live here.
+    pub fn opened(&self) -> tokio::sync::futures::Notified<'_> {
+        self.opened.notified()
+    }
+
     pub fn open(&self, run_id: Uuid) -> Inbox {
         let (events, _) = broadcast::channel(256);
         let (answers, answers_rx) = mpsc::unbounded_channel();
@@ -114,6 +122,7 @@ impl Hub {
                 abort: None,
             },
         );
+        self.opened.notify_waiters();
         Inbox {
             answers: answers_rx,
             messages: messages_rx,
@@ -259,11 +268,14 @@ async fn append_to_log(
 ) -> Result<i64, sqlx::Error> {
     let mut tx = db.begin().await?;
     // The row lock on `runs` hands out `seq` values one at a time.
-    let seq: i64 = sqlx::query_scalar(
+    // Nothing is added after a run has ended, but the event that ends it;
+    // `RowNotFound` tells a driver that is still going that it was stopped.
+    let seq: i64 = sqlx::query_scalar(&format!(
         "UPDATE runs SET last_seq = last_seq + 1, updated_at = now() \
-         WHERE id = $1 RETURNING last_seq",
-    )
+         WHERE id = $1 AND (status IN {ACTIVE} OR $2) RETURNING last_seq"
+    ))
     .bind(run_id)
+    .bind(is_terminal(kind))
     .fetch_one(&mut *tx)
     .await?;
     sqlx::query("INSERT INTO run_events (run_id, seq, type, payload) VALUES ($1, $2, $3, $4)")

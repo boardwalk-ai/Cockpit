@@ -18,7 +18,9 @@ use crate::ctx::Caller;
 use crate::AppState;
 
 const COLUMNS: &str = "id, folder_id, title, instruction, status, target_words, word_count, \
-                       created_at, updated_at";
+                       created_at, updated_at, \
+                       EXISTS (SELECT 1 FROM runs r WHERE r.project_id = projects.id \
+                               AND r.status = 'waiting_for_user') AS needs_answer";
 
 #[derive(Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -32,6 +34,8 @@ pub struct Project {
     pub word_count: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// A run on it is waiting for the user's answer.
+    pub needs_answer: bool,
 }
 
 #[derive(Deserialize)]

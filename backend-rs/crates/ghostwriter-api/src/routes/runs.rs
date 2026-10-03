@@ -210,6 +210,15 @@ pub async fn events(
             // (queued, parked, or driven elsewhere) is followed by reading
             // the log until a worker here picks it up.
             let Some(receiver) = live.as_mut() else {
+                // Listen before looking, so a run going live in between is
+                // not missed.
+                let opened = st.hub.opened();
+                tokio::pin!(opened);
+                opened.as_mut().enable();
+                live = st.hub.subscribe(run_id);
+                if live.is_some() {
+                    continue 'outer;
+                }
                 // An ended run has nothing more (a cursor past its end).
                 let active: Option<String> = sqlx::query_scalar(&format!(
                     "SELECT status FROM runs WHERE id = $1 AND status IN {ACTIVE}"
@@ -221,7 +230,10 @@ pub async fn events(
                 if active.is_none() {
                     break;
                 }
-                tokio::time::sleep(st.config.worker_poll.min(Duration::from_secs(1))).await;
+                tokio::select! {
+                    _ = opened => {}
+                    _ = tokio::time::sleep(st.config.worker_poll.min(Duration::from_secs(1))) => {}
+                }
                 live = st.hub.subscribe(run_id);
                 continue 'outer;
             };
