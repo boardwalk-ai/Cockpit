@@ -46,6 +46,54 @@ pub struct Context {
     /// The user's review of the sources: notes to steer each summary, and
     /// the ones to leave out.
     pub source_review: Vec<SourceNote>,
+    /// The model and voice the run started with. Kept for the life of the
+    /// run, so one picked up again later runs the same way.
+    pub ai: Option<AiSnapshot>,
+}
+
+/// The user's AI choice, as a run uses it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct AiSnapshot {
+    pub model_id: Option<String>,
+    /// The name the AI goes by ("Octo v2 Pro").
+    pub name: String,
+    pub orchestrator: Option<String>,
+    pub writer: Option<String>,
+    pub fast: Option<String>,
+    pub credit_multiplier: f64,
+    /// How it talks in chat (the personality's prompt).
+    pub voice: Option<String>,
+}
+
+impl Default for AiSnapshot {
+    fn default() -> Self {
+        Self {
+            model_id: None,
+            name: "GhostWriter".into(),
+            orchestrator: None,
+            writer: None,
+            fast: None,
+            credit_multiplier: 1.0,
+            voice: None,
+        }
+    }
+}
+
+impl AiSnapshot {
+    pub fn from_choice(choice: &octo_common::ai::Choice) -> Self {
+        let mut snapshot = Self::default();
+        if let Some(model) = &choice.model {
+            snapshot.model_id = Some(model.id.clone());
+            snapshot.name = model.display_name.clone();
+            snapshot.orchestrator = Some(model.orchestrator_model.clone());
+            snapshot.writer = Some(model.writer_model.clone());
+            snapshot.fast = Some(model.fast_model.clone());
+            snapshot.credit_multiplier = model.credit_multiplier;
+        }
+        snapshot.voice = choice.personality.as_ref().map(|p| p.prompt.clone());
+        snapshot
+    }
 }
 
 /// One weakness the critic found in the essay.

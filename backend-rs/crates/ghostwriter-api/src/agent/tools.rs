@@ -674,7 +674,7 @@ async fn scrape_sources(
         ));
     }
 
-    precheck(agent, pricing::charge(0, 0, targets.len() as i64)).await?;
+    precheck(agent, agent.price(0, 0, targets.len() as i64).await).await?;
 
     let (mut read, mut failed) = (0, 0);
     for (index, target) in targets.iter().enumerate() {
@@ -708,7 +708,7 @@ async fn scrape_sources(
         let total = agent.ctx.scraped.len();
         charge(
             agent,
-            pricing::charge(0, 0, read),
+            agent.price(0, 0, read).await,
             &format!("sources:{total}"),
             "Source research",
         )
@@ -898,7 +898,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
         return Err("citationStyle is missing; ask_user(field=\"citationStyle\") first".into());
     };
 
-    precheck(agent, pricing::charge(target, 0, 0)).await?;
+    precheck(agent, agent.price(target, 0, 0).await).await?;
 
     let outlines: Vec<String> = agent
         .ctx
@@ -977,7 +977,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
 
     charge(
         agent,
-        pricing::charge(words, 0, 0),
+        agent.price(words, 0, 0).await,
         "write",
         "Essay generation",
     )
@@ -1143,7 +1143,7 @@ async fn revise_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failu
         return Err("the document has no essay to revise".into());
     }
     let current = pricing::count_words(&body);
-    precheck(agent, pricing::charge(current, 0, 0)).await?;
+    precheck(agent, agent.price(current, 0, 0).await).await?;
 
     let sources: Vec<String> = agent
         .ctx
@@ -1197,7 +1197,7 @@ async fn revise_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failu
 
     charge(
         agent,
-        pricing::charge(words, 0, 0),
+        agent.price(words, 0, 0).await,
         &format!("revise:{}", agent.ctx.revisions),
         "Essay revision",
     )
@@ -1296,7 +1296,7 @@ async fn humanize_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Fai
     };
     let body = current_body(agent).await?;
     let words = pricing::count_words(&body);
-    let price = pricing::charge(0, words, 0);
+    let price = agent.price(0, words, 0).await;
     precheck(agent, price).await?;
 
     lock_for_rewrite(agent).await?;

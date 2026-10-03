@@ -112,17 +112,19 @@ impl Llm for OpenRouter {
             .post(&request, false, Duration::from_secs(180))
             .send()
             .await
-            .map_err(|e| format!("model request failed: {e}"))?;
+            .map_err(|e| {
+                tracing::warn!(error = %e, "model request failed");
+                "the model did not answer".to_string()
+            })?;
         let status = response.status();
         let body: Value = response
             .json()
             .await
             .map_err(|e| format!("model reply unreadable: {e}"))?;
         if !status.is_success() || body.get("error").is_some() {
-            return Err(format!(
-                "model error {status}: {}",
-                body["error"]["message"].as_str().unwrap_or("unknown")
-            ));
+            // The provider's message can name the model: logged, never shown.
+            tracing::warn!(%status, error = %body["error"], "model call refused");
+            return Err(format!("the model could not answer ({})", status.as_u16()));
         }
 
         let message = &body["choices"][0]["message"];
@@ -156,11 +158,15 @@ impl Llm for OpenRouter {
             .post(&request, true, Duration::from_secs(300))
             .send()
             .await
-            .map_err(|e| format!("model request failed: {e}"))?;
+            .map_err(|e| {
+                tracing::warn!(error = %e, "model request failed");
+                "the model did not answer".to_string()
+            })?;
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(format!("model error {status}: {body}"));
+            tracing::warn!(%status, %body, "model stream refused");
+            return Err(format!("the model could not answer ({})", status.as_u16()));
         }
 
         let mut bytes = response.bytes_stream();

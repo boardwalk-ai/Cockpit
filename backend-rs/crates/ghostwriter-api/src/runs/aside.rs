@@ -14,6 +14,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use super::{emit, finish, Outcome};
+use crate::agent::context::AiSnapshot;
 use crate::agent::prompt;
 use crate::llm::{system, user, ChatRequest};
 use crate::AppState;
@@ -129,9 +130,20 @@ async fn quick_reply(
     if recent >= REPLIES_PER_MINUTE {
         return Ok(None);
     }
-    let Some((llm, models)) = crate::agent::client(st).await else {
+    let Some((llm, mut models)) = crate::agent::client(st).await else {
         return Ok(None);
     };
+    // The run's model and voice, as fixed when it started.
+    let ai: Option<AiSnapshot> =
+        sqlx::query_scalar::<_, Option<Value>>("SELECT context->'ai' FROM runs WHERE id = $1")
+            .bind(run_id)
+            .fetch_optional(&st.db)
+            .await
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .and_then(|v| serde_json::from_value(v).ok());
+    models.apply(ai.as_ref());
+    let ai = ai.unwrap_or_default();
 
     let situation = situation(st, run_id, project_id)
         .await
@@ -140,7 +152,11 @@ async fn quick_reply(
         .chat(ChatRequest {
             model: models.secondary,
             messages: vec![
-                system(prompt::ASIDE),
+                system(format!(
+                    "{}{}",
+                    prompt::ASIDE,
+                    prompt::persona(&ai.name, ai.voice.as_deref())
+                )),
                 user(format!("{situation}\n\nTHE USER'S MESSAGE\n{text}")),
             ],
             temperature: Some(0.3),
@@ -153,8 +169,10 @@ async fn quick_reply(
     if answer.is_empty() {
         return Err("the quick reply was empty".into());
     }
+    let terms = octo_common::ai::masked_terms(st.octopilot.as_ref()).await;
+    let (answer, _) = octo_common::ai::mask(answer, &terms, &ai.name);
     Ok(Some((
-        answer.to_string(),
+        answer,
         Kind::parse(parsed["kind"].as_str().unwrap_or_default()),
     )))
 }

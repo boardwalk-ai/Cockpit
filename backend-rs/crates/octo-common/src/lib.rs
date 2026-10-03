@@ -2,6 +2,7 @@
 //! Doc Oct, `octonotes-api` for OctoNotes): Firebase auth, the API error type,
 //! identity + OctoCredits from the shared octopilot DB, and Postgres helpers.
 
+pub mod ai;
 pub mod auth;
 pub mod credits;
 pub mod db;

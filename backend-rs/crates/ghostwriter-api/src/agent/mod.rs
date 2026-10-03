@@ -20,7 +20,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use self::context::Context;
+use self::context::{AiSnapshot, Context};
 use self::tools::Failure;
 use crate::documents;
 use crate::llm::{self, ChatRequest, Llm, OpenRouter, ToolCall};
@@ -66,6 +66,30 @@ impl Models {
     }
 }
 
+impl Models {
+    /// The run's chosen models in place of the defaults.
+    pub fn apply(&mut self, ai: Option<&AiSnapshot>) {
+        let Some(ai) = ai else { return };
+        if let Some(model) = &ai.orchestrator {
+            self.orchestrator = model.clone();
+        }
+        if let Some(model) = &ai.writer {
+            self.writer = model.clone();
+        }
+        if let Some(model) = &ai.fast {
+            self.secondary = model.clone();
+        }
+    }
+}
+
+/// The user's AI choice for GhostWriter, as a run will use it.
+pub(crate) async fn snapshot_for(st: &AppState, user_id: Uuid) -> AiSnapshot {
+    match &st.octopilot {
+        Some(pool) => AiSnapshot::from_choice(&st.ai.choice(pool, user_id, "ghostwriter").await),
+        None => AiSnapshot::default(),
+    }
+}
+
 /// What a tool works with.
 pub struct Agent<'a> {
     pub run: &'a mut RunCtx,
@@ -73,6 +97,20 @@ pub struct Agent<'a> {
     pub llm: Arc<dyn Llm>,
     pub scraper: Arc<dyn Scraper>,
     pub models: Models,
+}
+
+impl Agent<'_> {
+    /// What an operation costs: the shared price table, times the run's model
+    /// multiplier.
+    pub async fn price(&self, words_generated: i64, words_humanized: i64, sources: i64) -> i32 {
+        let st = &self.run.st;
+        let pricing = match &st.octopilot {
+            Some(pool) => st.ai.pricing(pool).await,
+            None => octo_common::ai::Pricing::default(),
+        };
+        let multiplier = self.ctx.ai.as_ref().map_or(1.0, |ai| ai.credit_multiplier);
+        pricing.charge(words_generated, words_humanized, sources, multiplier)
+    }
 }
 
 /// The model for this run: the injected one (tests), or OpenRouter with a key
@@ -115,13 +153,15 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
         let messages = messages.as_array().cloned().unwrap_or_default();
         if !messages.is_empty() {
             let ctx: Context = serde_json::from_value(context).unwrap_or_default();
-            let agent = Agent {
+            let mut agent = Agent {
                 run,
                 ctx,
                 llm,
                 scraper,
                 models,
             };
+            agent.models.apply(agent.ctx.ai.as_ref());
+            agent.run.voice_name = agent.ctx.ai.as_ref().map(|ai| ai.name.clone());
             return resume(agent, messages, pending_call).await;
         }
         // Stopped before anything was saved: start over, without repeating
@@ -130,6 +170,10 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
         run.emit("user_message", json!({ "text": instruction }))
             .await?;
     }
+
+    // The model and voice the user chose, fixed for this run.
+    let ai = snapshot_for(&run.st, run.user_id).await;
+    let persona = prompt::persona(&ai.name, ai.voice.as_deref());
 
     let today = chrono::Utc::now().format("%B %-d, %Y").to_string();
     let written: Option<(String, String, String)> = sqlx::query_as(
@@ -144,7 +188,7 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
     let (messages, ctx, specs) = match written {
         None => (
             vec![
-                llm::system(prompt::orchestrator()),
+                llm::system(format!("{}{persona}", prompt::orchestrator())),
                 llm::user(prompt::user_brief(&instruction, &today)),
             ],
             Context {
@@ -172,7 +216,7 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
             ctx.revisions = 0;
             (
                 vec![
-                    llm::system(prompt::revision_orchestrator()),
+                    llm::system(format!("{}{persona}", prompt::revision_orchestrator())),
                     llm::user(prompt::revision_brief(
                         &instruction,
                         &title,
@@ -186,13 +230,16 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
             )
         }
     };
-    let agent = Agent {
+    let mut agent = Agent {
         run,
         ctx,
         llm,
         scraper,
         models,
     };
+    agent.run.voice_name = Some(ai.name.clone());
+    agent.ctx.ai = Some(ai);
+    agent.models.apply(agent.ctx.ai.as_ref());
     drive(agent, messages, specs, revision, false).await
 }
 
@@ -207,7 +254,7 @@ async fn resume(
     let revision = messages
         .first()
         .and_then(|m| m["content"].as_str())
-        .is_some_and(|system| system == prompt::revision_orchestrator());
+        .is_some_and(prompt::is_revision);
     let specs = if revision {
         tools::revision_specs()
     } else {
@@ -448,6 +495,7 @@ async fn dispatch(
         Ok(Err(Failure::Tool(message))) => message,
         Err(_) => format!("{} took too long", call.name),
     };
+    let error = agent.run.masked(&error).await;
     agent
         .run
         .emit(

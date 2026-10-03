@@ -27,7 +27,7 @@ pub struct Ask {
 /// `POST /v1/octo/ask` — `{ question }` → `{ answer }`.
 pub async fn ask(
     State(st): State<AppState>,
-    _caller: Caller,
+    caller: Caller,
     Json(body): Json<Ask>,
 ) -> Result<Json<Value>, ApiError> {
     let question = clean_text(body.question, QUESTION_LIMIT, "question")?
@@ -45,11 +45,23 @@ pub async fn ask(
         }
         (None, None) => return Err(unavailable()),
     };
+    // The user's chosen fast model and voice. Octo keeps its own name.
+    let ai = crate::agent::snapshot_for(&st, caller.user_id).await;
+    let model = if st.llm.is_some() {
+        model
+    } else {
+        ai.fast.clone().unwrap_or(model)
+    };
+    let system_prompt = format!(
+        "{}{}",
+        prompt::OCTO,
+        prompt::persona("Octo", ai.voice.as_deref())
+    );
 
     let reply = llm
         .chat(ChatRequest {
             model,
-            messages: vec![system(prompt::OCTO), user(question)],
+            messages: vec![system(system_prompt), user(question)],
             temperature: Some(0.2),
             json: true,
             tools: Vec::new(),
@@ -68,5 +80,7 @@ pub async fn ask(
     if answer.is_empty() {
         return Err(unavailable());
     }
+    let terms = octo_common::ai::masked_terms(st.octopilot.as_ref()).await;
+    let (answer, _) = octo_common::ai::mask(&answer, &terms, "Octo");
     Ok(Json(json!({ "answer": answer })))
 }

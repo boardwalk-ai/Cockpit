@@ -30,7 +30,8 @@ use crate::live_docs::LiveDocs;
 use crate::llm::Llm;
 use crate::push::{FcmPusher, NoPusher, Pusher};
 use crate::routes::{
-    devices, documents as doc_routes, folders, octo, projects, runs as run_routes, system,
+    ai as ai_routes, devices, documents as doc_routes, folders, octo, projects, runs as run_routes,
+    system,
 };
 use crate::runs::worker::WorkerHandle;
 use crate::runs::Hub;
@@ -64,6 +65,8 @@ pub struct AppState {
     pub humanizer: Arc<dyn Humanizer>,
     /// Sends push notifications; does nothing when FCM is not configured.
     pub pusher: Arc<dyn Pusher>,
+    /// Models, personalities and prices from the shared DB (cached).
+    pub ai: octo_common::ai::AiSettings,
 }
 
 impl HasFirebase for AppState {
@@ -116,6 +119,7 @@ impl AppState {
             scraper: Arc::new(HttpScraper::new(http.clone(), config.scraper_url.clone())),
             humanizer: Arc::new(HttpHumanizer::new(http.clone(), octopilot.clone())),
             pusher,
+            ai: octo_common::ai::AiSettings::default(),
             http,
             db,
             octopilot,
@@ -136,6 +140,9 @@ pub fn app(state: AppState) -> Router {
         .route("/ready", get(system::ready))
         .route("/v1/me", get(system::me))
         .route("/v1/octo/ask", post(octo::ask))
+        .route("/v1/ai/catalog", get(ai_routes::catalog))
+        .route("/v1/ai/preferences", get(ai_routes::preferences))
+        .route("/v1/ai/preferences/:scope", put(ai_routes::put_preference))
         .route("/v1/projects", get(projects::list))
         .route(
             "/v1/projects/:id",

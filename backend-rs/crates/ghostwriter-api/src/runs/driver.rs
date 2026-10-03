@@ -76,6 +76,9 @@ pub struct RunCtx {
     /// it waits on the user, so waiting runs do not hold up anyone else's.
     slot: Option<OwnedSemaphorePermit>,
     slots: Arc<Semaphore>,
+    /// The name the AI goes by in this run (masking replaces model names
+    /// with it). `None` = "GhostWriter".
+    pub voice_name: Option<String>,
     /// Chat messages kept while no worker held the run, for a resuming
     /// scripted run (the agent reads them itself).
     stored: Vec<String>,
@@ -89,6 +92,13 @@ impl RunCtx {
         }
         emit(&self.st, self.run_id, kind, payload).await?;
         Ok(())
+    }
+
+    /// `text` with any model or company name replaced by the AI's own name.
+    pub async fn masked(&self, text: &str) -> String {
+        let terms = octo_common::ai::masked_terms(self.st.octopilot.as_ref()).await;
+        let name = self.voice_name.as_deref().unwrap_or("GhostWriter");
+        octo_common::ai::mask(text, &terms, name).0
     }
 
     /// Emits a live-only event (a text delta).
@@ -349,6 +359,7 @@ impl RunCtx {
     /// Says something as GhostWriter: deltas for a live client, then the
     /// stored message.
     pub(crate) async fn say(&self, text: &str) -> Result<(), RunError> {
+        let text = &self.masked(text).await;
         for word in text.split_inclusive(' ') {
             self.emit_live("assistant_delta", json!({ "chunk": word }));
         }
@@ -376,6 +387,7 @@ pub fn spawn(st: AppState, job: Job, slots: Arc<Semaphore>, slot: OwnedSemaphore
         slot: Some(slot),
         slots,
         stored: Vec::new(),
+        voice_name: None,
     };
 
     let task = tokio::spawn(async move {
@@ -395,7 +407,7 @@ pub fn spawn(st: AppState, job: Job, slots: Arc<Semaphore>, slot: OwnedSemaphore
             // Whoever stopped the run has closed it already; a parked run
             // waits in the database for its answer.
             Err(RunError::Stopped | RunError::Parked) => return,
-            Err(RunError::Failed(message)) => Outcome::Failed(message),
+            Err(RunError::Failed(message)) => Outcome::Failed(ctx.masked(&message).await),
             Err(RunError::Db(error)) => {
                 tracing::error!(%run_id, %error, "run failed on a database error");
                 Outcome::Failed("Something went wrong on our side.".to_string())
