@@ -150,6 +150,9 @@ All under `/v1`. JSON in, JSON out, camelCase.
 | GET | `/me` | `{ id, name, email, photoUrl, octoCredits }` |
 | PUT | `/devices/:id` | Register this install for push, or refresh its token. `{ token, platform }` (`android`, `ios`, `web`). `id` is made once by the app. 204. |
 | DELETE | `/devices/:id` | Stop pushing to this install (sign-out). 204. |
+| GET | `/ai/catalog` | `{ pro, models: [{ id, name, tagline, pro, locked, default }], personalities: [{ id, name, description, default }] }`. Never the real models. |
+| GET | `/ai/preferences` | `{ scopes: { global, ghostwriter, study_studio }, effective: { ghostwriter, study_studio } }`; each `{ model, personality }` or `null` |
+| PUT | `/ai/preferences/:scope` | `{ model?, personality? }`: an id, `null` (follow the wider scope) or absent (leave it). 403 `pro_required` for a Pro model off Pro |
 | POST | `/octo/ask` | Ask Octo. `{ question }` (max 500 characters) → `{ answer }`. Answers questions about using the app only; not saved, not charged. 503 when no model is available. |
 
 ### Projects and folders
@@ -326,6 +329,29 @@ OctopilotWeb's loop.
 A tool that fails is shown as a failed step and its error goes back to the
 model, which retries or tells the user. A run stops after 40 model round-trips.
 Not ported: the web's automatic removal of junk pages after scraping.
+
+### 6.9 AI settings (models, personalities, prices)
+
+The catalog lives in the shared octopilot DB (`backend-rs/shared-sql/`), written
+by admins directly: `ai_models` (a name such as "Octo v2 Pro" for a bundle of an
+orchestrator, a writer and a fast model; `min_plan`; `credit_multiplier`),
+`ai_personalities` (a chat voice), `user_ai_preferences` (per user, per scope:
+`global` or an app) and `pricing_config` (one row, every change logged by a
+trigger in `pricing_audit`). Services read them through octo-common `ai` with a
+one-minute cache.
+
+- A user's choice for an app wins over their global one, which wins over the
+  admin default. A Pro model off Pro, or a turned-off one, falls back the same way.
+- A run fixes the model and voice when it starts (`context.ai`) and keeps them
+  through parking and restarts.
+- The voice goes into the chat-facing prompts only (orchestrators, quick
+  reply, Ask Octo), never the writer's.
+- The AI calls itself by the model's name. Model and company names are masked
+  in chat replies, quick replies, Ask Octo, step errors and failures
+  (`system_settings.ai_masked_terms` overrides the list); model errors never
+  carry the provider's message.
+- Charges use `pricing_config` times the model's `credit_multiplier`.
+- With no catalog, runs use the old `system_settings` models and default prices.
 
 ### 6.8 Messages while a run goes
 

@@ -23,6 +23,7 @@ class GhostWriterMobileDrawer extends StatefulWidget {
     required this.onOpenProject,
     required this.onRefresh,
     this.onSignOut,
+    this.onSettings,
   });
 
   final List<GwProject> projects;
@@ -40,6 +41,9 @@ class GhostWriterMobileDrawer extends StatefulWidget {
 
   /// Null hides sign-out (dev builds without a real sign-in).
   final VoidCallback? onSignOut;
+
+  /// Opens the AI settings. Null hides the button.
+  final VoidCallback? onSettings;
 
   @override
   State<GhostWriterMobileDrawer> createState() =>
@@ -217,6 +221,12 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
                 _AccountRow(
                   name: widget.sessionName,
                   credits: widget.credits,
+                  onSettings: widget.onSettings == null
+                      ? null
+                      : () {
+                          _close();
+                          widget.onSettings!();
+                        },
                   onSignOut: widget.onSignOut == null
                       ? null
                       : () {
@@ -554,11 +564,13 @@ class _AccountRow extends StatelessWidget {
     required this.name,
     required this.credits,
     required this.onSignOut,
+    this.onSettings,
   });
 
   final String name;
   final int credits;
   final VoidCallback? onSignOut;
+  final VoidCallback? onSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -609,6 +621,20 @@ class _AccountRow extends StatelessWidget {
             ),
           ),
           OctoCreditsPill(credits: credits),
+          if (onSettings != null)
+            GwPressable(
+              tooltip: 'AI settings',
+              onTap: onSettings,
+              child: const SizedBox(
+                width: 40,
+                height: kGwButton,
+                child: Icon(
+                  Icons.tune_rounded,
+                  size: 19,
+                  color: GwColors.muted,
+                ),
+              ),
+            ),
           if (onSignOut != null)
             GwPressable(
               tooltip: 'Sign out',

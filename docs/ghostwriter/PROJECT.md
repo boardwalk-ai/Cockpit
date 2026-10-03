@@ -520,3 +520,4 @@ Dev server config `ghostwriter-api` (scripted၊ :8791) နဲ့ `ghostwriter-a
 | 10-04 | Phase 5b: run queue + worker (lease)၊ park / resume၊ restart ကျော်ပြီး ဆက်ရေးတာ |
 | 10-04 | Stop ခလုတ်ကို composer ထဲ၊ concurrent run ("Your turn")၊ park ချက်ချင်း (`0`) |
 | 10-05 | ကြားဖြတ် message: ချက်ချင်းဖြေ၊ directive၊ ရေးနေတုန်း ပြန်ရေး၊ မေးခွန်းစောင့်နေတုန်း ပြန်မေး (PLAN-ai-settings.md အပိုင်း A) |
+| 10-05 | AI settings (အပိုင်း B): model bundle၊ personality၊ masking၊ pricing ကို shared DB ကနေ၊ app ထဲ settings sheet။ Local dev DB မှာပဲ table ထည့်ထား |

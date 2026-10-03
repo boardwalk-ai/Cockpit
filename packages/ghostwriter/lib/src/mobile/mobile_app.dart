@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../session/gw_session.dart';
+import 'mobile_ai_settings.dart';
 import 'mobile_background.dart';
 import 'mobile_chat.dart';
 import 'mobile_drawer.dart';
@@ -93,6 +94,7 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
             onOpenProject: session.openProject,
             onRefresh: session.refreshLibrary,
             onSignOut: widget.onSignOut,
+            onSettings: () => showGwAiSettings(context, api: session.api),
           ),
           body: GwBackground(
             child: SafeArea(

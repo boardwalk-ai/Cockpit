@@ -115,6 +115,20 @@ class GwApi {
   Future<void> message(String runId, String text) =>
       _json('POST', '/v1/runs/$runId/message', {'text': text});
 
+  /// The models and personalities to choose from.
+  Future<Map<String, dynamic>> aiCatalog() => _json('GET', '/v1/ai/catalog');
+
+  /// `{ scopes: {global, ghostwriter, …}, effective: {ghostwriter, …} }`
+  Future<Map<String, dynamic>> aiPreferences() =>
+      _json('GET', '/v1/ai/preferences');
+
+  /// Saves a choice for [scope]. A key set to null follows the wider scope;
+  /// a missing key is left alone. Returns the preferences as they now are.
+  Future<Map<String, dynamic>> putAiPreference(
+    String scope,
+    Map<String, Object?> change,
+  ) => _json('PUT', '/v1/ai/preferences/$scope', change);
+
   /// Registers this install for push notifications, or refreshes its token.
   Future<void> putDevice(String id, String token, String platform) =>
       _json('PUT', '/v1/devices/$id', {'token': token, 'platform': platform});
