@@ -41,7 +41,8 @@ async fn run_when(t: &TestApp, run: Uuid, ready: impl Fn(&Value) -> bool) -> Val
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("the run never got there");
+    let (_, state) = t.get(&format!("/v1/runs/{run}"), "alice").await;
+    panic!("the run never got there: {state}");
 }
 
 /// True once no worker holds the run.

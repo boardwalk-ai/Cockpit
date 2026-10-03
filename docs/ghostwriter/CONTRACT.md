@@ -182,7 +182,7 @@ claims it with `FOR UPDATE SKIP LOCKED`, drives it, and renews a lease on it
 (`RUN_LEASE_MS`, default 30 s) while it does. The run's context and the model's
 conversation are saved after every tool call.
 
-- **Parked.** A run that has waited `PARK_AFTER_MS` (default 10 min) on a question
+- **Parked.** A run that has waited `PARK_AFTER_MS` (default 0: at once) on a question
   or a chat reply is let go: still `waiting_for_user`, but no worker holds it and
   it uses no memory. It never times out. Answering it (or, when it waits on a
   plain question, sending a message) queues it with the answer, and a worker
@@ -202,7 +202,6 @@ conversation are saved after every tool call.
 - Nothing is logged after a run's terminal event.
 - One user may run any number of essays at once; each project has at most one
   active run. Projects carry `needsAnswer` (a run on it waits for the user).
-- The whole test suite also passes with `PARK_AFTER_MS=0` (park at once).
 
 Today the worker runs inside the API process. Running workers as separate
 processes needs one more piece: answers and messages reach a live run through

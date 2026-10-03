@@ -191,6 +191,7 @@ pub async fn events(
     let stream = async_stream::stream! {
         let _following = following;
         let mut cursor = since;
+        let mut read_to_end = false;
 
         'outer: loop {
             // Catch up from the log.
@@ -219,16 +220,26 @@ pub async fn events(
                 if live.is_some() {
                     continue 'outer;
                 }
-                // An ended run has nothing more (a cursor past its end).
-                let active: Option<String> = sqlx::query_scalar(&format!(
-                    "SELECT status FROM runs WHERE id = $1 AND status IN {ACTIVE}"
-                ))
-                .bind(run_id)
-                .fetch_optional(&st.db)
-                .await
-                .unwrap_or(None);
+                // An ended run has nothing more once its log has been read to
+                // the end. Checked under the run's lock: a run is closed and
+                // its terminal event logged under it, so the event is either
+                // not due yet or already there to read.
+                let active: Option<String> = {
+                    let _guard = st.hub.lock(run_id).await;
+                    sqlx::query_scalar(&format!(
+                        "SELECT status FROM runs WHERE id = $1 AND status IN {ACTIVE}"
+                    ))
+                    .bind(run_id)
+                    .fetch_optional(&st.db)
+                    .await
+                    .unwrap_or(None)
+                };
                 if active.is_none() {
-                    break;
+                    if read_to_end {
+                        break;
+                    }
+                    read_to_end = true;
+                    continue 'outer;
                 }
                 tokio::select! {
                     _ = opened => {}

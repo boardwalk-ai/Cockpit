@@ -392,7 +392,7 @@ Browser မှာ scripted backend နဲ့ အစအဆုံး စမ်း�
   - **လိုသေးတာ (user လုပ်ရမယ်):** Firebase service account key (server မှာ `FCM_SERVICE_ACCOUNT_FILE`)၊ iOS အတွက် APNs key ကို Firebase မှာ upload + Xcode မှာ Push Notifications capability
 - [x] **5b Run တွေကို worker / queue အဖြစ် ပြောင်း၊ ရပ်ခဲ့တဲ့ step ကနေ ဆက်တာ**
   - Run စရင် `queued`၊ worker က DB ကနေ ယူပြီး lease နဲ့ ကိုင်ထားတယ်
-  - **မေးခွန်းကို ၁၀ မိနစ် မဖြေရင် park လုပ်တယ်** (fail မဖြစ်တော့ဘူး၊ memory မသုံးဘူး၊ သက်တမ်း မကုန်ဘူး)။ Past threads ကနေ ဖွင့်ပြီး ဘယ်တော့ဖြေဖြေ **ရပ်ခဲ့တဲ့ step ကနေ ဆက်တယ်**၊ ပြီးသားအဆင့်တွေ ပြန်မလုပ်ဘူး၊ ပိုက်ဆံ ထပ်မဖြတ်ဘူး
+  - **မေးခွန်းမေးတာနဲ့ ချက်ချင်း park လုပ်တယ်** (`PARK_AFTER_MS=0`၊ 10-04 ဆုံးဖြတ်) (fail မဖြစ်တော့ဘူး၊ memory မသုံးဘူး၊ သက်တမ်း မကုန်ဘူး)။ Past threads ကနေ ဖွင့်ပြီး ဘယ်တော့ဖြေဖြေ **ရပ်ခဲ့တဲ့ step ကနေ ဆက်တယ်**၊ ပြီးသားအဆင့်တွေ ပြန်မလုပ်ဘူး၊ ပိုက်ဆံ ထပ်မဖြတ်ဘူး
   - **Server restart / crash ဖြစ်ရင်** lease ကုန်တာနဲ့ (၃၀ စက္ကန့်) ပြန်ယူပြီး ဆက်လုပ်တယ်။ ကြားဖြတ်ခံရတဲ့ step ကို "Interrupted" ပြပြီး ပြန်လုပ်တယ်
   - Dev server မှာ ရေးနေတုန်း process ကို kill လုပ်ပြီး **တကယ်စမ်းပြီး**: ပြန်တက်လာတော့ essay အပြည့် ဆက်ရေးပြီး ပြီးသွားတယ်
   - **Concurrent:** user တစ်ယောက် essay အများကြီး တစ်ပြိုင်နက် run လို့ရတယ် (project တစ်ခုမှာ run တစ်ခုပဲ)။ မေးခွန်းစောင့်နေတဲ့ run က worker slot ကို ပြန်လွှတ်ပေးတယ်။ Drawer မှာ အဖြေစောင့်နေတဲ့ essay ကို **"Your turn"** လို့ပြတယ်

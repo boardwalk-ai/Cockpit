@@ -42,14 +42,15 @@ async fn start(t: &TestApp, user: &str) -> (Uuid, Uuid) {
 
 /// Polls the run until `ready` says so.
 async fn run_when(t: &TestApp, run: Uuid, ready: impl Fn(&Value) -> bool) -> Value {
-    for _ in 0..400 {
+    for _ in 0..2000 {
         let (_, state) = t.get(&format!("/v1/runs/{run}"), "alice").await;
         if ready(&state) {
             return state;
         }
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    panic!("the run never got there");
+    let (_, state) = t.get(&format!("/v1/runs/{run}"), "alice").await;
+    panic!("the run never got there: {state}");
 }
 
 /// Waits until `count` notifications have been sent, then a little longer to

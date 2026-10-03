@@ -942,7 +942,9 @@ fn first_words(text: &str, n: usize) -> &str {
 }
 
 /// Default wait for an answer before a run gives up.
-pub const DEFAULT_PARK_AFTER: Duration = Duration::from_secs(10 * 60);
+/// A run waiting on its user is let go at once: it costs nothing while the
+/// user thinks, and their answer picks it up again.
+pub const DEFAULT_PARK_AFTER: Duration = Duration::ZERO;
 
 #[cfg(test)]
 mod tests {
