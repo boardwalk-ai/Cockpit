@@ -98,8 +98,30 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
     let scraper = run.st.scraper.clone();
     let instruction = run.instruction.clone();
 
-    run.emit("user_message", json!({ "text": instruction }))
-        .await?;
+    if run.resuming {
+        let (messages, context, pending_call): (Value, Value, Option<String>) =
+            sqlx::query_as("SELECT messages, context, pending_call FROM runs WHERE id = $1")
+                .bind(run.run_id)
+                .fetch_one(&run.st.db)
+                .await?;
+        let messages = messages.as_array().cloned().unwrap_or_default();
+        if !messages.is_empty() {
+            let ctx: Context = serde_json::from_value(context).unwrap_or_default();
+            let agent = Agent {
+                run,
+                ctx,
+                llm,
+                scraper,
+                models,
+            };
+            return resume(agent, messages, pending_call).await;
+        }
+        // Stopped before anything was saved: start over, without repeating
+        // the user's message.
+    } else {
+        run.emit("user_message", json!({ "text": instruction }))
+            .await?;
+    }
 
     let today = chrono::Utc::now().format("%B %-d, %Y").to_string();
     let written: Option<(String, String, String)> = sqlx::query_as(
@@ -111,7 +133,7 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
     .await?;
     let revision = written.is_some();
 
-    let (mut messages, ctx, specs) = match written {
+    let (messages, ctx, specs) = match written {
         None => (
             vec![
                 llm::system(prompt::orchestrator()),
@@ -156,16 +178,99 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
             )
         }
     };
-    let mut agent = Agent {
+    let agent = Agent {
         run,
         ctx,
         llm,
         scraper,
         models,
     };
+    drive(agent, messages, specs, revision, false).await
+}
+
+/// Picks a run up from its saved conversation: the turn it stopped in is
+/// completed (the user's answer, or "interrupted" for a tool that did not
+/// finish), then the loop goes on.
+async fn resume(
+    mut agent: Agent<'_>,
+    mut messages: Vec<Value>,
+    pending_call: Option<String>,
+) -> Result<(), RunError> {
+    let revision = messages
+        .first()
+        .and_then(|m| m["content"].as_str())
+        .is_some_and(|system| system == prompt::revision_orchestrator());
+    let specs = if revision {
+        tools::revision_specs()
+    } else {
+        tools::specs()
+    };
+
+    let last_turn = messages.iter().rposition(|m| m["role"] == "assistant");
+    let mut waiting_for_reply = false;
+    if let Some(index) = last_turn {
+        let turn = messages[index].clone();
+        let answered: Vec<String> = messages[index + 1..]
+            .iter()
+            .filter_map(|m| m["tool_call_id"].as_str().map(str::to_string))
+            .collect();
+        let calls = turn["tool_calls"].as_array().cloned().unwrap_or_default();
+        waiting_for_reply = calls.is_empty() && index + 1 == messages.len();
+        for call in calls {
+            let Some(id) = call["id"].as_str() else {
+                continue;
+            };
+            if answered.iter().any(|a| a == id) {
+                continue;
+            }
+            let resumed = agent
+                .run
+                .resume
+                .clone()
+                .filter(|_| pending_call.as_deref() == Some(id));
+            let result = match resumed {
+                Some(resume) => {
+                    let field = resume["field"].as_str().unwrap_or_default();
+                    agent.ctx.apply_answer(field, &resume["value"]);
+                    json!({ "answer": resume["value"] })
+                }
+                None => json!({
+                    "error": "This call was interrupted before it finished. Call it again if it is still needed.",
+                }),
+            };
+            messages
+                .push(json!({ "role": "tool", "tool_call_id": id, "content": result.to_string() }));
+        }
+    }
+
+    // What the user said while no worker held the run.
+    let stored = agent.run.take_stored_messages().await?;
+    if !stored.is_empty() {
+        waiting_for_reply = false;
+    }
+    for text in stored {
+        messages.push(llm::user(text));
+    }
+    save(&agent, &messages).await?;
+    drive(agent, messages, specs, revision, waiting_for_reply).await
+}
+
+/// The loop: the model answers, its tools run, until the essay is delivered.
+async fn drive(
+    mut agent: Agent<'_>,
+    mut messages: Vec<Value>,
+    specs: Vec<Value>,
+    revision: bool,
+    mut waiting_for_reply: bool,
+) -> Result<(), RunError> {
     let mut recent: HashMap<String, Instant> = HashMap::new();
 
     for _ in 0..MAX_STEPS {
+        if waiting_for_reply {
+            waiting_for_reply = false;
+            let text = agent.run.wait_message().await?;
+            messages.push(llm::user(text));
+        }
         // What the user said while tools were running.
         for text in agent.run.take_messages() {
             messages.push(llm::user(text));
@@ -186,8 +291,7 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
                 return Ok(());
             }
             // The model asked something in plain text: wait for the reply.
-            let text = agent.run.wait_message().await?;
-            messages.push(llm::user(text));
+            waiting_for_reply = true;
             continue;
         }
 
@@ -200,6 +304,8 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
                 "function": { "name": call.name, "arguments": call.arguments },
             })).collect::<Vec<_>>(),
         }));
+        // Saved after every call, so a run cut off mid-turn resumes there.
+        save(&agent, &messages).await?;
         for call in &reply.tool_calls {
             let result = dispatch(&mut agent, call, &mut recent).await?;
             messages.push(json!({
@@ -207,8 +313,8 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
                 "tool_call_id": call.id,
                 "content": result.to_string(),
             }));
+            save(&agent, &messages).await?;
         }
-        save(&agent, &messages).await?;
     }
 
     Err(RunError::Failed(
@@ -268,6 +374,7 @@ async fn dispatch(
     };
 
     if call.name == "ask_user" {
+        agent.run.call_id = Some(call.id.clone());
         return ask_user(agent, &args).await;
     }
     if !tools::exists(&call.name) {

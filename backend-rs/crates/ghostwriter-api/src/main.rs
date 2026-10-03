@@ -28,6 +28,9 @@ async fn main() {
         .await
         .expect("start ghostwriter-api");
 
+    // Drives queued runs, and picks up the ones a restart cut off.
+    let _worker = ghostwriter_api::runs::worker::start(state.clone());
+
     let listener = TcpListener::bind((bind.as_str(), port))
         .await
         .expect("bind");

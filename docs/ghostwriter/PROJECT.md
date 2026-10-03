@@ -18,7 +18,7 @@ API နဲ့ database အသေးစိတ်က [CONTRACT.md](CONTRACT.md) �
 | **ဘာဆောက်နေလဲ** | GhostWriter (AI essay ရေးပေးတဲ့ agent) ကို mobile app အဖြစ် ထုတ်ဖို့ |
 | **ပထမ release** | GhostWriter တစ်ခုတည်း။ ပြီးရင် Study Studio၊ နောက်မှ OctoNotes |
 | **Code နေရာ** | `H:\Cockpit-ghostwriter` (Cockpit monorepo၊ branch `feat/ghostwriter`) |
-| **Backend** | Rust (`ghostwriter-api`)၊ Phase 1a–1d + revision (4a) + source review (4b) + humanizer (4c) + source evaluate / critique / Ask Octo (4d) + push (5a) ပြီး၊ test ၈၀ ခု pass |
+| **Backend** | Rust (`ghostwriter-api`)၊ Phase 1a–1d + revision (4a) + source review (4b) + humanizer (4c) + source evaluate / critique / Ask Octo (4d) + push (5a) + worker / resume (5b) ပြီး၊ test ၈၅ ခု pass |
 | **Mobile UI** | Phone UI တစ်ခုလုံး Rust API နဲ့ ချိတ်ပြီး၊ Google sign-in (Phase 2)၊ ပြင်လို့ရတဲ့ mobile editor (Phase 3)။ Desktop UI (2c) နောက်မှ။ Test ၄၆ ခု pass |
 | **အခု ပိတ်နေတာ** | Branch ကို GitHub မတင်ရသေးဘူး (git history ထဲမှာ DB password ပါနေလို့၊ အပိုင်း 8) |
 
@@ -288,7 +288,7 @@ Operation တစ်ခုကို 100 ပြည့်အောင် တို�
 | **4a** | Revision: essay ရေးပြီးသား project ပေါ် run အသစ် = ပြင်ခိုင်းတာ / မေးတာ၊ `revise_essay` tool၊ `runIds` | 4a + 4b commit | 3 |
 | **4b** | Source review: ဖတ်ထားတဲ့ source တွေကို user က ဖယ် / focus note ရေး၊ ဖယ်ထားတာကို အနှစ်မချုပ် | 4a + 4b commit | 1 (+ app 7) |
 
-- **Test ၈၀ ခုလုံး pass**၊ clippy သန့်တယ်။ Timing ပေါ်မူတည်တဲ့ test တွေကို ၁၀ ကြိမ် ထပ် run ပြီး တည်ငြိမ်တာ စစ်ထားတယ်။
+- **Test ၈၅ ခုလုံး pass**၊ clippy သန့်တယ်။ Timing ပေါ်မူတည်တဲ့ test တွေကို ၁၀ ကြိမ် ထပ် run ပြီး တည်ငြိမ်တာ စစ်ထားတယ်။
 - **AI အစစ်နဲ့ တစ်ကြိမ် စမ်းထားတယ်** (2026-10-02): ၁၀၉ စက္ကန့်အတွင်း source အစစ် ၄ ခု (IPCC, NASA, Miami-Dade, UN)
   နဲ့ APA citation ပါတဲ့ စာလုံး ၄၅၁ လုံး essay၊ title page field ၅ ခု၊ 200 OC ဖြတ်။
 
@@ -390,6 +390,11 @@ Browser မှာ scripted backend နဲ့ အစအဆုံး စမ်း�
   - Permission ကို app ဖွင့်ဖွင့်ချင်း မတောင်းဘူး၊ **ပထမဆုံး run စတဲ့အခါမှ** တောင်းတယ်
   - Notification နှိပ်ရင် အဲ့ဒီ essay ပွင့်တယ်။ Sign out လုပ်ရင် အဲ့ဒီဖုန်းကို ဆက်မပို့တော့ဘူး
   - **လိုသေးတာ (user လုပ်ရမယ်):** Firebase service account key (server မှာ `FCM_SERVICE_ACCOUNT_FILE`)၊ iOS အတွက် APNs key ကို Firebase မှာ upload + Xcode မှာ Push Notifications capability
+- [x] **5b Run တွေကို worker / queue အဖြစ် ပြောင်း၊ ရပ်ခဲ့တဲ့ step ကနေ ဆက်တာ**
+  - Run စရင် `queued`၊ worker က DB ကနေ ယူပြီး lease နဲ့ ကိုင်ထားတယ်
+  - **မေးခွန်းကို ၁၀ မိနစ် မဖြေရင် park လုပ်တယ်** (fail မဖြစ်တော့ဘူး၊ memory မသုံးဘူး၊ သက်တမ်း မကုန်ဘူး)။ Past threads ကနေ ဖွင့်ပြီး ဘယ်တော့ဖြေဖြေ **ရပ်ခဲ့တဲ့ step ကနေ ဆက်တယ်**၊ ပြီးသားအဆင့်တွေ ပြန်မလုပ်ဘူး၊ ပိုက်ဆံ ထပ်မဖြတ်ဘူး
+  - **Server restart / crash ဖြစ်ရင်** lease ကုန်တာနဲ့ (၃၀ စက္ကန့်) ပြန်ယူပြီး ဆက်လုပ်တယ်။ ကြားဖြတ်ခံရတဲ့ step ကို "Interrupted" ပြပြီး ပြန်လုပ်တယ်
+  - Dev server မှာ ရေးနေတုန်း process ကို kill လုပ်ပြီး **တကယ်စမ်းပြီး**: ပြန်တက်လာတော့ essay အပြည့် ဆက်ရေးပြီး ပြီးသွားတယ်
 - [ ] iOS Live Activities၊ Android ongoing notification
 
 ### Release မတိုင်ခင်
@@ -421,8 +426,7 @@ Browser မှာ scripted backend နဲ့ အစအဆုံး စမ်း�
 
 ## 9. သိထားရမယ့် အားနည်းချက်တွေ
 
-- **Server restart ဖြစ်ရင် run က ဆက်မပြေးဘူး။** Error နဲ့ ပိတ်ပြီး document lock ဖြုတ်ပေးတယ်။ Restart ကျော်ပြီး ဆက်ရေးတာ မဆောက်ရသေး။
-- **Server တစ်လုံးတည်းအတွက်ပဲ။** နှစ်လုံးခွဲရင် Redis လိုမယ်။
+- **Worker က API process ထဲမှာပဲ run တယ်။** Worker ကို process သီးသန့်ခွဲချင်ရင် answer / message တွေကို DB (LISTEN/NOTIFY) ကနေ ပို့တဲ့အပိုင်း ထပ်လိုမယ်။
 - **AI အစစ်နဲ့ တစ်ကြိမ်ပဲ စမ်းထားတယ်။** ခေါင်းစဉ်၊ citation style၊ အရှည် အမျိုးမျိုးနဲ့ မစမ်းရသေး။
 - **Web နဲ့ မတူတာ:** writer က JSON မဟုတ်ဘဲ စာသားအတိုင်း ပြန်ပေးတယ် (ရေးနေတုန်း စာလုံးရေတွက်ဖို့)။
 - **Source link တချို့ ဖတ်မရဘူး** (၅ ခုမှာ ၁ ခုလောက်)။ Web မှာလည်း အတူတူပဲ။
@@ -511,3 +515,4 @@ Dev server config `ghostwriter-api` (scripted၊ :8791) နဲ့ `ghostwriter-a
 | 10-03 | Phase 4c: humanizer (StealthGPT / UndetectableAI) + paragraph split၊ backend |
 | 10-03 | Phase 4d: source evaluate၊ critique၊ Ask Octo (header icon)။ Phase 4 ပြီး |
 | 10-03 | Phase 5a: push notification (server + app)။ ဖုန်းအစစ်မှာ မစမ်းရသေး |
+| 10-04 | Phase 5b: run queue + worker (lease)၊ park / resume၊ restart ကျော်ပြီး ဆက်ရေးတာ |

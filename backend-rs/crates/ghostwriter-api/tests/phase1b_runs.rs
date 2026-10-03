@@ -463,28 +463,6 @@ async fn cancelling_stops_the_run_and_frees_the_project() {
 }
 
 #[tokio::test]
-async fn a_run_gives_up_when_nobody_answers() {
-    let t = TestApp::with(|config| {
-        config.ask_timeout = std::time::Duration::from_millis(300);
-    })
-    .await;
-    let (project, run) = start_run(&t, "alice").await;
-
-    let events = stream(&t, run, 0).await.rest().await;
-    let last = events.last().unwrap();
-    assert_eq!(last["type"], "fatal");
-    assert_eq!(last["error"], "Timed out waiting for your answer.");
-
-    let (_, state) = t.get(&format!("/v1/runs/{run}"), "alice").await;
-    assert_eq!(state["status"], "error");
-    assert_eq!(state["error"], "Timed out waiting for your answer.");
-    let (_, project_state) = t.get(&format!("/v1/projects/{project}"), "alice").await;
-    assert_eq!(project_state["status"], "idle");
-
-    t.cleanup().await;
-}
-
-#[tokio::test]
 async fn an_unusable_answer_fails_the_run_with_a_reason() {
     let t = TestApp::new().await;
     let (_, run) = start_run(&t, "alice").await;
@@ -526,79 +504,10 @@ async fn runs_are_private_to_their_owner() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 
-    // Alice's run is untouched.
+    // Alice's run is untouched: it goes on to its first question.
+    stream(&t, run, 0).await.until("question").await;
     let (_, state) = t.get(&format!("/v1/runs/{run}"), "alice").await;
     assert_eq!(state["status"], "waiting_for_user");
-
-    t.cleanup().await;
-}
-
-#[tokio::test]
-async fn runs_cut_off_by_a_restart_are_closed_at_startup() {
-    let t = TestApp::new().await;
-    let project = Uuid::new_v4();
-    t.put(
-        &format!("/v1/projects/{project}"),
-        "alice",
-        json!({ "title": "Tides" }),
-    )
-    .await;
-
-    // A run left behind by a process that died mid-write.
-    let orphan = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO runs (id, project_id, user_id, status, pending_question, last_seq) \
-         SELECT $1, id, user_id, 'waiting_for_user', '{\"field\":\"wordCount\"}', 7 \
-         FROM projects WHERE id = $2",
-    )
-    .bind(orphan)
-    .bind(project)
-    .execute(&t.state.db)
-    .await
-    .unwrap();
-    sqlx::query("UPDATE documents SET locked_by_run = $1 WHERE project_id = $2")
-        .bind(orphan)
-        .bind(project)
-        .execute(&t.state.db)
-        .await
-        .unwrap();
-    sqlx::query("UPDATE projects SET status = 'writing' WHERE id = $1")
-        .bind(project)
-        .execute(&t.state.db)
-        .await
-        .unwrap();
-
-    let closed = ghostwriter_api::runs::recover_interrupted(&t.state.db)
-        .await
-        .unwrap();
-    assert_eq!(closed, 1);
-
-    let (_, state) = t.get(&format!("/v1/runs/{orphan}"), "alice").await;
-    assert_eq!(state["status"], "error");
-    assert_eq!(state["pendingQuestion"], Value::Null);
-    assert_eq!(state["lastSeq"], 8);
-
-    // A client that comes back learns why, and the stream closes.
-    let events = stream(&t, orphan, 7).await.rest().await;
-    assert_eq!(kinds(&events), ["fatal"]);
-    assert_eq!(events[0]["seq"], 8);
-
-    let locked: Option<Uuid> =
-        sqlx::query_scalar("SELECT locked_by_run FROM documents WHERE project_id = $1")
-            .bind(project)
-            .fetch_one(&t.state.db)
-            .await
-            .unwrap();
-    assert_eq!(locked, None);
-    let (_, project_state) = t.get(&format!("/v1/projects/{project}"), "alice").await;
-    assert_eq!(project_state["status"], "idle");
-    assert_eq!(project_state["activeRunId"], Value::Null);
-
-    // Running it again finds nothing to do.
-    let closed = ghostwriter_api::runs::recover_interrupted(&t.state.db)
-        .await
-        .unwrap();
-    assert_eq!(closed, 0);
 
     t.cleanup().await;
 }

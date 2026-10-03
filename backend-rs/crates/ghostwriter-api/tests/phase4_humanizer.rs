@@ -341,7 +341,7 @@ async fn a_humanizer_with_no_key_says_so_plainly() {
         t.state.http.clone(),
         t.state.octopilot.clone(),
     ));
-    t.app = ghostwriter_api::app(t.state.clone());
+    let t = t.rebuilt();
     let (project, run, mut events, _) = to_the_humanizer_question(&t).await;
 
     answer(&t, run, "humanizerChoice", json!("UndetectableAI")).await;

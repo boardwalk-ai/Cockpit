@@ -5,11 +5,14 @@
 //! content and no model calls. It exercises the whole event protocol and lets
 //! the app be built and demoed without spending credits.
 
+use std::collections::VecDeque;
 use std::time::Duration;
 
 use serde_json::{json, Value};
+use tokio::sync::OwnedSemaphorePermit;
 use uuid::Uuid;
 
+use super::worker::{self, Job};
 use super::{append, emit, emit_live, finish, Inbox, Outcome};
 use crate::documents::{self, AgentSave, DocError};
 use crate::humanize::{self, Provider};
@@ -23,6 +26,9 @@ pub enum RunError {
     Stopped,
     /// The run cannot continue; the message is shown to the user.
     Failed(String),
+    /// The run waited long enough on the user to be let go; their answer
+    /// queues it again.
+    Parked,
     Db(sqlx::Error),
 }
 
@@ -51,33 +57,58 @@ pub struct RunCtx {
     pub user_id: Uuid,
     pub instruction: String,
     inbox: Inbox,
+    /// The answer that woke this run from parking: `{ field, value }`.
+    pub resume: Option<Value>,
+    /// The run was driven before (parked, or its worker died).
+    pub resuming: bool,
+    /// The model's tool call the next question answers, saved with it.
+    pub call_id: Option<String>,
+    /// Answers already given, re-walked by a resuming scripted run.
+    replay: VecDeque<(String, Value)>,
 }
 
 impl RunCtx {
     /// Emits a stored event.
     pub async fn emit(&self, kind: &str, payload: Value) -> Result<(), RunError> {
+        if self.replaying() {
+            return Ok(());
+        }
         emit(&self.st, self.run_id, kind, payload).await?;
         Ok(())
     }
 
     /// Emits a live-only event (a text delta).
     pub fn emit_live(&self, kind: &str, payload: Value) {
+        if self.replaying() {
+            return;
+        }
         emit_live(&self.st, self.run_id, kind, payload);
     }
 
     /// Asks the user a question and waits for the answer to `field`.
     pub async fn ask(&mut self, field: &str, mut question: Value) -> Result<Value, RunError> {
+        // A resuming scripted run already has this answer.
+        if let Some((answered, value)) = self.replay.pop_front() {
+            if answered == field {
+                return Ok(value);
+            }
+            return Err(RunError::Failed(
+                "This run could not be picked up again. Please start it over.".to_string(),
+            ));
+        }
         question["field"] = json!(field);
+        let call_id = self.call_id.take();
 
         {
             let _guard = self.st.hub.lock(self.run_id).await;
             let waiting = sqlx::query(
                 "UPDATE runs SET status = 'waiting_for_user', pending_question = $2, \
-                     updated_at = now() \
+                     pending_call = $3, updated_at = now() \
                  WHERE id = $1 AND status = 'running'",
             )
             .bind(self.run_id)
             .bind(&question)
+            .bind(&call_id)
             .execute(&self.st.db)
             .await?
             .rows_affected();
@@ -102,19 +133,98 @@ impl RunCtx {
             }
         }
 
-        let limit = self.st.config.ask_timeout;
+        let limit = self.st.config.park_after;
         loop {
             match tokio::time::timeout(limit, self.inbox.answers.recv()).await {
                 Ok(Some((answered, value))) if answered == field => return Ok(value),
                 Ok(Some(_)) => continue,
                 Ok(None) => return Err(RunError::Stopped),
                 Err(_) => {
-                    return Err(RunError::Failed(
-                        "Timed out waiting for your answer.".to_string(),
-                    ))
+                    // Under the run's lock, so an answer is either already in
+                    // the channel or arrives after the run is parked.
+                    let _guard = self.st.hub.lock(self.run_id).await;
+                    if let Ok((answered, value)) = self.inbox.answers.try_recv() {
+                        if answered == field {
+                            return Ok(value);
+                        }
+                        continue;
+                    }
+                    return Err(self.park().await?);
                 }
             }
         }
+    }
+
+    /// Lets go of the run while it waits. Call holding the run's lock.
+    async fn park(&self) -> Result<RunError, RunError> {
+        if worker::park(&self.st, self.run_id).await? {
+            self.st.hub.close(self.run_id);
+            Ok(RunError::Parked)
+        } else {
+            // Not waiting any more: it was cancelled.
+            Ok(RunError::Stopped)
+        }
+    }
+
+    /// The run is being picked up again: release what the interrupted
+    /// driver held, close its unfinished steps, and (for the scripted
+    /// driver) line up the answers already given.
+    async fn prepare_resume(&mut self) -> Result<(), RunError> {
+        let st = self.st.clone();
+        documents::unlock(&st.db, &st.docs, self.project_id, self.run_id).await?;
+
+        let open: Vec<String> = sqlx::query_scalar(
+            "SELECT s.payload->>'stepId' FROM run_events s \
+             WHERE s.run_id = $1 AND s.type = 'step_start' AND NOT EXISTS ( \
+                 SELECT 1 FROM run_events e WHERE e.run_id = $1 \
+                   AND e.type IN ('step_done', 'step_error') \
+                   AND e.payload->>'stepId' = s.payload->>'stepId') \
+             ORDER BY s.seq",
+        )
+        .bind(self.run_id)
+        .fetch_all(&st.db)
+        .await?;
+        for step_id in open {
+            self.emit(
+                "step_error",
+                json!({ "stepId": step_id, "error": "Interrupted. Picking up from here.", "retryable": true }),
+            )
+            .await?;
+        }
+
+        if st.config.driver == "scripted" {
+            let answers: Vec<(String, Value)> = sqlx::query_as(
+                "SELECT payload->>'field', payload->'value' FROM run_events \
+                 WHERE run_id = $1 AND type = 'question_answered' ORDER BY seq",
+            )
+            .bind(self.run_id)
+            .fetch_all(&st.db)
+            .await?;
+            self.replay = answers.into();
+        }
+        Ok(())
+    }
+
+    /// True while the scripted driver re-walks the steps it had done.
+    pub fn replaying(&self) -> bool {
+        !self.replay.is_empty()
+    }
+
+    /// Chat messages that arrived while no worker held the run, oldest first.
+    pub async fn take_stored_messages(&self) -> Result<Vec<String>, RunError> {
+        let inbox: Option<Value> = sqlx::query_scalar(
+            "UPDATE runs r SET inbox = '[]' FROM (SELECT id, inbox FROM runs WHERE id = $1 FOR UPDATE) old \
+             WHERE r.id = old.id RETURNING old.inbox",
+        )
+        .bind(self.run_id)
+        .fetch_optional(&self.st.db)
+        .await?;
+        Ok(inbox
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .filter_map(|text| text.as_str().map(str::to_string))
+            .collect())
     }
 
     /// Waits for the user's next chat message: the model asked something in
@@ -136,18 +246,17 @@ impl RunCtx {
             append(&self.st, self.run_id, "awaiting_reply", json!({})).await?;
         }
 
-        let text = match tokio::time::timeout(
-            self.st.config.ask_timeout,
-            self.inbox.messages.recv(),
-        )
-        .await
+        let text = match tokio::time::timeout(self.st.config.park_after, self.inbox.messages.recv())
+            .await
         {
             Ok(Some(text)) => text,
             Ok(None) => return Err(RunError::Stopped),
             Err(_) => {
-                return Err(RunError::Failed(
-                    "Timed out waiting for your reply.".to_string(),
-                ))
+                let _guard = self.st.hub.lock(self.run_id).await;
+                match self.inbox.messages.try_recv() {
+                    Ok(text) => text,
+                    Err(_) => return Err(self.park().await?),
+                }
             }
         };
         sqlx::query(
@@ -185,6 +294,9 @@ impl RunCtx {
     }
 
     async fn pause(&self) {
+        if self.replaying() {
+            return;
+        }
         let pause = self.st.config.scripted_step;
         if !pause.is_zero() {
             tokio::time::sleep(pause).await;
@@ -202,28 +314,42 @@ impl RunCtx {
     }
 }
 
-/// Starts the run's driver in the background.
-pub fn spawn(st: AppState, run_id: Uuid, project_id: Uuid, user_id: Uuid, instruction: String) {
+/// Drives a claimed run in the background. The worker's slot is held until
+/// the run ends or is parked.
+pub fn spawn(st: AppState, job: Job, slot: OwnedSemaphorePermit) {
+    let run_id = job.run_id;
     let inbox = st.hub.open(run_id);
     let mut ctx = RunCtx {
         st: st.clone(),
         run_id,
-        project_id,
-        user_id,
-        instruction,
+        project_id: job.project_id,
+        user_id: job.user_id,
+        instruction: job.instruction,
         inbox,
+        resume: job.resume,
+        resuming: job.resuming,
+        call_id: None,
+        replay: VecDeque::new(),
     };
 
     let task = tokio::spawn(async move {
-        let result = if ctx.st.config.driver == "scripted" {
-            scripted(&mut ctx).await
-        } else {
-            crate::agent::run(&mut ctx).await
-        };
+        let _slot = slot;
+        let result = async {
+            if ctx.resuming {
+                ctx.prepare_resume().await?;
+            }
+            if ctx.st.config.driver == "scripted" {
+                scripted(&mut ctx).await
+            } else {
+                crate::agent::run(&mut ctx).await
+            }
+        }
+        .await;
         let outcome = match result {
             Ok(()) => Outcome::Finished,
-            // Whoever stopped the run has closed it already.
-            Err(RunError::Stopped) => return,
+            // Whoever stopped the run has closed it already; a parked run
+            // waits in the database for its answer.
+            Err(RunError::Stopped | RunError::Parked) => return,
             Err(RunError::Failed(message)) => Outcome::Failed(message),
             Err(RunError::Db(error)) => {
                 tracing::error!(%run_id, %error, "run failed on a database error");
@@ -298,15 +424,27 @@ async fn scripted(ctx: &mut RunCtx) -> Result<(), RunError> {
     ctx.emit("user_message", json!({ "text": ctx.instruction }))
         .await?;
 
-    // An essay already written: this run is a revision.
+    // An essay already written: this run is a revision. A resumed run is
+    // what it was when it started, whatever it has written since.
     let written: Option<String> = sqlx::query_scalar(
         "SELECT body FROM documents WHERE project_id = $1 AND btrim(body) <> ''",
     )
     .bind(ctx.project_id)
     .fetch_optional(&ctx.st.db)
     .await?;
-    if let Some(body) = written {
-        return scripted_revise(ctx, &body).await;
+    let revision = if ctx.resuming {
+        let first_step: Option<String> = sqlx::query_scalar(
+            "SELECT payload->>'tool' FROM run_events              WHERE run_id = $1 AND type = 'step_start' ORDER BY seq LIMIT 1",
+        )
+        .bind(ctx.run_id)
+        .fetch_optional(&ctx.st.db)
+        .await?;
+        first_step.as_deref() == Some("revise_essay")
+    } else {
+        written.is_some()
+    };
+    if revision {
+        return scripted_revise(ctx, written.as_deref().unwrap_or_default()).await;
     }
 
     ctx.step(
@@ -549,6 +687,9 @@ async fn scripted_rewrite(
 ) -> Result<i64, RunError> {
     let st = &ctx.st;
     let (project_id, run_id) = (ctx.project_id, ctx.run_id);
+    if ctx.replaying() {
+        return written_words(ctx).await;
+    }
     ctx.emit(
         "step_start",
         json!({ "stepId": step_id, "tool": tool, "title": title }),
@@ -571,10 +712,22 @@ async fn scripted_rewrite(
     Ok(words)
 }
 
+/// The document's word count: what a re-walked write step reports.
+async fn written_words(ctx: &RunCtx) -> Result<i64, RunError> {
+    let words: Option<i32> = sqlx::query_scalar("SELECT word_count FROM projects WHERE id = $1")
+        .bind(ctx.project_id)
+        .fetch_optional(&ctx.st.db)
+        .await?;
+    Ok(words.unwrap_or_default().into())
+}
+
 /// Writes a canned essay into the document the way the agent does: locked,
 /// streamed to open editors, saved as it goes, then unlocked.
 async fn scripted_write(ctx: &RunCtx, target: i64, style: &str) -> Result<i64, RunError> {
     let st = &ctx.st;
+    if ctx.replaying() {
+        return written_words(ctx).await;
+    }
     let (db, docs) = (&st.db, &st.docs);
     let (project_id, run_id) = (ctx.project_id, ctx.run_id);
 
@@ -746,7 +899,7 @@ fn first_words(text: &str, n: usize) -> &str {
 }
 
 /// Default wait for an answer before a run gives up.
-pub const DEFAULT_ASK_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+pub const DEFAULT_PARK_AFTER: Duration = Duration::from_secs(10 * 60);
 
 #[cfg(test)]
 mod tests {

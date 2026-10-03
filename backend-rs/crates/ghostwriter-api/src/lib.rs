@@ -32,6 +32,7 @@ use crate::push::{FcmPusher, NoPusher, Pusher};
 use crate::routes::{
     devices, documents as doc_routes, folders, octo, projects, runs as run_routes, system,
 };
+use crate::runs::worker::WorkerHandle;
 use crate::runs::Hub;
 use crate::scrape::{HttpScraper, Scraper};
 
@@ -52,6 +53,8 @@ pub struct AppState {
     pub credits: octo_common::credits::Credits,
     /// The runs this process is driving.
     pub hub: Hub,
+    /// This process's place in the run queue.
+    pub worker: WorkerHandle,
     /// Live text for open editors while the agent writes.
     pub docs: LiveDocs,
     /// A model to use instead of OpenRouter. Tests set this; production
@@ -75,10 +78,6 @@ impl AppState {
         let db = octo_common::db::connect(&config.ghostwriter_database_url, 20).await?;
         MIGRATOR.run(&db).await?;
         tracing::info!("ghostwriter database connected and migrated");
-        let interrupted = runs::recover_interrupted(&db).await?;
-        if interrupted > 0 {
-            tracing::warn!("closed {interrupted} runs interrupted by a restart");
-        }
 
         let octopilot = match &config.octopilot_database_url {
             Some(url) => Some(octo_common::db::connect(url, 5).await?),
@@ -122,6 +121,7 @@ impl AppState {
             octopilot,
             user_ids: UserIdCache::default(),
             hub: Hub::default(),
+            worker: WorkerHandle::default(),
             docs: LiveDocs::default(),
             llm: None,
             config: Arc::new(config),

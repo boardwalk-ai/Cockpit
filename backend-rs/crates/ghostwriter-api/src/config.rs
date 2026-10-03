@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::runs::driver::DEFAULT_ASK_TIMEOUT;
+use crate::runs::driver::DEFAULT_PARK_AFTER;
 
 /// Runtime configuration, all from the environment so nothing secret is baked
 /// into the binary. OpenRouter keys and models are deliberately NOT here — they
@@ -30,8 +30,15 @@ pub struct Config {
     pub credits_enabled: bool,
     /// `json` for structured logs (production), anything else for text.
     pub log_format: String,
-    /// How long a run waits for an answer before it gives up.
-    pub ask_timeout: Duration,
+    /// How long a run waits in memory for an answer before it is parked
+    /// (let go until the answer comes).
+    pub park_after: Duration,
+    /// Runs one worker drives at once.
+    pub worker_slots: usize,
+    /// How often the worker looks for queued runs (it is also woken).
+    pub worker_poll: Duration,
+    /// How long a worker's claim on a run lasts without renewal.
+    pub run_lease: Duration,
     /// Pause between steps of the scripted driver, so a person can follow it.
     pub scripted_step: Duration,
     /// Whether the scripted driver offers to humanize the essay at the end.
@@ -65,7 +72,13 @@ impl Config {
                 .unwrap_or_else(|_| "octo".into()),
             credits_enabled: flag("CREDITS_ENABLED", true),
             log_format: std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".into()),
-            ask_timeout: millis("ASK_TIMEOUT_MS").unwrap_or(DEFAULT_ASK_TIMEOUT),
+            park_after: millis("PARK_AFTER_MS").unwrap_or(DEFAULT_PARK_AFTER),
+            worker_slots: std::env::var("WORKER_SLOTS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(32),
+            worker_poll: millis("WORKER_POLL_MS").unwrap_or(Duration::from_secs(1)),
+            run_lease: millis("RUN_LEASE_MS").unwrap_or(Duration::from_secs(30)),
             scripted_step: millis("SCRIPTED_STEP_MS").unwrap_or(Duration::from_millis(900)),
             scripted_humanizer: flag("SCRIPTED_HUMANIZER", true),
             driver: std::env::var("GHOSTWRITER_DRIVER").unwrap_or_else(|_| "agent".into()),

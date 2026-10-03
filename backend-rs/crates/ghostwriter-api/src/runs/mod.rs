@@ -6,10 +6,11 @@
 //! dropped connection loses nothing. Text deltas are broadcast only: on
 //! replay the finished message stands in for them.
 //!
-//! One process owns a run's driver. Runs still marked active at startup were
-//! cut off by a restart; [`recover_interrupted`] closes them.
+//! A worker ([`worker`]) claims a run from the queue and drives it. A run cut
+//! off by a restart is claimed again once its lease runs out, and resumed.
 
 pub mod driver;
+pub mod worker;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -24,7 +25,7 @@ use crate::push::{notify_run, RunNews};
 use crate::AppState;
 
 /// Run states in which a driver is (or should be) working.
-pub const ACTIVE: &str = "('running', 'waiting_for_user')";
+pub const ACTIVE: &str = "('queued', 'running', 'waiting_for_user')";
 
 /// Event types after which a run emits nothing more.
 pub fn is_terminal(kind: &str) -> bool {
@@ -76,6 +77,26 @@ pub struct Hub {
     /// Serializes "append event + broadcast" per run, so broadcasts leave in
     /// `seq` order and a subscriber can drop anything at or below its cursor.
     locks: Arc<Mutex<HashMap<Uuid, Arc<tokio::sync::Mutex<()>>>>>,
+    /// Clients following each run's events, whether or not it is live here.
+    followers: Arc<Mutex<HashMap<Uuid, usize>>>,
+}
+
+/// A client following a run; counted until dropped.
+pub struct Following {
+    followers: Arc<Mutex<HashMap<Uuid, usize>>>,
+    run_id: Uuid,
+}
+
+impl Drop for Following {
+    fn drop(&mut self) {
+        let mut followers = self.followers.lock().unwrap();
+        if let Some(count) = followers.get_mut(&self.run_id) {
+            *count -= 1;
+            if *count == 0 {
+                followers.remove(&self.run_id);
+            }
+        }
+    }
 }
 
 impl Hub {
@@ -118,6 +139,11 @@ impl Hub {
         }
     }
 
+    /// The runs this process is driving.
+    pub fn live_ids(&self) -> Vec<Uuid> {
+        self.live.lock().unwrap().keys().copied().collect()
+    }
+
     pub fn is_live(&self, run_id: Uuid) -> bool {
         self.live.lock().unwrap().contains_key(&run_id)
     }
@@ -131,13 +157,23 @@ impl Hub {
             .map(|live| live.events.subscribe())
     }
 
+    /// Counts a client following the run until the guard is dropped.
+    pub fn follow(&self, run_id: Uuid) -> Following {
+        *self.followers.lock().unwrap().entry(run_id).or_default() += 1;
+        Following {
+            followers: self.followers.clone(),
+            run_id,
+        }
+    }
+
     /// How many clients are following the run's events right now.
     pub fn watchers(&self, run_id: Uuid) -> usize {
-        self.live
+        self.followers
             .lock()
             .unwrap()
             .get(&run_id)
-            .map_or(0, |live| live.events.receiver_count())
+            .copied()
+            .unwrap_or(0)
     }
 
     fn broadcast(&self, run_id: Uuid, event: LiveEvent) {
@@ -178,7 +214,7 @@ impl Hub {
         mutex.lock_owned().await
     }
 
-    fn close(&self, run_id: Uuid) {
+    pub(crate) fn close(&self, run_id: Uuid) {
         // Dropping the sender ends every subscriber's stream.
         self.live.lock().unwrap().remove(&run_id);
         self.locks.lock().unwrap().remove(&run_id);
@@ -363,29 +399,4 @@ async fn close_in_db(
     .await?;
     tx.commit().await?;
     Ok(Some((project_id, unlocked)))
-}
-
-/// Closes runs a restart cut off. Their drivers died with the old process, so
-/// nothing would ever finish them and their projects would stay locked.
-///
-/// Assumes a single instance: with several, this would close runs another
-/// instance is still driving.
-pub async fn recover_interrupted(db: &PgPool) -> Result<u64, sqlx::Error> {
-    let runs: Vec<Uuid> =
-        sqlx::query_scalar(&format!("SELECT id FROM runs WHERE status IN {ACTIVE}"))
-            .fetch_all(db)
-            .await?;
-
-    let message = "The server restarted while this run was in progress.";
-    let mut closed = 0;
-    for run_id in runs {
-        if close_in_db(db, run_id, "error", Some(message))
-            .await?
-            .is_some()
-        {
-            append_to_log(db, run_id, "fatal", &json!({ "error": message })).await?;
-            closed += 1;
-        }
-    }
-    Ok(closed)
 }

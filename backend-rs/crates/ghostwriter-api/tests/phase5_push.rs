@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use common::fakes::FakePusher;
+use common::fakes::{FakeLlm, FakePusher, FakeScraper};
 use common::TestApp;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -228,21 +228,21 @@ async fn an_unwatched_run_pushes_every_question_and_its_ending() {
 #[tokio::test]
 async fn a_run_that_fails_unwatched_says_why() {
     let pusher = Arc::new(FakePusher::default());
-    let t = TestApp::with_pusher(
-        |config| config.ask_timeout = Duration::from_millis(40),
-        pusher.clone(),
-    )
-    .await;
+    // A model that never answers.
+    let llm = Arc::new(FakeLlm::new(Vec::new()));
+    let mut t = TestApp::agent(llm, Arc::new(FakeScraper)).await;
+    t.state.pusher = pusher.clone();
+    let t = t.rebuilt();
     register(&t, "alice", "alice-phone").await;
     let (_, run) = start(&t, "alice").await;
     run_when(&t, run, |r| r["status"] == "error").await;
 
-    let notices = sent(&pusher, 2).await;
-    assert_eq!(notices.len(), 2);
-    assert_eq!(notices[1].1, "fatal");
+    let notices = sent(&pusher, 1).await;
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].1, "fatal");
     assert_eq!(
-        notices[1].2,
-        "GhostWriter stopped. Timed out waiting for your answer."
+        notices[0].2,
+        "GhostWriter stopped. The model is not responding. Please try again."
     );
 
     t.cleanup().await;

@@ -24,6 +24,7 @@ pub struct TestApp {
     pub state: AppState,
     pub db: String,
     admin: String,
+    worker: Option<ghostwriter_api::runs::worker::Worker>,
 }
 
 pub fn admin_url() -> String {
@@ -72,6 +73,7 @@ impl TestApp {
         // Most scripted tests end at the essay; the humanizer tests turn this on.
         config.scripted_humanizer = false;
         config.driver = "scripted".into();
+        config.worker_poll = std::time::Duration::from_millis(20);
         tweak(&mut config);
         let state = AppState::connect(config).await.expect("app state");
         TestApp {
@@ -79,7 +81,9 @@ impl TestApp {
             state,
             db,
             admin,
+            worker: None,
         }
+        .rebuilt()
     }
 
     /// A fresh scripted app that pushes through `pusher`.
@@ -89,8 +93,7 @@ impl TestApp {
     ) -> Self {
         let mut t = Self::with(tweak).await;
         t.state.pusher = pusher;
-        t.app = app(t.state.clone());
-        t
+        t.rebuilt()
     }
 
     /// A fresh app whose runs are driven by the agent loop, with the model and
@@ -103,8 +106,7 @@ impl TestApp {
         t.state.llm = Some(llm);
         t.state.scraper = scraper;
         t.state.humanizer = std::sync::Arc::new(fakes::FakeHumanizer::default());
-        t.app = app(t.state.clone());
-        t
+        t.rebuilt()
     }
 
     /// [`TestApp::agent`] with a humanizer the test holds on to.
@@ -114,8 +116,7 @@ impl TestApp {
     ) -> Self {
         let mut t = Self::agent(llm, std::sync::Arc::new(fakes::FakeScraper)).await;
         t.state.humanizer = humanizer;
-        t.app = app(t.state.clone());
-        t
+        t.rebuilt()
     }
 
     /// Sends a request as `user` (the dev `X-User-Id` identity).
@@ -187,8 +188,17 @@ impl TestApp {
         self.call(Method::DELETE, path, user, None).await
     }
 
+    /// Serves and drives with the state as it now is (after a test replaced
+    /// a part of it).
+    pub fn rebuilt(mut self) -> Self {
+        self.app = app(self.state.clone());
+        self.worker = Some(ghostwriter_api::runs::worker::start(self.state.clone()));
+        self
+    }
+
     /// Drops the test database. Call at the end of every test.
-    pub async fn cleanup(self) {
+    pub async fn cleanup(mut self) {
+        self.worker = None;
         self.state.db.close().await;
         if let Some(p) = &self.state.octopilot {
             p.close().await;

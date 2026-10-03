@@ -16,7 +16,7 @@ use uuid::Uuid;
 
 use super::clean_text;
 use crate::ctx::Caller;
-use crate::runs::{self, driver, is_terminal, LiveEvent, Outcome, ACTIVE};
+use crate::runs::{self, is_terminal, LiveEvent, Outcome, ACTIVE};
 use crate::AppState;
 
 fn conflict(message: &str, code: &'static str) -> ApiError {
@@ -45,7 +45,7 @@ async fn owned_run(st: &AppState, caller: &Caller, run_id: Uuid) -> Result<Run, 
 }
 
 fn is_active(status: &str) -> bool {
-    matches!(status, "running" | "waiting_for_user")
+    matches!(status, "queued" | "running" | "waiting_for_user")
 }
 
 #[derive(Deserialize)]
@@ -92,7 +92,7 @@ pub async fn start(
     let mut tx = st.db.begin().await?;
     let inserted = sqlx::query(
         "INSERT INTO runs (id, project_id, user_id, status, context) \
-         VALUES ($1, $2, $3, 'running', $4)",
+         VALUES ($1, $2, $3, 'queued', $4)",
     )
     .bind(body.run_id)
     .bind(project_id)
@@ -123,13 +123,7 @@ pub async fn start(
     .await?;
     tx.commit().await?;
 
-    driver::spawn(
-        st.clone(),
-        body.run_id,
-        project_id,
-        caller.user_id,
-        instruction,
-    );
+    st.worker.wake();
     Ok((StatusCode::CREATED, Json(json!({ "runId": body.run_id }))))
 }
 
@@ -190,8 +184,12 @@ pub async fn events(
     // Subscribe before reading the log, so nothing falls between the two.
     // Anything that arrives on both is dropped by the `seq` cursor.
     let mut live = st.hub.subscribe(run_id);
+    // Counted as watching for as long as the stream is open, so the run does
+    // not push to a phone that is looking at it.
+    let following = st.hub.follow(run_id);
 
     let stream = async_stream::stream! {
+        let _following = following;
         let mut cursor = since;
 
         'outer: loop {
@@ -208,8 +206,25 @@ pub async fn events(
                 }
             }
 
-            // Then follow it live. A run that is not live has nothing more.
-            let Some(receiver) = live.as_mut() else { break };
+            // Then follow it live. A run no worker in this process holds
+            // (queued, parked, or driven elsewhere) is followed by reading
+            // the log until a worker here picks it up.
+            let Some(receiver) = live.as_mut() else {
+                // An ended run has nothing more (a cursor past its end).
+                let active: Option<String> = sqlx::query_scalar(&format!(
+                    "SELECT status FROM runs WHERE id = $1 AND status IN {ACTIVE}"
+                ))
+                .bind(run_id)
+                .fetch_optional(&st.db)
+                .await
+                .unwrap_or(None);
+                if active.is_none() {
+                    break;
+                }
+                tokio::time::sleep(st.config.worker_poll.min(Duration::from_secs(1))).await;
+                live = st.hub.subscribe(run_id);
+                continue 'outer;
+            };
             loop {
                 match receiver.recv().await {
                     Ok(event) => {
@@ -262,13 +277,20 @@ pub async fn answer(
     let _guard = st.hub.lock(run_id).await;
     // Only the question that is pending right now can be answered, and only
     // once: this update is what a second or stale answer loses to.
+    // A run no worker holds (parked) is queued with the answer, to be
+    // picked up from where it stopped.
+    let live = st.hub.is_live(run_id);
     let answered = sqlx::query(
-        "UPDATE runs SET status = 'running', pending_question = NULL, updated_at = now() \
+        "UPDATE runs SET pending_question = NULL, updated_at = now(), \
+             status = CASE WHEN $3 THEN 'running' ELSE 'queued' END, \
+             resume = CASE WHEN $3 THEN NULL ELSE jsonb_build_object('field', $2::text, 'value', $4::jsonb) END \
          WHERE id = $1 AND status = 'waiting_for_user' \
            AND pending_question->>'field' = $2",
     )
     .bind(run_id)
     .bind(&body.field)
+    .bind(live)
+    .bind(&body.value)
     .execute(&st.db)
     .await?
     .rows_affected();
@@ -286,7 +308,11 @@ pub async fn answer(
         json!({ "field": body.field, "value": body.value }),
     )
     .await?;
-    st.hub.deliver_answer(run_id, body.field, body.value);
+    if live {
+        st.hub.deliver_answer(run_id, body.field, body.value);
+    } else {
+        st.worker.wake();
+    }
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -309,8 +335,26 @@ pub async fn message(
         return Err(conflict("this run has ended", "run_ended"));
     }
 
-    runs::emit(&st, run_id, "user_message", json!({ "text": text })).await?;
-    st.hub.deliver_message(run_id, text);
+    let _guard = st.hub.lock(run_id).await;
+    runs::append(&st, run_id, "user_message", json!({ "text": text })).await?;
+    if st.hub.deliver_message(run_id, text.clone()) {
+        return Ok(Json(json!({ "ok": true })));
+    }
+    // No worker holds the run: keep the message for whoever picks it up, and
+    // wake a run that is parked waiting for exactly this.
+    let woken: Option<String> = sqlx::query_scalar(
+        "UPDATE runs SET inbox = inbox || jsonb_build_array($2::text), updated_at = now(), \
+             status = CASE WHEN status = 'waiting_for_user' AND pending_question IS NULL \
+                 THEN 'queued' ELSE status END \
+         WHERE id = $1 RETURNING status",
+    )
+    .bind(run_id)
+    .bind(&text)
+    .fetch_optional(&st.db)
+    .await?;
+    if woken.as_deref() == Some("queued") {
+        st.worker.wake();
+    }
     Ok(Json(json!({ "ok": true })))
 }
 

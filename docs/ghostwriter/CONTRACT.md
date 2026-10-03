@@ -100,17 +100,22 @@ CREATE TABLE runs (
   id                uuid PRIMARY KEY,
   project_id        uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   user_id           uuid NOT NULL,
-  status            text NOT NULL,   -- running | waiting_for_user | finished | error | cancelled
+  status            text NOT NULL,   -- queued | running | waiting_for_user | finished | error | cancelled
   context           jsonb NOT NULL DEFAULT '{}',   -- plan, outlines, sources, settings
   messages          jsonb NOT NULL DEFAULT '[]',   -- the orchestrator's chat history
   pending_question  jsonb,
   last_seq          bigint NOT NULL DEFAULT 0,
   error             text,
+  worker            text,            -- the worker driving it
+  lease_until       timestamptz,     -- NULL = no worker holds it (queued or parked)
+  pending_call      text,            -- the model's tool call the pending question answers
+  resume            jsonb,           -- { field, value }: the answer that woke a parked run
+  inbox             jsonb NOT NULL DEFAULT '[]',  -- chat messages no worker has taken yet
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX runs_one_active_per_project
-  ON runs (project_id) WHERE status IN ('running', 'waiting_for_user');
+  ON runs (project_id) WHERE status IN ('queued', 'running', 'waiting_for_user');
 
 -- Durable event log. The app replays it to rebuild the timeline.
 CREATE TABLE run_events (
@@ -172,11 +177,30 @@ All under `/v1`. JSON in, JSON out, camelCase.
 A run keeps going when the app disconnects. The app reconnects with the last
 `seq` it saw and misses nothing.
 
-A server restart is different: the run's driver dies with the process. At
-startup the service closes any run that was still active with a `fatal` event
-("The server restarted while this run was in progress.") and unlocks its
-document, so the app is told and the project is not stuck. Resuming a run across
-a restart is not built.
+**Runs are jobs.** A started run is `queued`. A worker (inside the API process)
+claims it with `FOR UPDATE SKIP LOCKED`, drives it, and renews a lease on it
+(`RUN_LEASE_MS`, default 30 s) while it does. The run's context and the model's
+conversation are saved after every tool call.
+
+- **Parked.** A run that has waited `PARK_AFTER_MS` (default 10 min) on a question
+  or a chat reply is let go: still `waiting_for_user`, but no worker holds it and
+  it uses no memory. It never times out. Answering it (or, when it waits on a
+  plain question, sending a message) queues it with the answer, and a worker
+  resumes it from the step it stopped at. Nothing is redone or charged twice.
+- **Restarts and crashes.** A worker that dies stops renewing its leases. Once a
+  lease has run out, a `running` run goes back to `queued` and is resumed; a
+  waiting one is parked. A tool that was cut off is closed with `step_error`
+  ("Interrupted. Picking up from here."), the model is told it was interrupted,
+  and it calls the tool again.
+- **Following a run that no worker here holds** (queued, parked): the event
+  stream stays open and reads the log until a worker picks the run up.
+- Chat messages sent while no worker holds the run are kept in `inbox` and given
+  to the model when it resumes.
+- `WORKER_SLOTS` (default 32) caps the runs one worker drives at once.
+
+Today the worker runs inside the API process. Running workers as separate
+processes needs one more piece: answers and messages reach a live run through
+memory, so they would have to go through the database (LISTEN/NOTIFY) instead.
 
 **Revisions.** A run started on a project whose document already has an essay
 is a revision (6.3): the user asks for a change, or asks about the essay. It
