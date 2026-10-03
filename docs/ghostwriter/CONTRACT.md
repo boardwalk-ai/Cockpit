@@ -139,6 +139,8 @@ project configured (local dev) the `X-User-Id` header is trusted instead.
 
 Every project, run and document is checked against the caller's `user_id`.
 
+`GET /v1/app/status` needs no sign-in.
+
 ## 5. Endpoints
 
 All under `/v1`. JSON in, JSON out, camelCase.
@@ -153,6 +155,7 @@ All under `/v1`. JSON in, JSON out, camelCase.
 | GET | `/ai/catalog` | `{ pro, models: [{ id, name, tagline, pro, locked, default }], personalities: [{ id, name, description, default }] }`. Never the real models. |
 | GET | `/ai/preferences` | `{ scopes: { global, ghostwriter, study_studio }, effective: { ghostwriter, study_studio } }`; each `{ model, personality }` or `null` |
 | PUT | `/ai/preferences/:scope` | `{ model?, personality? }`: an id, `null` (follow the wider scope) or absent (leave it). 403 `pro_required` for a Pro model off Pro |
+| GET | `/app/status?app=&platform=&version=` | No sign-in. `{ update: "none" \| "available" \| "required", latestVersion, storeUrl, maintenance, message }`. `app` defaults to `ghostwriter`; a `platform` row wins over `*`. An unreadable version is never forced. |
 | POST | `/octo/ask` | Ask Octo. `{ question }` (max 500 characters) → `{ answer }`. Answers questions about using the app only; not saved, not charged. 503 when no model is available. |
 
 ### Projects and folders
@@ -522,6 +525,19 @@ the next 100 OC, with a minimum of 100 OC.
 
 The balance is pre-checked before each paid step. If it is too low the step
 fails with a clear message and the run waits for the user rather than dying.
+
+### 8.1 Deleted accounts and maintenance
+
+- **Deleted accounts.** Deleting a `users` row fills the shared
+  `deleted_users` (a trigger, whoever deletes it). Every 10 minutes
+  (`SWEEP_EVERY_MS`) the service removes that user's projects (documents,
+  versions, runs, events), folders and devices, stops their runs, drops the
+  cached sign-in, and records it in `swept_users`.
+- **Maintenance.** While the `app_status` row (`ghostwriter`, `*`) has
+  `maintenance`, every `/v1` call except `/v1/app/status` gets 503
+  `maintenance` with the admin's message. Runs already going carry on.
+- Tables: `backend-rs/shared-sql/2026-10-06_accounts_and_app_status.sql`
+  (not on production yet; needs approval at deploy).
 
 ## 9. Deployment and open points
 

@@ -1,11 +1,12 @@
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use octo_common::identity::user_by_firebase_uid;
 use octo_common::{ApiError, AuthedUser};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::app_status::{update, APP};
 use crate::AppState;
 
 /// Liveness — the process is up.
@@ -79,5 +80,31 @@ pub async fn me(State(st): State<AppState>, user: AuthedUser) -> Result<Json<Me>
         photo_url: row.photo_url,
         plan: row.plan,
         octo_credits: row.octo_credits,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct StatusQuery {
+    pub app: Option<String>,
+    pub platform: Option<String>,
+    pub version: Option<String>,
+}
+
+/// `GET /v1/app/status?app=&platform=&version=` — no sign-in needed: must
+/// this version update (`required`), may it (`available`), and is the
+/// service in maintenance. Nothing set (or no shared DB) = all clear.
+pub async fn app_status(State(st): State<AppState>, Query(q): Query<StatusQuery>) -> Json<Value> {
+    let app = q.app.as_deref().unwrap_or(APP);
+    let platform = q.platform.as_deref().unwrap_or("*");
+    let status = match &st.octopilot {
+        Some(pool) => st.app_status.get(pool, app, platform).await,
+        None => Default::default(),
+    };
+    Json(json!({
+        "update": update(&status, q.version.as_deref()),
+        "latestVersion": status.latest_version,
+        "storeUrl": status.store_url,
+        "maintenance": status.maintenance,
+        "message": status.maintenance.then_some(status.maintenance_message).flatten(),
     }))
 }

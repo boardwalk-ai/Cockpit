@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod app_status;
 pub mod config;
 pub mod ctx;
 pub mod documents;
@@ -10,6 +11,7 @@ pub mod push;
 pub mod routes;
 pub mod runs;
 pub mod scrape;
+pub mod sweeper;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -67,6 +69,8 @@ pub struct AppState {
     pub pusher: Arc<dyn Pusher>,
     /// Models, personalities and prices from the shared DB (cached).
     pub ai: octo_common::ai::AiSettings,
+    /// Update and maintenance settings from the shared DB (cached).
+    pub app_status: app_status::AppStatus,
 }
 
 impl HasFirebase for AppState {
@@ -120,6 +124,7 @@ impl AppState {
             humanizer: Arc::new(HttpHumanizer::new(http.clone(), octopilot.clone())),
             pusher,
             ai: octo_common::ai::AiSettings::default(),
+            app_status: app_status::AppStatus::default(),
             http,
             db,
             octopilot,
@@ -139,6 +144,7 @@ pub fn app(state: AppState) -> Router {
         .route("/health", get(system::health))
         .route("/ready", get(system::ready))
         .route("/v1/me", get(system::me))
+        .route("/v1/app/status", get(system::app_status))
         .route("/v1/octo/ask", post(octo::ask))
         .route("/v1/ai/catalog", get(ai_routes::catalog))
         .route("/v1/ai/preferences", get(ai_routes::preferences))
@@ -168,6 +174,10 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/runs/:run_id/answer", post(run_routes::answer))
         .route("/v1/runs/:run_id/message", post(run_routes::message))
         .route("/v1/runs/:run_id/cancel", post(run_routes::cancel))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            app_status::guard,
+        ))
         .layer(cors(&state.config))
         .layer(PropagateRequestIdLayer::new(request_id.clone()))
         .layer(TraceLayer::new_for_http())

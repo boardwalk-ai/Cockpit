@@ -30,6 +30,8 @@ async fn main() {
 
     // Drives queued runs, and picks up the ones a restart cut off.
     let _worker = ghostwriter_api::runs::worker::start(state.clone());
+    // Removes the data of deleted accounts.
+    let _sweeper = ghostwriter_api::sweeper::start(state.clone());
 
     let listener = TcpListener::bind((bind.as_str(), port))
         .await

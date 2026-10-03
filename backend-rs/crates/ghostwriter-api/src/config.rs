@@ -50,6 +50,8 @@ pub struct Config {
     /// The Firebase service-account key file used to send push
     /// notifications. Unset = no push.
     pub fcm_service_account_file: Option<String>,
+    /// How often deleted accounts' data is swept.
+    pub sweep_every: Duration,
 }
 
 impl Config {
@@ -85,6 +87,7 @@ impl Config {
             scraper_url: std::env::var("SCRAPER_URL")
                 .unwrap_or_else(|_| "https://api.octopilotai.com/api/scrape".into()),
             fcm_service_account_file: env_opt("FCM_SERVICE_ACCOUNT_FILE"),
+            sweep_every: millis("SWEEP_EVERY_MS").unwrap_or(Duration::from_secs(600)),
         }
     }
 }

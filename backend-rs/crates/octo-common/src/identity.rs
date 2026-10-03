@@ -96,4 +96,9 @@ impl UserIdCache {
         }
         Ok(id)
     }
+
+    /// Drops a cached sign-in (the account was deleted).
+    pub async fn forget(&self, firebase_uid: &str) {
+        self.inner.write().await.remove(firebase_uid);
+    }
 }
