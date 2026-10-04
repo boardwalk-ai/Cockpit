@@ -41,6 +41,9 @@ class VoiceLoop extends ChangeNotifier {
 
   var _running = false;
   var _misses = 0;
+
+  /// The user cut the reply short: the sentences left are not spoken.
+  var _cutSpeech = false;
   var _disposed = false;
 
   void start() {
@@ -108,29 +111,76 @@ class VoiceLoop extends ChangeNotifier {
       final text = conversation.messages.isEmpty
           ? ''
           : conversation.messages.last.text;
-      // Still thinking until the voice is ready too; then the reply and its
-      // voice start together.
-      final Speech speech;
-      try {
-        speech = await engine.prepare(text, voice: voice());
-      } on Object {
-        error = "Couldn't get the voice ready. Try again.";
-        _running = false;
-        _set(VoicePhase.idle);
-        break;
+      // Still thinking until the first sentence's voice is ready; then the
+      // reply and its voice start together, and each next sentence is made
+      // while the one before it is spoken.
+      final pieces = sentences(text);
+      final total = text.length;
+      _cutSpeech = false;
+      Future<Speech> make(int i) => engine.prepare(pieces[i], voice: voice());
+      Future<Speech>? next = pieces.isEmpty ? null : make(0);
+      var done = 0;
+      for (var i = 0; i < pieces.length && next != null; i++) {
+        final Speech speech;
+        try {
+          speech = await next;
+        } on Object {
+          if (i == 0) {
+            error = "Couldn't get the voice ready. Try again.";
+            _running = false;
+            _set(VoicePhase.idle);
+          }
+          break;
+        }
+        if (!_running || _cutSpeech || muted) break;
+        next = i + 1 < pieces.length ? make(i + 1) : null;
+        // A later sentence that fails is simply not spoken.
+        next?.ignore();
+        if (i == 0) {
+          reply = text;
+          _set(VoicePhase.speaking);
+        }
+        final before = done;
+        final length = pieces[i].length;
+        await engine.play(
+          speech,
+          onLevel: _level,
+          onProgress: (p) {
+            spoken = total == 0 ? 1 : (before + p * length) / total;
+            _notify();
+          },
+        );
+        done += length;
       }
       if (!_running) break;
-      reply = text;
-      _set(VoicePhase.speaking);
-      await engine.play(
-        speech,
-        onLevel: _level,
-        onProgress: (p) {
-          spoken = p;
-          _notify();
-        },
-      );
     }
+  }
+
+  /// [text] in sentences to speak one at a time. Very short ones go with
+  /// the next, so the voice does not stop and start too often.
+  static List<String> sentences(String text) {
+    final parts = text
+        .trim()
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+    final out = <String>[];
+    var carry = '';
+    for (final part in parts) {
+      carry = carry.isEmpty ? part : '$carry $part';
+      if (carry.length >= 40) {
+        out.add(carry);
+        carry = '';
+      }
+    }
+    if (carry.isNotEmpty) {
+      if (out.isEmpty) {
+        out.add(carry);
+      } else {
+        out[out.length - 1] = '${out.last} $carry';
+      }
+    }
+    return out;
   }
 
   /// Ends the turn now: what was heard is sent; a reply stops being spoken.
@@ -139,6 +189,7 @@ class VoiceLoop extends ChangeNotifier {
       case VoicePhase.listening:
         engine.finishListening();
       case VoicePhase.speaking:
+        _cutSpeech = true;
         engine.stop();
       case VoicePhase.thinking:
         conversation.stop();

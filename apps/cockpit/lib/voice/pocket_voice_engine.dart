@@ -109,7 +109,7 @@ class PocketVoiceEngine implements VoiceEngine {
       onSoundLevelChange: (db) => onLevel(((db + 2) / 12).clamp(0.0, 1.0)),
       listenOptions: SpeechListenOptions(
         listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(milliseconds: 2500),
+        pauseFor: const Duration(milliseconds: 1500),
         localeId: 'en_US',
         partialResults: true,
         cancelOnError: true,

@@ -13,6 +13,7 @@ stands in for it until then.
 """
 
 import io
+import os
 import json
 import threading
 import wave
@@ -38,7 +39,8 @@ app.add_middleware(
     allow_headers=["content-type"],
 )
 
-torch.set_num_threads(4)
+# Most of a reply's wait is here; use the cores (up to 8).
+torch.set_num_threads(min(8, os.cpu_count() or 4))
 model = TTSModel.load_model()
 states = {}
 for voice in VOICES:
