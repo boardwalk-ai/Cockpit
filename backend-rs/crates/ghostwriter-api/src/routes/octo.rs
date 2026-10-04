@@ -1,5 +1,7 @@
 //! Ask Octo: one question about the app, one short answer. Not part of a
-//! run, not saved, not charged.
+//! run, not saved, not charged. With `scope: "app"` it is the app's main
+//! chat instead (Octopilot, about the whole app), which also sends the last
+//! few turns of the conversation.
 
 use std::sync::Arc;
 
@@ -17,14 +19,28 @@ use crate::llm::{system, user, ChatRequest, Llm, OpenRouter};
 use crate::AppState;
 
 const QUESTION_LIMIT: usize = 500;
+/// Earlier turns sent with a question, at most.
+const HISTORY_TURNS: usize = 12;
 const DEFAULT_MODEL: &str = "google/gemini-3.1-flash-lite-preview";
 
 #[derive(Deserialize)]
 pub struct Ask {
     question: Option<String>,
+    /// `app`: the main chat. Otherwise Ask Octo inside GhostWriter.
+    #[serde(default)]
+    scope: Option<String>,
+    /// Earlier turns, oldest first.
+    #[serde(default)]
+    history: Vec<Turn>,
 }
 
-/// `POST /v1/octo/ask` — `{ question }` → `{ answer }`.
+#[derive(Deserialize)]
+pub struct Turn {
+    role: String,
+    text: String,
+}
+
+/// `POST /v1/octo/ask` — `{ question, scope?, history? }` → `{ answer }`.
 pub async fn ask(
     State(st): State<AppState>,
     caller: Caller,
@@ -52,16 +68,36 @@ pub async fn ask(
     } else {
         ai.fast.clone().unwrap_or(model)
     };
+    let main_chat = body.scope.as_deref() == Some("app");
+    let name = if main_chat { "Octopilot" } else { "Octo" };
     let system_prompt = format!(
         "{}{}",
-        prompt::OCTO,
-        prompt::persona("Octo", ai.voice.as_deref())
+        if main_chat {
+            prompt::MAIN_CHAT
+        } else {
+            prompt::OCTO
+        },
+        prompt::persona(name, ai.voice.as_deref())
     );
+    let mut messages = vec![system(system_prompt)];
+    let skip = body.history.len().saturating_sub(HISTORY_TURNS);
+    for turn in body.history.into_iter().skip(skip) {
+        let text: String = turn.text.chars().take(QUESTION_LIMIT * 2).collect();
+        messages.push(match turn.role.as_str() {
+            // Its own earlier answers, in the shape it is asked to reply in.
+            "assistant" => json!({
+                "role": "assistant",
+                "content": json!({ "answer": text }).to_string(),
+            }),
+            _ => user(text),
+        });
+    }
+    messages.push(user(question));
 
     let reply = llm
         .chat(ChatRequest {
             model,
-            messages: vec![system(system_prompt), user(question)],
+            messages,
             temperature: Some(0.2),
             json: true,
             tools: Vec::new(),
@@ -81,6 +117,6 @@ pub async fn ask(
         return Err(unavailable());
     }
     let terms = octo_common::ai::masked_terms(st.octopilot.as_ref()).await;
-    let (answer, _) = octo_common::ai::mask(&answer, &terms, "Octo");
+    let (answer, _) = octo_common::ai::mask(&answer, &terms, name);
     Ok(Json(json!({ "answer": answer })))
 }

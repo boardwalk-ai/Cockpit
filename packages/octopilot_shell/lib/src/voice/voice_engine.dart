@@ -14,6 +14,16 @@ class Speech {
   final Object? audio;
 }
 
+/// The microphone or the speaker can't be used, with words fit for the user.
+class VoiceUnavailable implements Exception {
+  const VoiceUnavailable(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 /// The microphone and the speaker for voice chat. The words in between go
 /// through the main chat like typed ones, so a voice conversation lands in
 /// the same history.

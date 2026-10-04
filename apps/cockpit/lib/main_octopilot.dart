@@ -17,9 +17,13 @@ import 'voice/pocket_voice_engine.dart';
 /// user.
 ///
 ///   flutter run -t lib/main_octopilot.dart
+/// `--dart-define=OCTOPILOT_DEV_AUTH=true` skips Firebase and runs as the
+/// dev user, for a phone against a dev API with auth off.
+const _devAuth = bool.fromEnvironment('OCTOPILOT_DEV_AUTH');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initStudioFirebase();
+  if (!_devAuth) await initStudioFirebase();
   runApp(const ProviderScope(child: OctopilotApp()));
 }
 
@@ -45,8 +49,9 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   StreamSubscription<bool>? _signIns;
 
   late final ShellServices _services = ShellServices(
-    // The main chat's server is not built yet.
-    chat: DemoMainChat(),
+    // Until the app's own API exists, the main chat is answered by
+    // GhostWriter's API (Ask Octo, scoped to the whole app).
+    chat: LocalMainChat(answer: _answer),
     voice: PocketVoiceEngine(),
     voices: octopilotVoices,
     voiceId: _voice,
@@ -167,6 +172,19 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
       _account.value = null;
     }
   }
+
+  Future<String> _answer(String text, List<ChatMessage> history) =>
+      GhostWriterHost.askApp(
+        text,
+        history: [
+          for (final m in history)
+            {
+              'role': m.role == ChatRole.user ? 'user' : 'assistant',
+              'text': m.text,
+            },
+        ],
+        auth: _auth,
+      );
 
   void _soon(BuildContext context) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()

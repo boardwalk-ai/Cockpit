@@ -56,13 +56,23 @@ class VoiceLoop extends ChangeNotifier {
       reply = '';
       spoken = 0;
       _set(VoicePhase.listening);
-      final said = await engine.listen(
-        onPartial: (text) {
-          heard = text;
-          _notify();
-        },
-        onLevel: _level,
-      );
+      final String? said;
+      try {
+        said = await engine.listen(
+          onPartial: (text) {
+            heard = text;
+            _notify();
+          },
+          onLevel: _level,
+        );
+      } on Object catch (e) {
+        error = e is VoiceUnavailable
+            ? e.message
+            : "Couldn't hear you. Check the microphone and try again.";
+        _running = false;
+        _set(VoicePhase.idle);
+        break;
+      }
       if (!_running) break;
       if (said == null || said.trim().isEmpty) continue;
 

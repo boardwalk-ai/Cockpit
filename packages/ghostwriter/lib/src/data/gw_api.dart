@@ -137,8 +137,18 @@ class GwApi {
   Future<void> deleteDevice(String id) => _json('DELETE', '/v1/devices/$id');
 
   /// Ask Octo: one question about using the app, one short answer.
-  Future<String> askOcto(String question) async {
-    final reply = await _json('POST', '/v1/octo/ask', {'question': question});
+  /// Ask Octo. With [scope] `app` it is the app's main chat, and [history]
+  /// (`{role, text}`, oldest first) gives it the conversation so far.
+  Future<String> askOcto(
+    String question, {
+    String? scope,
+    List<Map<String, String>> history = const [],
+  }) async {
+    final reply = await _json('POST', '/v1/octo/ask', {
+      'question': question,
+      'scope': ?scope,
+      if (history.isNotEmpty) 'history': history,
+    });
     return reply['answer'] as String? ?? '';
   }
 

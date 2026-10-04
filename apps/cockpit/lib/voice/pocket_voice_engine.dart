@@ -9,6 +9,8 @@ import 'package:flutter/material.dart' show Color;
 import 'package:http/http.dart' as http;
 import 'package:octopilot_shell/octopilot_shell.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:speech_to_text/speech_recognition_result.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 /// Octopilot's voices (`tools/voice/voices.json`), each with its orb colours.
 const octopilotVoices = [
@@ -47,9 +49,9 @@ const octopilotVoices = [
   ),
 ];
 
-/// Speaks with Pocket TTS through the voice server (`tools/voice/serve.py`),
-/// a whole reply at a time. Listening is still pretend until speech
-/// recognition is wired.
+/// Hears with the phone's own speech recognition and speaks with Pocket TTS
+/// through the voice server (`tools/voice/serve.py`), a whole reply at a
+/// time.
 class PocketVoiceEngine implements VoiceEngine {
   PocketVoiceEngine({String? baseUrl, http.Client? client})
     : baseUrl = baseUrl ?? defaultBaseUrl,
@@ -66,7 +68,10 @@ class PocketVoiceEngine implements VoiceEngine {
 
   final String baseUrl;
   final http.Client _client;
-  final _ears = DemoVoiceEngine();
+  final _ears = SpeechToText();
+  bool? _earsReady;
+  Completer<String?>? _heard;
+  var _partial = '';
   final _player = AudioPlayer();
   Completer<void>? _cut;
 
@@ -77,10 +82,54 @@ class PocketVoiceEngine implements VoiceEngine {
   Future<String?> listen({
     required ValueChanged<String> onPartial,
     required ValueChanged<double> onLevel,
-  }) => _ears.listen(onPartial: onPartial, onLevel: onLevel);
+  }) async {
+    _earsReady ??= await _ears.initialize(
+      onStatus: (status) {
+        if (status == 'done' || status == 'notListening') _finishHearing();
+      },
+      onError: (_) => _finishHearing(),
+    );
+    if (!_earsReady!) {
+      _earsReady = null; // ask again next time (permission may be granted)
+      throw const VoiceUnavailable(
+        "Octopilot can't use the microphone. Allow it in your phone's settings.",
+      );
+    }
+    _partial = '';
+    final heard = _heard = Completer<String?>();
+    await _ears.listen(
+      onResult: (SpeechRecognitionResult result) {
+        _partial = result.recognizedWords;
+        onPartial(_partial);
+        if (result.finalResult) _finishHearing();
+      },
+      // Roughly -2 (quiet) to 10 (loud) dB on Android.
+      onSoundLevelChange: (db) => onLevel(((db + 2) / 12).clamp(0.0, 1.0)),
+      listenOptions: SpeechListenOptions(
+        listenFor: const Duration(seconds: 60),
+        pauseFor: const Duration(milliseconds: 2500),
+        localeId: 'en_US',
+        partialResults: true,
+        cancelOnError: true,
+        listenMode: ListenMode.dictation,
+      ),
+    );
+    final text = await heard.future;
+    onLevel(0);
+    return text == null || text.trim().isEmpty ? null : text.trim();
+  }
+
+  void _finishHearing() {
+    final heard = _heard;
+    if (heard != null && !heard.isCompleted) heard.complete(_partial);
+  }
 
   @override
-  void finishListening() => _ears.finishListening();
+  void finishListening() {
+    // What was heard so far becomes final, then the status says done.
+    if (_ears.isListening) _ears.stop();
+    _finishHearing();
+  }
 
   @override
   Future<Speech> prepare(String text, {required String voice}) async {
@@ -133,7 +182,9 @@ class PocketVoiceEngine implements VoiceEngine {
 
   @override
   void stop() {
-    _ears.stop();
+    if (_ears.isListening) _ears.cancel();
+    final heard = _heard;
+    if (heard != null && !heard.isCompleted) heard.complete(null);
     final cut = _cut;
     if (cut != null && !cut.isCompleted) cut.complete();
   }

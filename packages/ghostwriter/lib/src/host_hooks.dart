@@ -11,6 +11,16 @@ abstract final class GhostWriterHost {
   static Future<Map<String, dynamic>> me({GwAuth? auth}) =>
       GwApi(idToken: auth?.idToken).me();
 
+  /// The main chat's answer to [question], given the turns before it
+  /// (`{role: user|assistant, text}`, oldest first).
+  static Future<String> askApp(
+    String question, {
+    required List<Map<String, String>> history,
+    GwAuth? auth,
+  }) => GwApi(
+    idToken: auth?.idToken,
+  ).askOcto(question, scope: 'app', history: history);
+
   /// The model and personality sheet (every app, or GhostWriter only).
   static Future<void> showAiSettings(BuildContext context, {GwAuth? auth}) =>
       showGwAiSettings(context, api: GwApi(idToken: auth?.idToken));

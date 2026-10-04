@@ -271,3 +271,52 @@ async fn octo_answers_a_question_about_the_app() {
 
     t.cleanup().await;
 }
+
+#[tokio::test]
+async fn the_main_chat_speaks_for_the_whole_app_and_remembers_the_turns() {
+    let llm = Arc::new(FakeLlm::new(Vec::new()));
+    let t = TestApp::agent(llm.clone(), Arc::new(FakeScraper)).await;
+
+    let mut history: Vec<serde_json::Value> = (0..20)
+        .map(|i| json!({ "role": if i % 2 == 0 { "user" } else { "assistant" }, "text": format!("turn {i}") }))
+        .collect();
+    history.push(json!({ "role": "assistant", "text": "Open Create, then GhostWriter." }));
+    let (status, body) = t
+        .post(
+            "/v1/octo/ask",
+            "alice",
+            json!({ "question": "And then?", "scope": "app", "history": history }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+
+    let request = llm.sub_requests.lock().unwrap()[0].clone();
+    let system = request.messages[0]["content"].as_str().unwrap();
+    assert!(system.contains("You are Octopilot"));
+    assert!(system.contains("Learn: Study Studio"));
+    // System, the last 12 turns, the question.
+    assert_eq!(request.messages.len(), 14);
+    assert_eq!(
+        request.messages[1]["content"],
+        json!({ "answer": "turn 9" }).to_string()
+    );
+    assert_eq!(request.messages[2]["content"], "turn 10");
+    assert_eq!(
+        request.messages[12]["content"],
+        json!({ "answer": "Open Create, then GhostWriter." }).to_string()
+    );
+    assert_eq!(request.messages[12]["role"], "assistant");
+    assert_eq!(request.messages[13]["content"], "And then?");
+
+    // Without the scope it is still GhostWriter's Ask Octo.
+    t.post("/v1/octo/ask", "alice", json!({ "question": "Where?" }))
+        .await;
+    let request = llm.sub_requests.lock().unwrap()[1].clone();
+    assert!(request.messages[0]["content"]
+        .as_str()
+        .unwrap()
+        .contains("You are Octo, the in-app assistant"));
+    assert_eq!(request.messages.len(), 2);
+
+    t.cleanup().await;
+}

@@ -77,12 +77,21 @@ abstract class MainChat {
   Future<void> delete(String threadId);
 }
 
-/// A main chat that lives in memory and gives canned answers, until the
-/// server has one.
-class DemoMainChat implements MainChat {
-  DemoMainChat({this.wordDelay = const Duration(milliseconds: 28)});
+/// Answers [text], given the conversation before it (oldest first).
+typedef ChatAnswerer =
+    Future<String> Function(String text, List<ChatMessage> history);
 
-  /// Between streamed words.
+/// A main chat whose history lives on the device. Each answer comes whole
+/// from [answer] and is shown word by word.
+class LocalMainChat implements MainChat {
+  LocalMainChat({
+    required this.answer,
+    this.wordDelay = const Duration(milliseconds: 28),
+  });
+
+  final ChatAnswerer answer;
+
+  /// Between shown words.
   final Duration wordDelay;
 
   final _threads = ValueNotifier<List<ChatThread>>(const []);
@@ -103,7 +112,7 @@ class DemoMainChat implements MainChat {
   Stream<ChatEvent> send({String? threadId, required String text}) async* {
     var id = threadId;
     if (id == null) {
-      id = 'demo-${_next++}';
+      id = 'chat-${_next++}';
       final thread = ChatThread(
         id: id,
         title: _title(text),
@@ -113,10 +122,18 @@ class DemoMainChat implements MainChat {
       _threads.value = [thread, ..._threads.value];
       yield ChatThreadStarted(thread);
     }
-    final log = _messages[id]!..add(ChatMessage(ChatRole.user, text));
+    final log = _messages[id]!;
+    final history = List.of(log);
+    log.add(ChatMessage(ChatRole.user, text));
     _touch(id);
 
-    final answer = _answer(text);
+    final String answer;
+    try {
+      answer = await this.answer(text, history);
+    } on Object catch (error) {
+      yield ChatFailed(_failure(error));
+      return;
+    }
     final said = StringBuffer();
     try {
       for (final word in answer.split(' ')) {
@@ -161,7 +178,30 @@ class DemoMainChat implements MainChat {
     return line.length <= 40 ? line : '${line.substring(0, 40).trimRight()}…';
   }
 
-  static String _answer(String text) {
+  /// What to tell the user when an answer fails: a message the answerer
+  /// gave as a [ChatAnswerError], else a general one.
+  static String _failure(Object error) => error is ChatAnswerError
+      ? error.message
+      : "Couldn't reach Octopilot. Try again.";
+}
+
+/// A failure with words fit for the user (a limit reached, and so on).
+class ChatAnswerError implements Exception {
+  const ChatAnswerError(this.message, {this.code});
+
+  final String message;
+  final String? code;
+
+  @override
+  String toString() => message;
+}
+
+/// A main chat with canned answers, for tests and offline demos.
+class DemoMainChat extends LocalMainChat {
+  DemoMainChat({super.wordDelay})
+    : super(answer: (text, _) async => _canned(text));
+
+  static String _canned(String text) {
     final q = text.toLowerCase();
     if (q.contains('essay') || q.contains('write')) {
       return 'For essays, open Create and pick GhostWriter. Tell it your '
