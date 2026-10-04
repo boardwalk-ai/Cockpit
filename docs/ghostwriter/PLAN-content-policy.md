@@ -149,7 +149,11 @@ classifier can replace `Moderation` behind the same `Screen` trait.
 3. Internal policy; users see only the short in-chat replies.
 4. Every run is checked (one call before the run, one after the outline, one
    on the text). Runs take minutes, so the extra second does not matter.
-5. Classifier: the ready-made moderation endpoint (above).
+5. Classifier: the ready-made moderation endpoint (above), until Octopilot
+   writes its own policy. Then (2026-10-05) the policy is written by the team
+   with ChatGPT (prompt in SAFETY-POLICY-PROMPT.md) and stored in
+   `system_settings.ghostwriter_safety_policy`; when set, `ContentCheck`
+   applies it with `gpt-oss-safeguard-20b` instead of moderation.
 6. The main chat is not checked yet: it only answers about the app.
 
 ## Next steps

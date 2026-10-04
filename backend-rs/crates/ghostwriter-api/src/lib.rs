@@ -126,7 +126,7 @@ impl AppState {
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             scraper: Arc::new(HttpScraper::new(http.clone(), config.scraper_url.clone())),
             humanizer: Arc::new(HttpHumanizer::new(http.clone(), octopilot.clone())),
-            screen: Arc::new(safety::Moderation::new(http.clone(), octopilot.clone())),
+            screen: Arc::new(safety::ContentCheck::new(http.clone(), octopilot.clone())),
             pusher,
             ai: octo_common::ai::AiSettings::default(),
             app_status: app_status::AppStatus::default(),
