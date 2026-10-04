@@ -162,6 +162,7 @@ async fn quick_reply(
             temperature: Some(0.3),
             json: true,
             tools: Vec::new(),
+            reasoning: None,
         })
         .await?;
     let parsed = octo_common::llm::parse_json_loose(&reply.content).unwrap_or(Value::Null);

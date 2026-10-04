@@ -23,6 +23,9 @@ pub struct ChatRequest {
     pub json: bool,
     /// Function tool specs; empty for a plain completion.
     pub tools: Vec<Value>,
+    /// How hard a reasoning model thinks (`low`, `medium`, `high`); its
+    /// thinking is not sent back. None leaves the model's default.
+    pub reasoning: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -85,6 +88,9 @@ impl OpenRouter {
         if !request.tools.is_empty() {
             body["tools"] = json!(request.tools);
             body["tool_choice"] = json!("auto");
+        }
+        if let Some(effort) = &request.reasoning {
+            body["reasoning"] = json!({ "effort": effort, "exclude": true });
         }
         body
     }

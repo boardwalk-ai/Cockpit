@@ -388,6 +388,7 @@ async fn think(
         temperature: Some(0.3),
         json: false,
         tools: specs.to_vec(),
+        reasoning: None,
     };
     match agent.llm.chat(request.clone()).await {
         Ok(reply) => Ok(reply),

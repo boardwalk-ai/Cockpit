@@ -347,6 +347,7 @@ async fn ask_json(
             temperature: Some(temperature),
             json: json_mode,
             tools: Vec::new(),
+            reasoning: None,
         })
         .await?;
     parse_json_loose(&reply.content).ok_or_else(|| "the model did not return JSON".into())
@@ -959,6 +960,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
         temperature: Some(0.4),
         json: false,
         tools: Vec::new(),
+        reasoning: None,
     };
     let (body, bibliography) = stream_into_document(agent, request, target, "agent_write").await?;
     let cited: Vec<&Source> = agent.ctx.compacted.iter().map(|c| &c.source).collect();
@@ -1177,6 +1179,7 @@ async fn revise_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failu
         temperature: Some(0.3),
         json: false,
         tools: Vec::new(),
+        reasoning: None,
     };
     let (revised, new_bibliography) =
         stream_into_document(agent, request, current, "agent_revise").await?;

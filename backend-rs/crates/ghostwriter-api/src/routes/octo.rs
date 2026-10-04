@@ -106,6 +106,9 @@ pub async fn ask(
             temperature: Some(0.2),
             json: true,
             tools: Vec::new(),
+            // The main chat should answer at once: think as little as the
+            // model allows.
+            reasoning: main_chat.then(|| "low".to_string()),
         })
         .await
         .map_err(|error| {
