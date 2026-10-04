@@ -101,7 +101,10 @@ class _ModeCardState extends State<ModeCard> {
         button: true,
         label: mode.title,
         child: Pressable(
-          onTap: () => context.push(mode.path),
+          onTap: () {
+            Haptics.select();
+            context.push(mode.path);
+          },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 300),
             curve: kShellEase,

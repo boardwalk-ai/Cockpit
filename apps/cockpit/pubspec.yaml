@@ -48,6 +48,9 @@ dependencies:
     path: ../../packages/ghostwriter
   octopilot_shell:
     path: ../../packages/octopilot_shell
+  audioplayers: ^6.8.1
+  http: ^1.6.0
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

@@ -139,7 +139,10 @@ class ModuleCard extends StatelessWidget {
       label: module.title,
       child: Pressable(
         onTap: out
-            ? () => services.openModule(context, module)
+            ? () {
+                Haptics.tap();
+                services.openModule(context, module);
+              }
             : () => ScaffoldMessenger.of(context)
                 ..hideCurrentSnackBar()
                 ..showSnackBar(

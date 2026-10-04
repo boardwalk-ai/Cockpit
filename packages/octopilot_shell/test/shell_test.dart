@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:octopilot_shell/octopilot_shell.dart';
@@ -17,11 +20,22 @@ class Harness {
   );
   final opened = <String>[];
   var deleted = 0;
+  String? savedVoice;
   var aiSettings = 0;
 
   late final services = ShellServices(
     chat: chat,
     voice: voice,
+    voices: const [
+      ShellVoice(id: 'marc', name: 'Marc', colors: [Colors.red, Colors.orange]),
+      ShellVoice(
+        id: 'sarah',
+        name: 'Sarah',
+        female: true,
+        colors: [Colors.pink, Colors.amber],
+      ),
+    ],
+    onVoiceChanged: (id) => savedVoice = id,
     modules: const [
       ShellModuleEntry(
         id: 'ghostwriter',
@@ -265,7 +279,7 @@ void main() {
     final context = tester.element(find.text('Settings'));
     expect(Theme.of(context).brightness, Brightness.light);
 
-    await tester.tap(find.text('Model and voice'));
+    await tester.tap(find.text('Model and personality'));
     expect(h.aiSettings, 1);
     expect(find.text('Notifications'), findsNothing, reason: 'not wired');
 
@@ -330,6 +344,81 @@ void main() {
     expect(find.text('Message Octopilot'), findsOneWidget);
   });
 
+  testWidgets('a voice is picked in settings, heard, and remembered', (
+    tester,
+  ) async {
+    final h = Harness(account: ada);
+    await h.pump(tester);
+    final haptics = <String>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'HapticFeedback.vibrate') {
+          haptics.add(call.arguments as String);
+        }
+        return null;
+      },
+    );
+    await tester.tap(find.byTooltip('Settings'));
+    await tester.pumpAndSettle();
+    expect(find.text('Voice'), findsOneWidget);
+    expect(find.text('Marc'), findsOneWidget, reason: 'the first by default');
+
+    await tester.tap(find.text('Voice'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tap one to hear it.'), findsOneWidget);
+    await tester.tap(find.text('Sarah'));
+    await pumpUntil(tester, find.text('Female'));
+    expect(h.services.voiceId.value, 'sarah');
+    expect(h.savedVoice, 'sarah');
+    expect(haptics, contains('HapticFeedbackType.selectionClick'));
+    // Let the hello finish.
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  });
+
+  testWidgets('voice: the reply shows only once its voice is ready', (
+    tester,
+  ) async {
+    final h = Harness(account: ada);
+    final ready = Completer<void>();
+    final slow = _SlowVoice(h.voice, ready.future);
+    final services = ShellServices(
+      chat: h.chat,
+      voice: slow,
+      modules: h.services.modules,
+      account: h.account,
+      themeMode: h.theme,
+      setThemeMode: (_) {},
+    );
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tester.pumpWidget(OctopilotShellApp(services: services));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Talk'));
+    await tester.pump();
+    await pumpUntil(tester, find.text('Thinking'));
+    // The text reply is in, the voice is not: still thinking, nothing said.
+    for (var i = 0; i < 30; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(services.conversation.replying, isFalse);
+    expect(find.text('Thinking'), findsOneWidget);
+    expect(find.textContaining('pick GhostWriter'), findsNothing);
+
+    ready.complete();
+    await pumpUntil(tester, find.text('Speaking'));
+    expect(find.textContaining('pick GhostWriter'), findsOneWidget);
+    await tester.tap(find.byTooltip('End voice'));
+    await tester.pumpAndSettle();
+  });
+
   test('credits are written short', () {
     expect(formatCredits(980), '980');
     expect(formatCredits(1240), '1,240');
@@ -345,4 +434,37 @@ Future<void> pumpUntil(WidgetTester tester, Finder finder) async {
     await tester.pump(const Duration(milliseconds: 20));
   }
   fail('never found: $finder');
+}
+
+/// Hears like [inner], but its voice is ready only when [ready] completes.
+class _SlowVoice implements VoiceEngine {
+  _SlowVoice(this.inner, this.ready);
+
+  final VoiceEngine inner;
+  final Future<void> ready;
+
+  @override
+  Future<String?> listen({
+    required ValueChanged<String> onPartial,
+    required ValueChanged<double> onLevel,
+  }) => inner.listen(onPartial: onPartial, onLevel: onLevel);
+
+  @override
+  void finishListening() => inner.finishListening();
+
+  @override
+  Future<Speech> prepare(String text, {required String voice}) async {
+    await ready;
+    return inner.prepare(text, voice: voice);
+  }
+
+  @override
+  Future<void> play(
+    Speech speech, {
+    required ValueChanged<double> onLevel,
+    required ValueChanged<double> onProgress,
+  }) => inner.play(speech, onLevel: onLevel, onProgress: onProgress);
+
+  @override
+  void stop() => inner.stop();
 }

@@ -29,11 +29,17 @@ class VoiceOrb extends StatefulWidget {
     required this.size,
     this.phase = VoicePhase.idle,
     this.level = 0,
+    this.colors,
   });
 
   final double size;
   final VoicePhase phase;
   final double level;
+
+  /// The voice's own two colours; without them the phase picks.
+  final List<Color>? colors;
+
+  List<Color> get palette => colors ?? phase.colors;
 
   @override
   State<VoiceOrb> createState() => _VoiceOrbState();
@@ -45,7 +51,7 @@ class _VoiceOrbState extends State<VoiceOrb>
   final _time = ValueNotifier<double>(0);
   var _level = 0.0;
   var _swirl = 0.0;
-  late List<Color> _colors = widget.phase.colors;
+  late List<Color> _colors = widget.palette;
   Duration _last = Duration.zero;
 
   @override
@@ -69,7 +75,7 @@ class _VoiceOrbState extends State<VoiceOrb>
     final thinking = widget.phase == VoicePhase.thinking ? 1.0 : 0.0;
     _swirl += (thinking - _swirl) * (1 - math.exp(-3 * dt));
     // Ease towards this phase's colours.
-    final want = widget.phase.colors;
+    final want = widget.palette;
     _colors = [
       for (var i = 0; i < want.length; i++)
         Color.lerp(_colors[i], want[i], 1 - math.exp(-5 * dt))!,
@@ -114,7 +120,7 @@ class _OrbPainter extends CustomPainter {
     final t = time.value;
     final level = still ? 0.0 : state._level;
     final swirl = state._swirl;
-    final colors = still ? state.widget.phase.colors : state._colors;
+    final colors = still ? state.widget.palette : state._colors;
     final center = size.center(Offset.zero);
     final base = size.shortestSide * 0.31;
     final breathe = 1 + 0.035 * math.sin(t * 1.6);

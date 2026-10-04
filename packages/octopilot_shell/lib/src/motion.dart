@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 /// Whether to keep motion to a minimum (the OS "reduce motion" setting).
 /// Endless animations stop and entrances are instant.
@@ -212,4 +213,19 @@ Widget shellPageTransition(
       ),
     ),
   );
+}
+
+/// Touch feedback, named for what it means.
+abstract final class Haptics {
+  /// A choice changed (a voice, a mode).
+  static void select() => HapticFeedback.selectionClick();
+
+  /// A light tap: a button, the mic opening.
+  static void tap() => HapticFeedback.lightImpact();
+
+  /// Something starts: the voice begins to speak.
+  static void thud() => HapticFeedback.mediumImpact();
+
+  /// Something ends: the voice call.
+  static void end() => HapticFeedback.heavyImpact();
 }

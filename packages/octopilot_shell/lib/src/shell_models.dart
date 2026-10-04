@@ -94,3 +94,21 @@ class ShellAccount {
     return letters.isEmpty ? '?' : letters;
   }
 }
+
+/// A voice the main chat can speak in. Each has its own orb colours.
+@immutable
+class ShellVoice {
+  const ShellVoice({
+    required this.id,
+    required this.name,
+    required this.colors,
+    this.female = false,
+  });
+
+  final String id;
+  final String name;
+
+  /// The orb's two colours.
+  final List<Color> colors;
+  final bool female;
+}

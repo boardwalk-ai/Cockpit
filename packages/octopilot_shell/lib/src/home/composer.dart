@@ -47,6 +47,7 @@ class _ShellComposerState extends State<ShellComposer> {
   void _send() {
     final text = _text.text.trim();
     if (text.isEmpty || widget.replying) return;
+    Haptics.tap();
     widget.onSend(text);
     _text.clear();
   }

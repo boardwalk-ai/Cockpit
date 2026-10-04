@@ -13,6 +13,9 @@ class ShellServices {
   ShellServices({
     required this.chat,
     VoiceEngine? voice,
+    this.voices = const [],
+    ValueNotifier<String>? voiceId,
+    this.onVoiceChanged,
     required this.modules,
     required this.account,
     required this.themeMode,
@@ -26,12 +29,36 @@ class ShellServices {
     this.onDeleteAccount,
     void Function(BuildContext context, ShellModuleEntry module)? openModule,
   }) : voice = voice ?? DemoVoiceEngine(),
+       voiceId =
+           voiceId ?? ValueNotifier(voices.isEmpty ? '' : voices.first.id),
        openModule = openModule ?? _push;
 
   final MainChat chat;
 
   /// Microphone and speaker for voice chat.
   final VoiceEngine voice;
+
+  /// The voices the user picks from; each has its own orb colours.
+  final List<ShellVoice> voices;
+
+  /// The chosen voice's id.
+  final ValueNotifier<String> voiceId;
+
+  /// Told when the user picks a voice (to remember it).
+  final void Function(String id)? onVoiceChanged;
+
+  /// The chosen voice, or null when there are none.
+  ShellVoice? get currentVoice {
+    for (final v in voices) {
+      if (v.id == voiceId.value) return v;
+    }
+    return voices.isEmpty ? null : voices.first;
+  }
+
+  void setVoice(String id) {
+    voiceId.value = id;
+    onVoiceChanged?.call(id);
+  }
 
   /// Every module, out or not, in Library order.
   final List<ShellModuleEntry> modules;

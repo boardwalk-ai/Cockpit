@@ -6,6 +6,7 @@ import '../shell_scope.dart';
 import '../shell_theme.dart';
 import 'voice_loop.dart';
 import 'voice_orb.dart';
+import 'voice_picker.dart';
 
 /// Voice mode: the orb, live captions, mute / end / keyboard. Turns land in
 /// the open conversation.
@@ -27,6 +28,7 @@ class _VoicePageState extends State<VoicePage> {
     _loop = VoiceLoop(
       engine: services.voice,
       conversation: services.conversation,
+      voice: () => services.currentVoice?.id ?? '',
     )..start();
   }
 
@@ -37,26 +39,38 @@ class _VoicePageState extends State<VoicePage> {
   }
 
   void _close({bool typing = false}) {
+    typing ? Haptics.tap() : Haptics.end();
     _loop?.end();
     Navigator.of(context).pop(typing);
+  }
+
+  /// The picker plays samples, so the conversation holds still meanwhile.
+  Future<void> _pickVoice(VoiceLoop loop) async {
+    final wasMuted = loop.muted;
+    if (!wasMuted) loop.toggleMute();
+    await showVoicePicker(context);
+    if (!wasMuted && loop.muted && mounted) loop.toggleMute();
   }
 
   @override
   Widget build(BuildContext context) {
     final loop = _loop!;
+    final services = ShellScope.of(context);
     final c = ShellColors.of(context);
     return Scaffold(
       body: ListenableBuilder(
-        listenable: loop,
+        listenable: Listenable.merge([loop, services.voiceId]),
         builder: (context, _) {
           final speaking = loop.phase == VoicePhase.speaking;
+          final voice = services.currentVoice;
+          final palette = voice?.colors ?? loop.phase.colors;
           return AuroraBackground(
             energy: switch (loop.phase) {
               VoicePhase.speaking || VoicePhase.listening => 0.3 + loop.level,
               VoicePhase.thinking => 0.5,
               _ => 0,
             },
-            colors: [...loop.phase.colors, const Color(0xFF8B83F0)],
+            colors: [...palette, palette.first.withValues(alpha: 0.6)],
             child: SafeArea(
               child: Column(
                 children: [
@@ -72,21 +86,32 @@ class _VoicePageState extends State<VoicePage> {
                           onPressed: _close,
                         ),
                         const Spacer(),
-                        _PhaseLabel(loop: loop),
+                        _PhaseLabel(loop: loop, color: palette.first),
                         const Spacer(),
-                        const SizedBox(width: 48),
+                        if (voice == null)
+                          const SizedBox(width: 48)
+                        else
+                          _VoiceChip(
+                            name: voice.name,
+                            color: palette.first,
+                            onTap: () => _pickVoice(loop),
+                          ),
                       ],
                     ),
                   ),
                   const Spacer(flex: 2),
                   GestureDetector(
-                    onTap: loop.tapOrb,
+                    onTap: () {
+                      Haptics.tap();
+                      loop.tapOrb();
+                    },
                     child: Hero(
                       tag: 'voice-orb',
                       child: VoiceOrb(
                         size: 300,
                         phase: loop.phase,
                         level: loop.level,
+                        colors: voice?.colors,
                       ),
                     ),
                   ),
@@ -115,7 +140,10 @@ class _VoicePageState extends State<VoicePage> {
                               ? Icons.mic_off_rounded
                               : Icons.mic_none_rounded,
                           active: loop.muted,
-                          onTap: loop.toggleMute,
+                          onTap: () {
+                            Haptics.tap();
+                            loop.toggleMute();
+                          },
                         ),
                         _RoundButton(
                           tooltip: 'End voice',
@@ -143,9 +171,12 @@ class _VoicePageState extends State<VoicePage> {
 }
 
 class _PhaseLabel extends StatelessWidget {
-  const _PhaseLabel({required this.loop});
+  const _PhaseLabel({required this.loop, required this.color});
 
   final VoiceLoop loop;
+
+  /// The voice's colour, for the dot.
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -183,14 +214,14 @@ class _PhaseLabel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (loop.phase == VoicePhase.thinking && !loop.muted) ...[
-              BouncingDots(color: loop.phase.colors.first, size: 5),
+              BouncingDots(color: color, size: 5),
               const SizedBox(width: 8),
             ] else ...[
               Container(
                 width: 7,
                 height: 7,
                 decoration: BoxDecoration(
-                  color: loop.muted ? c.hint : loop.phase.colors.first,
+                  color: loop.muted ? c.hint : color,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -331,6 +362,54 @@ class _RoundButton extends StatelessWidget {
                   : null,
             ),
             child: Icon(icon, color: fg, size: big ? 32 : 24),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The voice speaking; tap to choose another.
+class _VoiceChip extends StatelessWidget {
+  const _VoiceChip({
+    required this.name,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String name;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ShellColors.of(context);
+    return Tooltip(
+      message: 'Change voice',
+      child: Pressable(
+        scale: 0.92,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 6, 10, 6),
+          decoration: BoxDecoration(
+            color: c.surface.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(99),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.graphic_eq_rounded, size: 16, color: color),
+              const SizedBox(width: 5),
+              Text(
+                name,
+                style: TextStyle(
+                  color: c.text,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
       ),

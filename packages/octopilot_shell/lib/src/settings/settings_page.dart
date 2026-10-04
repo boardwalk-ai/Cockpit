@@ -4,6 +4,7 @@ import '../aurora.dart';
 import '../motion.dart';
 import '../shell_scope.dart';
 import '../shell_theme.dart';
+import '../voice/voice_picker.dart';
 import '../widgets.dart';
 
 /// The app's settings: everything that is about the whole app, not one
@@ -104,9 +105,19 @@ class ShellSettingsPage extends StatelessWidget {
                               children: [
                                 row(
                                   Icons.auto_awesome_outlined,
-                                  'Model and voice',
+                                  'Model and personality',
                                   services.onAiSettings,
                                 ),
+                                if (services.voices.isNotEmpty)
+                                  ValueListenableBuilder(
+                                    valueListenable: services.voiceId,
+                                    builder: (context, _, _) => _Row(
+                                      icon: Icons.graphic_eq_rounded,
+                                      title: 'Voice',
+                                      value: services.currentVoice?.name,
+                                      onTap: () => showVoicePicker(context),
+                                    ),
+                                  ),
                               ],
                             ),
                             const _Label('App'),

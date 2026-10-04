@@ -9,6 +9,7 @@ import 'package:study_studio/study_studio.dart';
 
 import 'modules/module_auth.dart';
 import 'modules/module_push.dart';
+import 'voice/pocket_voice_engine.dart';
 
 /// The Octopilot app: the shell (main chat Home, a Library per mode,
 /// Settings) with the modules that are out. Signs in with the shared
@@ -23,6 +24,7 @@ Future<void> main() async {
 }
 
 const _themeKey = 'octopilot.theme';
+const _voiceKey = 'octopilot.voice';
 
 class OctopilotApp extends ConsumerStatefulWidget {
   const OctopilotApp({super.key});
@@ -39,11 +41,16 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   );
   final _account = ValueNotifier<ShellAccount?>(null);
   final _theme = ValueNotifier<ThemeMode>(ThemeMode.system);
+  final _voice = ValueNotifier<String>(octopilotVoices.first.id);
   StreamSubscription<bool>? _signIns;
 
   late final ShellServices _services = ShellServices(
     // The main chat's server is not built yet.
     chat: DemoMainChat(),
+    voice: PocketVoiceEngine(),
+    voices: octopilotVoices,
+    voiceId: _voice,
+    onVoiceChanged: _saveVoice,
     modules: [
       ShellModuleEntry(
         id: _ghostWriter.id,
@@ -86,6 +93,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   void initState() {
     super.initState();
     _loadTheme();
+    _loadVoice();
     _signIns = _auth.authStateChanges().listen((_) => _loadAccount());
     _loadAccount();
   }
@@ -95,6 +103,25 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     _signIns?.cancel();
     _services.conversation.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadVoice() async {
+    try {
+      final saved = (await SharedPreferences.getInstance()).getString(
+        _voiceKey,
+      );
+      if (octopilotVoices.any((v) => v.id == saved)) _voice.value = saved!;
+    } on Object {
+      // No saved choice: the first voice.
+    }
+  }
+
+  Future<void> _saveVoice(String id) async {
+    try {
+      await (await SharedPreferences.getInstance()).setString(_voiceKey, id);
+    } on Object {
+      // Kept for this session only.
+    }
   }
 
   Future<void> _loadTheme() async {

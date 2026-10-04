@@ -3,16 +3,24 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../chat/chat_controller.dart';
+import '../motion.dart';
 import 'voice_engine.dart';
 import 'voice_orb.dart';
 
 /// A voice conversation: listen, send what was heard through the main chat,
 /// speak the reply, listen again, until it is ended.
 class VoiceLoop extends ChangeNotifier {
-  VoiceLoop({required this.engine, required this.conversation});
+  VoiceLoop({
+    required this.engine,
+    required this.conversation,
+    required this.voice,
+  });
 
   final VoiceEngine engine;
   final ChatController conversation;
+
+  /// The voice to answer in, read for every reply (it can change midway).
+  final String Function() voice;
 
   VoicePhase phase = VoicePhase.connecting;
   double level = 0;
@@ -69,12 +77,25 @@ class VoiceLoop extends ChangeNotifier {
         _set(VoicePhase.idle);
         break;
       }
-      reply = conversation.messages.isEmpty
+      final text = conversation.messages.isEmpty
           ? ''
           : conversation.messages.last.text;
+      // Still thinking until the voice is ready too; then the reply and its
+      // voice start together.
+      final Speech speech;
+      try {
+        speech = await engine.prepare(text, voice: voice());
+      } on Object {
+        error = "Couldn't get the voice ready. Try again.";
+        _running = false;
+        _set(VoicePhase.idle);
+        break;
+      }
+      if (!_running) break;
+      reply = text;
       _set(VoicePhase.speaking);
-      await engine.speak(
-        reply,
+      await engine.play(
+        speech,
         onLevel: _level,
         onProgress: (p) {
           spoken = p;
@@ -117,6 +138,16 @@ class VoiceLoop extends ChangeNotifier {
   }
 
   void _set(VoicePhase next) {
+    if (next != phase) {
+      switch (next) {
+        case VoicePhase.listening:
+          Haptics.tap();
+        case VoicePhase.speaking:
+          Haptics.thud();
+        case _:
+          break;
+      }
+    }
     phase = next;
     if (next != VoicePhase.listening && next != VoicePhase.speaking) level = 0;
     _notify();

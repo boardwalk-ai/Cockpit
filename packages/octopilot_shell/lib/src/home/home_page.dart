@@ -33,12 +33,14 @@ class _ShellHomePageState extends State<ShellHomePage> {
   }
 
   Future<void> _talk() async {
+    Haptics.tap();
     final typing = await context.push<bool>('/voice');
     if (!mounted || typing != true) return;
     _type();
   }
 
   void _type() {
+    Haptics.tap();
     setState(() => _typing = true);
     WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
   }
@@ -204,34 +206,44 @@ class _VoiceDock extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _SideButton(
-                icon: Icons.keyboard_alt_outlined,
-                tooltip: 'Type a message',
-                onTap: onType,
-              ),
-              const SizedBox(width: 28),
-              Semantics(
-                button: true,
-                label: 'Talk to Octopilot',
-                child: Tooltip(
-                  message: 'Talk',
-                  child: Pressable(
-                    scale: 0.9,
-                    onTap: onTalk,
-                    child: Hero(
-                      tag: 'voice-orb',
-                      child: VoiceOrb(size: orb),
+          // Shrinks rather than overflows on a very narrow screen.
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _SideButton(
+                  icon: Icons.keyboard_alt_outlined,
+                  tooltip: 'Type a message',
+                  onTap: onType,
+                ),
+                const SizedBox(width: 28),
+                Semantics(
+                  button: true,
+                  label: 'Talk to Octopilot',
+                  child: Tooltip(
+                    message: 'Talk',
+                    child: Pressable(
+                      scale: 0.9,
+                      onTap: onTalk,
+                      child: Hero(
+                        tag: 'voice-orb',
+                        child: ValueListenableBuilder(
+                          valueListenable: ShellScope.of(context).voiceId,
+                          builder: (context, _, _) => VoiceOrb(
+                            size: orb,
+                            colors: ShellScope.of(context).currentVoice?.colors,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 28),
-              // Keeps the orb centred.
-              const SizedBox(width: 48),
-            ],
+                const SizedBox(width: 28),
+                // Keeps the orb centred.
+                const SizedBox(width: 48),
+              ],
+            ),
           ),
           if (!compact)
             Text(

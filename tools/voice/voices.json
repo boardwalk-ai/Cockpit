@@ -1,0 +1,11 @@
+{
+  "_comment": "Octopilot's voices. Each is cloned once from a short public-domain (CC0) recording from Kyutai's voice donations (huggingface.co/kyutai/tts-voices, voice-donations/). Placeholders until a contracted voice actor is recorded.",
+  "voices": [
+    { "id": "marc",  "name": "Marc",  "gender": "male",   "source": "voice-donations/0a67_enhanced.wav", "colors": ["#FF343C", "#FF8A5B"] },
+    { "id": "noah",  "name": "Noah",  "gender": "male",   "source": "voice-donations/1410_enhanced.wav", "colors": ["#3D7BFF", "#4FD1FF"] },
+    { "id": "lucas", "name": "Lucas", "gender": "male",   "source": "voice-donations/29da_enhanced.wav", "colors": ["#13B88A", "#8BE38F"] },
+    { "id": "sarah", "name": "Sarah", "gender": "female", "source": "voice-donations/3973_enhanced.wav", "colors": ["#FF4F9A", "#FFB199"] },
+    { "id": "lucy",  "name": "Lucy",  "gender": "female", "source": "voice-donations/4b70_enhanced.wav", "colors": ["#8B5CF6", "#D08CFF"] },
+    { "id": "dasha", "name": "Dasha", "gender": "female", "source": "voice-donations/9a66_enhanced.wav", "colors": ["#FFB020", "#FF6B3D"] }
+  ]
+}

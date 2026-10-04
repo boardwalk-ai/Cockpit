@@ -3,6 +3,17 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+/// Speech made ready to play: the whole reply, already synthesised.
+class Speech {
+  const Speech({required this.text, required this.duration, this.audio});
+
+  final String text;
+  final Duration duration;
+
+  /// The engine's own audio; the shell never looks inside.
+  final Object? audio;
+}
+
 /// The microphone and the speaker for voice chat. The words in between go
 /// through the main chat like typed ones, so a voice conversation lands in
 /// the same history.
@@ -17,9 +28,13 @@ abstract class VoiceEngine {
   /// Take what has been heard so far as the whole turn.
   void finishListening();
 
-  /// Says [text]. [onProgress] goes 0→1 as it is spoken.
-  Future<void> speak(
-    String text, {
+  /// Synthesises [text] in [voice]. The reply is shown only once this is
+  /// done, then its words light up as [play] speaks them.
+  Future<Speech> prepare(String text, {required String voice});
+
+  /// Plays [speech]. [onProgress] goes 0→1 as it is spoken.
+  Future<void> play(
+    Speech speech, {
     required ValueChanged<double> onLevel,
     required ValueChanged<double> onProgress,
   });
@@ -79,12 +94,19 @@ class DemoVoiceEngine implements VoiceEngine {
   }
 
   @override
-  Future<void> speak(
-    String text, {
+  Future<Speech> prepare(String text, {required String voice}) async {
+    await Future<void>.delayed(wordTime * 2);
+    final words = text.split(' ').length;
+    return Speech(text: text, duration: wordTime * 0.7 * words);
+  }
+
+  @override
+  Future<void> play(
+    Speech speech, {
     required ValueChanged<double> onLevel,
     required ValueChanged<double> onProgress,
   }) async {
-    final words = text.split(' ').length;
+    final words = speech.text.split(' ').length;
     final cut = _cut = Completer<void>();
     for (var i = 1; i <= words; i++) {
       if (await _talk(wordTime * 0.7, cut, onLevel)) break;
