@@ -170,6 +170,10 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/projects/:id/document/stream", get(doc_routes::stream))
         .route("/v1/projects/:id/versions", get(doc_routes::versions))
         .route(
+            "/v1/projects/:id/versions/:version_id",
+            get(doc_routes::version),
+        )
+        .route(
             "/v1/projects/:id/versions/:version_id/restore",
             post(doc_routes::restore),
         )

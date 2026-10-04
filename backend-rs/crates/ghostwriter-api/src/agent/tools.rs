@@ -1241,6 +1241,25 @@ async fn revise_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failu
     agent.ctx.revisions += 1;
     agent.ctx.words_written = words;
 
+    // The essay as it was, kept when the revision began: the app compares
+    // it with the new text, and the user keeps the change or undoes it.
+    let before: Option<uuid::Uuid> = sqlx::query_scalar(
+        "SELECT id FROM document_versions WHERE project_id = $1 AND reason = 'agent_revise' \
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(agent.run.project_id)
+    .fetch_optional(&agent.run.st.db)
+    .await?;
+    if let Some(before) = before {
+        agent
+            .run
+            .emit(
+                "revision",
+                json!({ "versionId": before, "wordsBefore": current, "wordsAfter": words }),
+            )
+            .await?;
+    }
+
     charge(
         agent,
         agent.price(words, 0, 0).await,

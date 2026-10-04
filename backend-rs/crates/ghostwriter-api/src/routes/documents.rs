@@ -340,6 +340,35 @@ pub struct Version {
     pub word_count: i32,
 }
 
+/// `GET /v1/projects/:id/versions/:version_id` — one saved version's text,
+/// to compare with the document (reviewing a revision).
+pub async fn version(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path((id, version_id)): Path<(Uuid, Uuid)>,
+) -> Result<Json<Value>, ApiError> {
+    owned(&st.db, id, caller.user_id).await?;
+    let found: Option<(Uuid, i64, String, Value)> = sqlx::query_as(
+        "SELECT id, rev, reason, snapshot FROM document_versions \
+         WHERE id = $1 AND project_id = $2",
+    )
+    .bind(version_id)
+    .bind(id)
+    .fetch_optional(&st.db)
+    .await?;
+    let (version_id, rev, reason, snapshot) =
+        found.ok_or_else(|| ApiError::not_found("version not found"))?;
+    let text = |key: &str| snapshot[key].as_str().unwrap_or_default().to_string();
+    Ok(Json(json!({
+        "id": version_id,
+        "rev": rev,
+        "reason": reason,
+        "title": text("title"),
+        "body": text("body"),
+        "bibliography": text("bibliography"),
+    })))
+}
+
 /// `GET /v1/projects/:id/versions` — saved versions, newest first.
 pub async fn versions(
     State(st): State<AppState>,

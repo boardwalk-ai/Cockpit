@@ -171,6 +171,22 @@ async fn a_file_with_no_words_is_asked_about_then_revised() {
     let rest = events.rest().await;
     assert_eq!(rest.last().unwrap()["type"], "done", "{rest:#?}");
 
+    // The revision points at the essay as it was, for the app to compare.
+    let revision = rest.iter().find(|e| e["type"] == "revision").unwrap();
+    let version = revision["versionId"].as_str().unwrap();
+    let (status, before) = t
+        .get(&format!("/v1/projects/{p}/versions/{version}"), "alice")
+        .await;
+    assert_eq!(status, StatusCode::OK, "{before}");
+    assert_eq!(
+        before["body"],
+        "Seas are rising along every coast.\n\nCities that plan will cope."
+    );
+    let (status, _) = t
+        .get(&format!("/v1/projects/{p}/versions/{version}"), "bob")
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
     // The essay went into the document (title, body, works cited), then
     // the revision replaced the body; the essay as it came in is a version.
     let (_, doc) = t.get(&format!("/v1/projects/{p}/document"), "alice").await;

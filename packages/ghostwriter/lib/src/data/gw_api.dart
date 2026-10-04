@@ -198,6 +198,11 @@ class GwApi {
   Future<Map<String, dynamic>> versions(String projectId) =>
       _json('GET', '/v1/projects/$projectId/versions');
 
+  /// One saved version's text: `{ id, rev, reason, title, body,
+  /// bibliography }`.
+  Future<Map<String, dynamic>> version(String projectId, String versionId) =>
+      _json('GET', '/v1/projects/$projectId/versions/$versionId');
+
   /// Puts a version back; returns the document as [document] does.
   Future<Map<String, dynamic>> restoreVersion(
     String projectId,

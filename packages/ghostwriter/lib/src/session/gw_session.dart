@@ -59,6 +59,8 @@ class GwFolder {
 ///
 /// A run is followed over SSE; when the connection drops it reconnects from
 /// the last `seq` it saw, so nothing is missed or shown twice.
+enum RevisionReview { kept, undone }
+
 class GwSession extends ChangeNotifier {
   GwSession(this.api, {this.retryDelays = _defaultDelays});
 
@@ -135,6 +137,17 @@ class GwSession extends ChangeNotifier {
   String? actionError;
 
   bool get hasProject => projectId != null;
+
+  // ── Reviewing revisions ──────────────────────────────────────────────────
+
+  /// What the user did with each revision, by the version it replaced:
+  /// kept or undone. Unreviewed ones are not in it.
+  final Map<String, RevisionReview> reviews = {};
+
+  void reviewed(String versionId, RevisionReview review) {
+    reviews[versionId] = review;
+    _notify();
+  }
 
   // ── Attachments ──────────────────────────────────────────────────────────
 

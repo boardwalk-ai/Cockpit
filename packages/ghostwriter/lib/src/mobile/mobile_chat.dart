@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -12,6 +11,7 @@ import 'mobile_composer.dart';
 import 'mobile_details_sheet.dart';
 import 'mobile_motion.dart';
 import 'mobile_pills.dart';
+import 'mobile_review.dart';
 import 'mobile_theme.dart';
 
 /// Phone chat: the run's timeline (steps, questions, the word-count bar),
@@ -145,6 +145,18 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
     session.send(text);
   }
 
+  Future<void> _review(RevisionItem item) async {
+    final project = session.projectId;
+    if (project == null) return;
+    final result = await openGwReview(
+      context,
+      api: session.api,
+      projectId: project,
+      versionId: item.versionId,
+    );
+    if (result != null) session.reviewed(item.versionId, result);
+  }
+
   Future<void> _attach() async {
     final picked = await showGwAttachSheet(context);
     for (final file in picked) {
@@ -267,6 +279,14 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
         WritingItem() => GwWritingCard(
           writing: item,
           onOpenEditor: widget.onOpenEditor,
+        ),
+        RevisionItem() => GwRevisionCard(
+          revision: item,
+          review: session.reviews[item.versionId],
+          // Once the run is over (the document is unlocked).
+          onReview: timeline.items.contains(item) && !timeline.ended
+              ? null
+              : () => _review(item),
         ),
         EndItem() => GwEndCard(
           end: item,

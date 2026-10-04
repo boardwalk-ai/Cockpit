@@ -107,6 +107,19 @@ class WritingItem extends TimelineItem {
   bool done = false;
 }
 
+/// A revision was made: the essay as it was is kept as [versionId], to
+/// compare with the new text and keep or undo.
+class RevisionItem extends TimelineItem {
+  RevisionItem(
+    this.versionId, {
+    required this.wordsBefore,
+    required this.wordsAfter,
+  });
+  final String versionId;
+  final int wordsBefore;
+  final int wordsAfter;
+}
+
 /// The run's last word: finished (with the "Proceed to Editor" card when an
 /// essay was written), failed, or stopped.
 class EndItem extends TimelineItem {
@@ -282,6 +295,18 @@ class RunTimeline {
 
       case 'document_updated':
         documentRev = _int(event['rev']) ?? documentRev;
+
+      case 'revision':
+        final version = event['versionId']?.toString();
+        if (version != null) {
+          items.add(
+            RevisionItem(
+              version,
+              wordsBefore: _int(event['wordsBefore']) ?? 0,
+              wordsAfter: _int(event['wordsAfter']) ?? 0,
+            ),
+          );
+        }
 
       case 'credits':
         credits = _int(event['balance']) ?? credits;
