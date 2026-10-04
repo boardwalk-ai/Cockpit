@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../export/gw_pdf.dart';
 import '../session/gw_session.dart';
 import 'mobile_ai_settings.dart';
 import 'mobile_background.dart';
@@ -73,6 +74,12 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
     openGwEditor(context, api: session.api, projectId: project);
   }
 
+  Future<void> _download() async {
+    final project = session.projectId;
+    if (project == null) return;
+    await GwPdf.shareProject(session.api, project);
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -120,6 +127,7 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
                                 session: session,
                                 composer: _composer,
                                 onOpenEditor: _openEditor,
+                                onDownload: _download,
                               ),
                             )
                           : ValueListenableBuilder<TextEditingValue>(

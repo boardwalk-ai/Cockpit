@@ -13,6 +13,8 @@ export 'src/application/backend_config.dart'
 export 'src/application/essays_service.dart';
 export 'src/application/hein_service.dart';
 export 'src/application/lily_service.dart';
+export 'src/application/pdf_export.dart' show EssayInput, PdfStyle;
+export 'src/application/pdf_export_app.dart';
 export 'src/application/providers.dart';
 export 'src/application/sources.dart';
 export 'src/application/tools_service.dart';

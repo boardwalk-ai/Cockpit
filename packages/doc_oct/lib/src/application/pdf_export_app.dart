@@ -36,15 +36,16 @@ class DocPdf {
   }
 
   static PdfStyle _pdfStyle(FormatStyle s) => switch (s) {
-        FormatStyle.apa => PdfStyle.apa,
-        FormatStyle.mla => PdfStyle.mla,
-        FormatStyle.chicago => PdfStyle.chicago,
-        FormatStyle.ieee => PdfStyle.ieee,
-        FormatStyle.harvard => PdfStyle.harvard,
-      };
+    FormatStyle.apa => PdfStyle.apa,
+    FormatStyle.mla => PdfStyle.mla,
+    FormatStyle.chicago => PdfStyle.chicago,
+    FormatStyle.ieee => PdfStyle.ieee,
+    FormatStyle.harvard => PdfStyle.harvard,
+  };
 
   /// Builds an [EssayInput] from the editor's raw field values + body text +
   /// sources, formatting each reference for [style] via [CitationTemplates].
+  /// [references], when given, are already formatted and used as they are.
   static EssayInput inputFrom({
     required FormatStyle style,
     required String title,
@@ -57,6 +58,7 @@ class DocPdf {
     required String keywords,
     required String bodyText,
     required List<Source> sources,
+    List<String>? references,
   }) {
     final paragraphs = bodyText
         .replaceAll('\r\n', '\n')
@@ -64,10 +66,12 @@ class DocPdf {
         .map((p) => p.trim())
         .where((p) => p.isNotEmpty)
         .toList();
-    final refs = [
-      for (var i = 0; i < sources.length; i++)
-        CitationTemplates.reference(style, sources[i], i + 1),
-    ];
+    final refs =
+        references ??
+        [
+          for (var i = 0; i < sources.length; i++)
+            CitationTemplates.reference(style, sources[i], i + 1),
+        ];
     final t = title.trim().isEmpty ? 'Untitled Paper' : title.trim();
     return EssayInput(
       title: t,
@@ -76,12 +80,21 @@ class DocPdf {
       course: course.trim(),
       instructor: instructor.trim(),
       date: date.trim(),
-      dateDayMonthYear: date.trim(),
+      dateDayMonthYear: dayMonthYear(date.trim()),
       abstractText: abstractText.trim(),
       keywords: keywords.trim(),
       body: paragraphs,
       references: refs,
     );
+  }
+
+  /// MLA writes dates day first: "March 4, 2026" becomes "4 March 2026".
+  /// Anything else is left as it is.
+  static String dayMonthYear(String date) {
+    final m = RegExp(
+      r'^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})$',
+    ).firstMatch(date);
+    return m == null ? date : '${m[2]} ${m[1]} ${m[3]}';
   }
 
   /// Renders the finished bytes for [input] in [style].

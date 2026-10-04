@@ -1136,10 +1136,18 @@ class _AnswerChips extends StatelessWidget {
 /// Finished (with "Proceed to Editor" when there is an essay), failed, or
 /// stopped.
 class GwEndCard extends StatelessWidget {
-  const GwEndCard({super.key, required this.end, this.onOpenEditor});
+  const GwEndCard({
+    super.key,
+    required this.end,
+    this.onOpenEditor,
+    this.onDownload,
+  });
 
   final EndItem end;
   final VoidCallback? onOpenEditor;
+
+  /// Downloads the essay as a PDF. Null hides the row.
+  final Future<void> Function()? onDownload;
 
   @override
   Widget build(BuildContext context) {
@@ -1192,7 +1200,100 @@ class GwEndCard extends StatelessWidget {
         ),
         if (end.wroteEssay && onOpenEditor != null)
           GwEditorCard(onTap: onOpenEditor!),
+        if (end.wroteEssay &&
+            end.phase == RunPhase.finished &&
+            onDownload != null)
+          GwDownloadCard(onDownload: onDownload!),
       ],
+    );
+  }
+}
+
+/// "Download PDF": the essay, formatted in its citation style.
+class GwDownloadCard extends StatefulWidget {
+  const GwDownloadCard({super.key, required this.onDownload});
+
+  final Future<void> Function() onDownload;
+
+  @override
+  State<GwDownloadCard> createState() => _GwDownloadCardState();
+}
+
+class _GwDownloadCardState extends State<GwDownloadCard> {
+  var _busy = false;
+
+  Future<void> _download() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onDownload();
+    } on Object {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't make the PDF. Try again.")),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GwPressable(
+      pressedScale: 0.97,
+      haptic: GwHaptic.medium,
+      tooltip: 'Download PDF',
+      onTap: _download,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: _busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(3),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: GwColors.accentSoft,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.picture_as_pdf_rounded,
+                      color: GwColors.accentSoft,
+                      size: 22,
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _busy ? 'Making your PDF…' : 'Download PDF',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    'Formatted and ready to hand in',
+                    style: kGwBody.copyWith(
+                      color: GwColors.muted,
+                      fontSize: 11.5,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.download_rounded, color: GwColors.muted, size: 20),
+          ],
+        ),
+      ),
     );
   }
 }

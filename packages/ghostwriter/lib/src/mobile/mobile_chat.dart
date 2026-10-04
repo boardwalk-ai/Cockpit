@@ -20,11 +20,15 @@ class GhostWriterMobileChat extends StatefulWidget {
     required this.session,
     required this.composer,
     required this.onOpenEditor,
+    this.onDownload,
   });
 
   final GwSession session;
   final TextEditingController composer;
   final VoidCallback onOpenEditor;
+
+  /// Downloads the finished essay as a PDF.
+  final Future<void> Function()? onDownload;
 
   @override
   State<GhostWriterMobileChat> createState() => _GhostWriterMobileChatState();
@@ -239,7 +243,11 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
           writing: item,
           onOpenEditor: widget.onOpenEditor,
         ),
-        EndItem() => GwEndCard(end: item, onOpenEditor: widget.onOpenEditor),
+        EndItem() => GwEndCard(
+          end: item,
+          onOpenEditor: widget.onOpenEditor,
+          onDownload: widget.onDownload,
+        ),
       };
       widgets.add(GwAppear(key: ValueKey('item-$index'), child: child));
     }

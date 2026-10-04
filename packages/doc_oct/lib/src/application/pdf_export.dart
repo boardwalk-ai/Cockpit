@@ -66,13 +66,12 @@ class DocFonts {
     required ByteData bold,
     required ByteData italic,
     required ByteData boldItalic,
-  }) =>
-      DocFonts(
-        regular: pw.Font.ttf(regular),
-        bold: pw.Font.ttf(bold),
-        italic: pw.Font.ttf(italic),
-        boldItalic: pw.Font.ttf(boldItalic),
-      );
+  }) => DocFonts(
+    regular: pw.Font.ttf(regular),
+    bold: pw.Font.ttf(bold),
+    italic: pw.Font.ttf(italic),
+    boldItalic: pw.Font.ttf(boldItalic),
+  );
 }
 
 // US Letter in PDF points (72pt = 1in).
@@ -186,51 +185,86 @@ pw.Widget _header(
 /// nothing; Chicago starts "1" on page 2 (title page bare); the rest number
 /// every page from 1.
 int? _displayNumber(PdfStyle style, int page) => switch (style) {
-      PdfStyle.ieee => null,
-      PdfStyle.chicago => page <= 1 ? null : page - 1,
-      _ => page,
-    };
+  PdfStyle.ieee => null,
+  PdfStyle.chicago => page <= 1 ? null : page - 1,
+  _ => page,
+};
 
 // ── Per-style flows ──────────────────────────────────────────────────────────
 
-void _buildApa(List<pw.Widget> out, _Layout l, EssayInput i, double bodyLine,
-    double refLine) {
+void _buildApa(
+  List<pw.Widget> out,
+  _Layout l,
+  EssayInput i,
+  double bodyLine,
+  double refLine,
+) {
   // Title page: title 3 double-spaced lines down, bold; one blank line; block.
   l.blank(out, bodyLine, 3);
   l.para(out, i.title, line: bodyLine, center: true, bold: true);
   l.blank(out, bodyLine, 1);
-  for (final s in [i.studentName, i.institution, i.course, i.instructor, i.date]) {
+  for (final s in [
+    i.studentName,
+    i.institution,
+    i.course,
+    i.instructor,
+    i.date,
+  ]) {
     l.para(out, s, line: bodyLine, center: true);
   }
   out.add(pw.NewPage());
-  // Abstract page.
-  l.para(out, 'Abstract', line: bodyLine, center: true, bold: true);
-  l.para(out, i.abstractText, line: bodyLine);
-  l.keywords(out, i.keywords, line: bodyLine);
-  out.add(pw.NewPage());
+  // Abstract page, only when there is an abstract.
+  if (i.abstractText.trim().isNotEmpty) {
+    l.para(out, 'Abstract', line: bodyLine, center: true, bold: true);
+    l.para(out, i.abstractText, line: bodyLine);
+    l.keywords(out, i.keywords, line: bodyLine);
+    out.add(pw.NewPage());
+  }
   // Body (repeats the title, bold + centered).
   l.para(out, i.title, line: bodyLine, center: true, bold: true);
   l.paras(out, i.body, line: bodyLine, firstIndent: _indent);
   out.add(pw.NewPage());
   // References — bold heading, hanging indent, alphabetized.
-  l.references(out, 'References',
-      entries: _sorted(i.references), line: refLine, hanging: true, bold: true);
+  l.references(
+    out,
+    'References',
+    entries: _sorted(i.references),
+    line: refLine,
+    hanging: true,
+    bold: true,
+  );
 }
 
-void _buildMla(List<pw.Widget> out, _Layout l, EssayInput i, double bodyLine,
-    double refLine) {
+void _buildMla(
+  List<pw.Widget> out,
+  _Layout l,
+  EssayInput i,
+  double bodyLine,
+  double refLine,
+) {
   for (final s in [i.studentName, i.instructor, i.course, i.dateDayMonthYear]) {
     l.para(out, s, line: bodyLine);
   }
   l.para(out, i.title, line: bodyLine, center: true);
   l.paras(out, i.body, line: bodyLine, firstIndent: _indent);
   out.add(pw.NewPage());
-  l.references(out, 'Works Cited',
-      entries: _sorted(i.references), line: refLine, hanging: true, bold: false);
+  l.references(
+    out,
+    'Works Cited',
+    entries: _sorted(i.references),
+    line: refLine,
+    hanging: true,
+    bold: false,
+  );
 }
 
-void _buildChicago(List<pw.Widget> out, _Layout l, EssayInput i, double bodyLine,
-    double refLine) {
+void _buildChicago(
+  List<pw.Widget> out,
+  _Layout l,
+  EssayInput i,
+  double bodyLine,
+  double refLine,
+) {
   // Title page (no page number): title ~⅓ down, block ~⅔ down.
   l.blank(out, bodyLine, 7);
   l.para(out, i.title, line: bodyLine, center: true);
@@ -242,17 +276,25 @@ void _buildChicago(List<pw.Widget> out, _Layout l, EssayInput i, double bodyLine
   l.paras(out, i.body, line: bodyLine, firstIndent: _indent);
   out.add(pw.NewPage());
   // Bibliography — single-spaced entries, blank line between, hanging, A→Z.
-  l.references(out, 'Bibliography',
-      entries: _sorted(i.references),
-      line: refLine,
-      hanging: true,
-      bold: true,
-      headingGap: 12,
-      entryGap: 12);
+  l.references(
+    out,
+    'Bibliography',
+    entries: _sorted(i.references),
+    line: refLine,
+    hanging: true,
+    bold: true,
+    headingGap: 12,
+    entryGap: 12,
+  );
 }
 
-void _buildIeee(List<pw.Widget> out, _Layout l, EssayInput i, double bodyLine,
-    double refLine) {
+void _buildIeee(
+  List<pw.Widget> out,
+  _Layout l,
+  EssayInput i,
+  double bodyLine,
+  double refLine,
+) {
   l.para(out, i.title, line: bodyLine, center: true, bold: true, gapAfter: 12);
   l.para(out, i.studentName, line: bodyLine, center: true, gapAfter: 5);
   l.para(out, i.institution, line: bodyLine, center: true, gapAfter: 5);
@@ -262,36 +304,53 @@ void _buildIeee(List<pw.Widget> out, _Layout l, EssayInput i, double bodyLine,
   // References numbered in citation order — never alphabetized, no hanging.
   final numbered = [
     for (var k = 0; k < i.references.length; k++)
-      '[${k + 1}] ${i.references[k].replaceFirst(RegExp(r'^\[\d+\]\s*'), '')}'
+      '[${k + 1}] ${i.references[k].replaceFirst(RegExp(r'^\[\d+\]\s*'), '')}',
   ];
-  l.references(out, 'References',
-      entries: numbered,
-      line: refLine,
-      hanging: false,
-      bold: true,
-      headingGap: 10,
-      entryGap: 8);
+  l.references(
+    out,
+    'References',
+    entries: numbered,
+    line: refLine,
+    hanging: false,
+    bold: true,
+    headingGap: 10,
+    entryGap: 8,
+  );
 }
 
-void _buildHarvard(List<pw.Widget> out, _Layout l, EssayInput i, double bodyLine,
-    double refLine) {
+void _buildHarvard(
+  List<pw.Widget> out,
+  _Layout l,
+  EssayInput i,
+  double bodyLine,
+  double refLine,
+) {
   // Title page — centered block, 1.2em gaps.
   l.blank(out, bodyLine, 5);
   l.para(out, i.title, line: bodyLine, center: true, bold: true, gapAfter: 14);
-  for (final s in [i.studentName, i.institution, i.course, i.instructor, i.date]) {
+  for (final s in [
+    i.studentName,
+    i.institution,
+    i.course,
+    i.instructor,
+    i.date,
+  ]) {
     l.para(out, s, line: bodyLine, center: true, gapAfter: 14);
   }
   out.add(pw.NewPage());
   l.para(out, i.title, line: bodyLine, center: true, bold: true, gapAfter: 19);
   l.paras(out, i.body, line: bodyLine, firstIndent: _indent);
   out.add(pw.NewPage());
-  l.references(out, 'Reference List',
-      entries: _sorted(i.references),
-      line: refLine,
-      hanging: true,
-      bold: true,
-      headingGap: 12,
-      entryGap: 12);
+  l.references(
+    out,
+    'Reference List',
+    entries: _sorted(i.references),
+    line: refLine,
+    hanging: true,
+    bold: true,
+    headingGap: 12,
+    entryGap: 12,
+  );
 }
 
 // ── Bibliography ordering ────────────────────────────────────────────────────
@@ -325,9 +384,17 @@ class _Layout {
 
   double _width(String s, PdfFont f) => f.stringMetrics(s).width * size;
 
-  List<String> _wrap(String text, PdfFont f,
-      {required double firstIndent, required double restIndent}) {
-    final words = text.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  List<String> _wrap(
+    String text,
+    PdfFont f, {
+    required double firstIndent,
+    required double restIndent,
+  }) {
+    final words = text
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .toList();
     if (words.isEmpty) return const [''];
     final lines = <String>[];
     var cur = '';
@@ -393,9 +460,12 @@ class _Layout {
   }) {
     final measure = bold ? mBold : mReg;
     final render = bold ? fonts.bold : fonts.regular;
-    final lines = _wrap(text, measure,
-        firstIndent: center ? 0 : firstIndent,
-        restIndent: center ? 0 : restIndent);
+    final lines = _wrap(
+      text,
+      measure,
+      firstIndent: center ? 0 : firstIndent,
+      restIndent: center ? 0 : restIndent,
+    );
     for (var idx = 0; idx < lines.length; idx++) {
       final ind = idx == 0 ? firstIndent : restIndent;
       out.add(_lineBox(lines[idx], render, line, center: center, indent: ind));
@@ -418,24 +488,36 @@ class _Layout {
 
   /// APA keywords line: italic "Keywords:" label, indented like a paragraph.
   void keywords(List<pw.Widget> out, String kw, {required double line}) {
-    out.add(pw.Container(
-      height: line,
-      padding: const pw.EdgeInsets.only(left: _indent),
-      alignment: pw.Alignment.centerLeft,
-      child: pw.RichText(
-        maxLines: 1,
-        text: pw.TextSpan(children: [
-          pw.TextSpan(
-            text: 'Keywords: ',
-            style: pw.TextStyle(font: fonts.italic, fontSize: size, color: _ink),
+    out.add(
+      pw.Container(
+        height: line,
+        padding: const pw.EdgeInsets.only(left: _indent),
+        alignment: pw.Alignment.centerLeft,
+        child: pw.RichText(
+          maxLines: 1,
+          text: pw.TextSpan(
+            children: [
+              pw.TextSpan(
+                text: 'Keywords: ',
+                style: pw.TextStyle(
+                  font: fonts.italic,
+                  fontSize: size,
+                  color: _ink,
+                ),
+              ),
+              pw.TextSpan(
+                text: kw,
+                style: pw.TextStyle(
+                  font: fonts.regular,
+                  fontSize: size,
+                  color: _ink,
+                ),
+              ),
+            ],
           ),
-          pw.TextSpan(
-            text: kw,
-            style: pw.TextStyle(font: fonts.regular, fontSize: size, color: _ink),
-          ),
-        ]),
+        ),
       ),
-    ));
+    );
   }
 
   /// A references section: centered heading, then the entries.
@@ -452,16 +534,24 @@ class _Layout {
     para(out, heading, line: line, center: true, bold: bold);
     if (headingGap > 0) out.add(pw.SizedBox(height: headingGap));
     for (final e in entries) {
-      para(out, e,
-          line: line,
-          firstIndent: 0,
-          restIndent: hanging ? _indent : 0,
-          gapAfter: entryGap);
+      para(
+        out,
+        e,
+        line: line,
+        firstIndent: 0,
+        restIndent: hanging ? _indent : 0,
+        gapAfter: entryGap,
+      );
     }
   }
 
-  pw.Widget _lineBox(String text, pw.Font font, double line,
-      {required bool center, required double indent}) {
+  pw.Widget _lineBox(
+    String text,
+    pw.Font font,
+    double line, {
+    required bool center,
+    required double indent,
+  }) {
     return pw.Container(
       height: line,
       alignment: center ? pw.Alignment.center : pw.Alignment.centerLeft,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 
 import '../data/gw_api.dart';
+import '../export/gw_pdf.dart';
 import '../session/doc_session.dart';
 import 'mobile_motion.dart';
 import 'mobile_theme.dart';
@@ -129,6 +130,24 @@ class _GwEditorPageState extends State<GwEditorPage>
     super.dispose();
   }
 
+  /// The essay as it stands in the editor, as a formatted PDF.
+  Future<void> _download() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await GwPdf.share(
+        style: _doc.style,
+        title: _doc.title.text,
+        fields: {for (final e in _doc.fields.entries) e.key: e.value.text},
+        body: _doc.body.document.toPlainText(),
+        bibliography: _doc.bibliography.text,
+      );
+    } on Object {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't make the PDF. Try again.")),
+      );
+    }
+  }
+
   Future<void> _openHistory() async {
     gwHaptic(GwHaptic.light);
     await showModalBottomSheet<void>(
@@ -171,7 +190,11 @@ class _GwEditorPageState extends State<GwEditorPage>
             body: SafeArea(
               child: Column(
                 children: [
-                  _Bar(doc: _doc, onHistory: editable ? _openHistory : null),
+                  _Bar(
+                    doc: _doc,
+                    onHistory: editable ? _openHistory : null,
+                    onDownload: editable ? _download : null,
+                  ),
                   _Notices(doc: _doc),
                   Expanded(
                     child: !_doc.loaded
@@ -456,10 +479,17 @@ class _Details extends StatelessWidget {
 }
 
 class _Bar extends StatelessWidget {
-  const _Bar({required this.doc, required this.onHistory});
+  const _Bar({
+    required this.doc,
+    required this.onHistory,
+    required this.onDownload,
+  });
 
   final GwDocumentSession doc;
   final VoidCallback? onHistory;
+
+  /// Null while the agent writes.
+  final VoidCallback? onDownload;
 
   @override
   Widget build(BuildContext context) {
@@ -522,6 +552,20 @@ class _Bar extends StatelessWidget {
               ),
             ),
           ),
+          if (onDownload != null)
+            GwPressable(
+              tooltip: 'Download PDF',
+              onTap: onDownload,
+              child: const SizedBox(
+                width: kGwButton,
+                height: kGwButton,
+                child: Icon(
+                  Icons.download_rounded,
+                  color: _Paper.ink,
+                  size: 22,
+                ),
+              ),
+            ),
           if (onHistory != null)
             GwPressable(
               tooltip: 'History',
