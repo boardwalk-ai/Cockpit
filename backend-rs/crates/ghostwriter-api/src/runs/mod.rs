@@ -498,14 +498,14 @@ async fn close_in_db(
             .await?
             .rows_affected()
             > 0;
-    // A project with words in it is worth opening even if the run failed.
+    // A project with words in it is worth opening, however the run ended;
+    // one without (a refused brief) is not a ready essay.
     sqlx::query(
         "UPDATE projects SET updated_at = now(), status = \
-             CASE WHEN $2 OR word_count > 0 THEN 'ready' ELSE 'idle' END \
+             CASE WHEN word_count > 0 THEN 'ready' ELSE 'idle' END \
          WHERE id = $1",
     )
     .bind(project_id)
-    .bind(status == "finished")
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;

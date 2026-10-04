@@ -25,6 +25,7 @@ use self::tools::Failure;
 use crate::documents;
 use crate::llm::{self, ChatRequest, Llm, OpenRouter, ToolCall};
 use crate::runs::driver::{RunCtx, RunError};
+use crate::safety::Stage;
 use crate::scrape::Scraper;
 use crate::AppState;
 
@@ -170,6 +171,8 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
         run.emit("user_message", json!({ "text": instruction }))
             .await?;
     }
+    // Before anything is spent on it.
+    run.screen(Stage::Task, &instruction).await?;
 
     // The model and voice the user chose, fixed for this run.
     let ai = snapshot_for(&run.st, run.user_id).await;
@@ -323,10 +326,12 @@ async fn drive(
         if waiting_for_reply {
             waiting_for_reply = false;
             let text = agent.run.wait_message().await?;
+            agent.run.screen(Stage::Task, &text).await?;
             messages.push(llm::user(text));
         }
         // What the user said while tools were running.
         for text in agent.run.take_messages() {
+            agent.run.screen(Stage::Task, &text).await?;
             messages.push(llm::user(text));
         }
 

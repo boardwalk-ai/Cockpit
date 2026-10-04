@@ -31,6 +31,8 @@ pub enum RunError {
     /// The run waited long enough on the user to be let go; their answer
     /// queues it again.
     Parked,
+    /// The content check stopped the task; the user has been told why.
+    Refused,
     Db(sqlx::Error),
 }
 
@@ -356,6 +358,29 @@ impl RunCtx {
         }
     }
 
+    /// Checks `text` against the content policy. A refused one is logged,
+    /// the user is told, and the run ends ([`RunError::Refused`]).
+    pub async fn screen(&self, stage: crate::safety::Stage, text: &str) -> Result<(), RunError> {
+        if self.replaying() || text.trim().is_empty() {
+            return Ok(());
+        }
+        match self.st.screen.check(stage, text).await {
+            crate::safety::Verdict::Allow => Ok(()),
+            crate::safety::Verdict::Refuse { category, reply } => {
+                crate::safety::log(
+                    &self.st.db,
+                    self.user_id,
+                    Some(self.run_id),
+                    stage,
+                    &category,
+                )
+                .await;
+                self.say(&reply).await?;
+                Err(RunError::Refused)
+            }
+        }
+    }
+
     /// Says something as GhostWriter: deltas for a live client, then the
     /// stored message.
     pub(crate) async fn say(&self, text: &str) -> Result<(), RunError> {
@@ -403,7 +428,8 @@ pub fn spawn(st: AppState, job: Job, slots: Arc<Semaphore>, slot: OwnedSemaphore
         }
         .await;
         let outcome = match result {
-            Ok(()) => Outcome::Finished,
+            // A refused task ends like an answered one: the reply is said.
+            Ok(()) | Err(RunError::Refused) => Outcome::Finished,
             // Whoever stopped the run has closed it already; a parked run
             // waits in the database for its answer.
             Err(RunError::Stopped | RunError::Parked) => return,

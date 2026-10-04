@@ -10,6 +10,7 @@ pub mod pricing;
 pub mod push;
 pub mod routes;
 pub mod runs;
+pub mod safety;
 pub mod scrape;
 pub mod sweeper;
 
@@ -65,6 +66,8 @@ pub struct AppState {
     pub llm: Option<Arc<dyn Llm>>,
     pub scraper: Arc<dyn Scraper>,
     pub humanizer: Arc<dyn Humanizer>,
+    /// Content checks on what runs are asked to write (src/safety.rs).
+    pub screen: Arc<dyn safety::Screen>,
     /// Sends push notifications; does nothing when FCM is not configured.
     pub pusher: Arc<dyn Pusher>,
     /// Models, personalities and prices from the shared DB (cached).
@@ -122,6 +125,7 @@ impl AppState {
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             scraper: Arc::new(HttpScraper::new(http.clone(), config.scraper_url.clone())),
             humanizer: Arc::new(HttpHumanizer::new(http.clone(), octopilot.clone())),
+            screen: Arc::new(safety::Moderation::new(http.clone(), octopilot.clone())),
             pusher,
             ai: octo_common::ai::AiSettings::default(),
             app_status: app_status::AppStatus::default(),

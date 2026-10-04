@@ -364,3 +364,24 @@ impl Scraper for FakeScraper {
         }
     }
 }
+
+/// A content check that refuses everything at one stage.
+pub struct FakeScreen(pub ghostwriter_api::safety::Stage);
+
+#[axum::async_trait]
+impl ghostwriter_api::safety::Screen for FakeScreen {
+    async fn check(
+        &self,
+        stage: ghostwriter_api::safety::Stage,
+        _text: &str,
+    ) -> ghostwriter_api::safety::Verdict {
+        if stage == self.0 {
+            ghostwriter_api::safety::Verdict::Refuse {
+                category: "illicit".into(),
+                reply: ghostwriter_api::safety::reply_for("illicit"),
+            }
+        } else {
+            ghostwriter_api::safety::Verdict::Allow
+        }
+    }
+}

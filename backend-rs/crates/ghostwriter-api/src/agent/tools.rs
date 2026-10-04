@@ -19,6 +19,7 @@ use crate::humanize::{self, Provider};
 use crate::llm::{system, user, ChatRequest};
 use crate::pricing;
 use crate::runs::driver::RunError;
+use crate::safety::Stage;
 
 /// A tool's reply to the model and its summary for the timeline.
 type Done = (Value, String);
@@ -475,6 +476,23 @@ async fn generate_outlines(agent: &mut Agent<'_>, args: &Value) -> Result<Done, 
     if outlines.is_empty() {
         return Err("the model returned no outlines".into());
     }
+
+    // The whole essay's shape, before any of it is written.
+    let plan: Vec<String> = outlines
+        .iter()
+        .map(|o| format!("{}: {}", o.title, o.description))
+        .collect();
+    agent
+        .run
+        .screen(
+            Stage::Outline,
+            &format!(
+                "{topic}\n{}\n{}",
+                agent.ctx.thesis.as_deref().unwrap_or(""),
+                plan.join("\n")
+            ),
+        )
+        .await?;
 
     agent.ctx.outlines = outlines.clone();
     agent
@@ -963,6 +981,7 @@ async fn write_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failur
         reasoning: None,
     };
     let (body, bibliography) = stream_into_document(agent, request, target, "agent_write").await?;
+    screen_output(agent, &body, "", target).await?;
     let cited: Vec<&Source> = agent.ctx.compacted.iter().map(|c| &c.source).collect();
     let cited = json!(cited);
 
@@ -1128,6 +1147,26 @@ async fn finish_document_write(
     Ok(words)
 }
 
+/// Checks freshly written text before it is kept. Refused, the document
+/// goes back to `before` (empty for a first draft), nothing is charged and
+/// the run ends.
+async fn screen_output(
+    agent: &mut Agent<'_>,
+    text: &str,
+    before: &str,
+    target: i64,
+) -> Result<(), Failure> {
+    let checked = agent.run.screen(Stage::Output, text).await;
+    if let Err(RunError::Refused) = checked {
+        let save = AgentSave {
+            body: Some(before),
+            ..AgentSave::default()
+        };
+        finish_document_write(agent, save, target).await?;
+    }
+    Ok(checked?)
+}
+
 /// `revise_essay`: rewrites the essay as it stands in the document (with the
 /// user's own edits) to do what the user asked. A version is kept first, so
 /// the revision can be undone from History.
@@ -1183,6 +1222,7 @@ async fn revise_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failu
     };
     let (revised, new_bibliography) =
         stream_into_document(agent, request, current, "agent_revise").await?;
+    screen_output(agent, &revised, &body, current).await?;
     // A reviser that drops the bibliography keeps the old one.
     let new_bibliography = if new_bibliography.is_empty() {
         bibliography.trim().to_string()

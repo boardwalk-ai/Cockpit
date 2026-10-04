@@ -75,7 +75,9 @@ impl TestApp {
         config.driver = "scripted".into();
         config.worker_poll = std::time::Duration::from_millis(20);
         tweak(&mut config);
-        let state = AppState::connect(config).await.expect("app state");
+        let mut state = AppState::connect(config).await.expect("app state");
+        // No network in tests: content checks pass unless a test sets one.
+        state.screen = std::sync::Arc::new(ghostwriter_api::safety::AllowAll);
         TestApp {
             app: app(state.clone()),
             state,
