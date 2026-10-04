@@ -157,8 +157,25 @@ class VoiceLoop extends ChangeNotifier {
   }
 
   /// [text] in sentences to speak one at a time. Very short ones go with
-  /// the next, so the voice does not stop and start too often.
+  /// the next, so the voice does not stop and start too often. A long
+  /// first sentence is split at a comma: the voice waits for the whole
+  /// first piece to be made, and later ones are made while it plays.
   static List<String> sentences(String text) {
+    final out = _sentences(text);
+    if (out.isNotEmpty && out.first.length > 70) {
+      final first = out.first;
+      final comma = first.indexOf(RegExp(r',\s'), 20);
+      if (comma > 0 && first.length - comma > 25) {
+        out.replaceRange(0, 1, [
+          first.substring(0, comma + 1),
+          first.substring(comma + 1).trim(),
+        ]);
+      }
+    }
+    return out;
+  }
+
+  static List<String> _sentences(String text) {
     final parts = text
         .trim()
         .split(RegExp(r'(?<=[.!?])\s+'))

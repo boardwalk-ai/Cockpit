@@ -22,4 +22,18 @@ void main() {
     expect(VoiceLoop.sentences('Hi!'), ['Hi!']);
     expect(VoiceLoop.sentences('   '), isEmpty);
   });
+
+  test('a long first sentence starts at its first comma', () {
+    expect(
+      VoiceLoop.sentences(
+        'GhostWriter plans your essay with you, finds sources and writes '
+        'each section in your voice. Then you can download it as a PDF.',
+      ),
+      [
+        'GhostWriter plans your essay with you,',
+        'finds sources and writes each section in your voice. '
+            'Then you can download it as a PDF.',
+      ],
+    );
+  });
 }
