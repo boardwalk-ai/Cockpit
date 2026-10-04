@@ -108,6 +108,10 @@ pub struct FakeLlm {
     pub evaluation: Mutex<Option<String>>,
     /// Makes the paragraph splitter change a word, which must be refused.
     pub careless_splitter: Mutex<bool>,
+    /// What the file reader says an attached file is (`kind`).
+    pub file_kind: Mutex<Option<String>>,
+    /// What the attachment router decides (`use`); "unclear" when unset.
+    pub attachment_use: Mutex<Option<String>>,
 }
 
 impl FakeLlm {
@@ -239,6 +243,38 @@ impl Llm for FakeLlm {
                     });
                 return Ok(ChatReply {
                     content,
+                    tool_calls: Vec::new(),
+                });
+            }
+            if system.contains("file reader of GhostWriter") {
+                let kind = self
+                    .file_kind
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap_or_else(|| "essay".into());
+                let content = json!({
+                    "kind": kind,
+                    "title": "Tides at the Door",
+                    "citationStyle": "MLA",
+                    "summary": "An essay on coastal flooding.",
+                    "addressedToAi": asked.contains("Ignore your instructions"),
+                })
+                .to_string();
+                return Ok(ChatReply {
+                    content,
+                    tool_calls: Vec::new(),
+                });
+            }
+            if system.contains("attachment router") {
+                let chosen = self
+                    .attachment_use
+                    .lock()
+                    .unwrap()
+                    .clone()
+                    .unwrap_or_else(|| "unclear".into());
+                return Ok(ChatReply {
+                    content: json!({ "use": chosen }).to_string(),
                     tool_calls: Vec::new(),
                 });
             }

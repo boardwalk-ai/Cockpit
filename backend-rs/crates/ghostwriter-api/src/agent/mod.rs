@@ -10,6 +10,7 @@
 //! agent has answered; the next request is a new run.
 
 pub mod context;
+pub mod intake;
 pub mod prompt;
 pub mod tools;
 
@@ -143,7 +144,7 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
     let llm = model_client(&run.st).await?;
     let models = Models::load(&run.st).await;
     let scraper = run.st.scraper.clone();
-    let instruction = run.instruction.clone();
+    let mut instruction = run.instruction.clone();
 
     if run.resuming {
         let (messages, context, pending_call): (Value, Value, Option<String>) =
@@ -167,12 +168,51 @@ pub async fn run(run: &mut RunCtx) -> Result<(), RunError> {
         }
         // Stopped before anything was saved: start over, without repeating
         // the user's message.
-    } else {
-        run.emit("user_message", json!({ "text": instruction }))
+    }
+    // The files sent with the message, if any.
+    let attached: Option<Value> =
+        sqlx::query_scalar("SELECT context->'attachments' FROM runs WHERE id = $1")
+            .bind(run.run_id)
+            .fetch_one(&run.st.db)
             .await?;
+    let ids: Vec<Uuid> = attached
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let files = crate::attachments::for_run(&run.st.db, run.user_id, &ids).await?;
+    if !run.resuming {
+        let cards: Vec<&crate::attachments::Card> = files.iter().map(|(card, _)| card).collect();
+        let mut said = json!({ "text": instruction });
+        if !cards.is_empty() {
+            said["attachments"] = json!(cards);
+        }
+        run.emit("user_message", said).await?;
     }
     // Before anything is spent on it.
     run.screen(Stage::Task, &instruction).await?;
+
+    // What to do with the files: the user's words decide, or their answer.
+    if !files.is_empty() {
+        let essay_written: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM documents WHERE project_id = $1 AND btrim(body) <> '')",
+        )
+        .bind(run.project_id)
+        .fetch_one(&run.st.db)
+        .await?;
+        let decided = intake::decide(
+            run,
+            llm.as_ref(),
+            &models.secondary,
+            &instruction,
+            &files,
+            essay_written,
+        )
+        .await?;
+        match decided {
+            Some(decided) => instruction = decided,
+            // The user said no to the file's task: answered, nothing to do.
+            None => return Ok(()),
+        }
+    }
 
     // The model and voice the user chose, fixed for this run.
     let ai = snapshot_for(&run.st, run.user_id).await;

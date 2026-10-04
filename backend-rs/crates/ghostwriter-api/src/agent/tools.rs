@@ -319,14 +319,16 @@ fn strings(value: &Value, max: usize) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The user's instructions on this project ("keep it formal"), for a brief.
+/// The user's instructions on this project ("keep it formal"), and the
+/// files they attached as material, for a brief.
 async fn user_instructions(agent: &Agent<'_>) -> Result<String, Failure> {
     let all = crate::runs::aside::directives(&agent.run.st, agent.run.project_id).await?;
+    let materials = crate::attachments::materials(&agent.run.st.db, agent.run.project_id).await?;
     if all.is_empty() {
-        return Ok(String::new());
+        return Ok(materials);
     }
     Ok(format!(
-        "\n\nTHE USER'S INSTRUCTIONS (follow them):\n- {}",
+        "\n\nTHE USER'S INSTRUCTIONS (follow them):\n- {}{materials}",
         all.join("\n- ")
     ))
 }
@@ -363,6 +365,7 @@ async fn plan_essay(agent: &mut Agent<'_>, args: &Value) -> Result<Done, Failure
     if let Some(notes) = optional(&args["notes"]) {
         message.push_str(&format!("\n\nOrchestrator notes:\n{notes}"));
     }
+    message.push_str(&user_instructions(agent).await?);
 
     let plan = ask_json(
         agent,

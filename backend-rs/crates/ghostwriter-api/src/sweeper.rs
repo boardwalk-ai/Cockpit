@@ -139,6 +139,10 @@ async fn sweep_user(
         .bind(user_id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("DELETE FROM safety_events WHERE user_id = $1")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM folders WHERE user_id = $1")
         .bind(user_id)
         .execute(&mut *tx)

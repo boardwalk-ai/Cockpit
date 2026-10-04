@@ -53,8 +53,12 @@ fn is_active(status: &str) -> bool {
 pub struct StartRun {
     /// Chosen by the client, so a retried start cannot begin a second run.
     pub run_id: Uuid,
-    /// The brief. Falls back to the one saved on the project.
+    /// The brief. Falls back to the one saved on the project. May be empty
+    /// when files are attached: the run then asks what to do with them.
     pub instruction: Option<String>,
+    /// Files attached with this message (POST .../attachments first).
+    #[serde(default)]
+    pub attachments: Vec<Uuid>,
 }
 
 /// `POST /v1/projects/:id/runs` — start a run on the project.
@@ -85,9 +89,40 @@ pub async fn start(
         return Err(conflict("that run id is already in use", "run_id_taken"));
     }
 
-    let instruction = clean_text(body.instruction, 20_000, "instruction")?
-        .or_else(|| Some(saved).filter(|s| !s.is_empty()))
-        .ok_or_else(|| ApiError::bad_request("instruction is required"))?;
+    if body.attachments.len() > 5 {
+        return Err(ApiError::bad_request("attach at most 5 files at once"));
+    }
+    // The files must be this project's.
+    let titles: Vec<(Uuid, String)> = sqlx::query_as(
+        "SELECT id, card->>'title' FROM attachments \
+         WHERE id = ANY($1) AND project_id = $2 AND user_id = $3",
+    )
+    .bind(&body.attachments)
+    .bind(project_id)
+    .bind(caller.user_id)
+    .fetch_all(&st.db)
+    .await?;
+    if titles.len() != body.attachments.len() {
+        return Err(ApiError::not_found("attachment not found"));
+    }
+    let attached = !body.attachments.is_empty();
+    let instruction = match clean_text(body.instruction, 20_000, "instruction")? {
+        Some(text) => text,
+        None if attached => String::new(),
+        None => Some(saved)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| ApiError::bad_request("instruction is required"))?,
+    };
+    // An untitled project is named after its brief, or its first file.
+    let name = if instruction.is_empty() {
+        body.attachments
+            .first()
+            .and_then(|id| titles.iter().find(|(i, _)| i == id))
+            .map(|(_, title)| title.clone())
+            .unwrap_or_default()
+    } else {
+        instruction.clone()
+    };
 
     let mut tx = st.db.begin().await?;
     let inserted = sqlx::query(
@@ -97,7 +132,7 @@ pub async fn start(
     .bind(body.run_id)
     .bind(project_id)
     .bind(caller.user_id)
-    .bind(json!({ "instruction": instruction }))
+    .bind(json!({ "instruction": instruction, "attachments": body.attachments }))
     .execute(&mut *tx)
     .await;
     match inserted {
@@ -114,11 +149,13 @@ pub async fn start(
     // An untitled project takes its name from the brief.
     sqlx::query(
         "UPDATE projects SET instruction = $2, status = 'writing', updated_at = now(), \
-             title = CASE WHEN title = 'Untitled essay' THEN left($2, 80) ELSE title END \
+             title = CASE WHEN title = 'Untitled essay' AND $3 <> '' \
+                          THEN left($3, 80) ELSE title END \
          WHERE id = $1",
     )
     .bind(project_id)
     .bind(&instruction)
+    .bind(&name)
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;

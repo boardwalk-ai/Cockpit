@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod attachments;
 pub mod devices;
 pub mod documents;
 pub mod folders;

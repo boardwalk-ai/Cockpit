@@ -1,5 +1,6 @@
 pub mod agent;
 pub mod app_status;
+pub mod attachments;
 pub mod config;
 pub mod ctx;
 pub mod documents;
@@ -33,8 +34,8 @@ use crate::live_docs::LiveDocs;
 use crate::llm::Llm;
 use crate::push::{FcmPusher, NoPusher, Pusher};
 use crate::routes::{
-    ai as ai_routes, devices, documents as doc_routes, folders, octo, projects, runs as run_routes,
-    system,
+    ai as ai_routes, attachments as attachment_routes, devices, documents as doc_routes, folders,
+    octo, projects, runs as run_routes, system,
 };
 use crate::runs::worker::WorkerHandle;
 use crate::runs::Hub;
@@ -171,6 +172,17 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/v1/projects/:id/versions/:version_id/restore",
             post(doc_routes::restore),
+        )
+        .route(
+            "/v1/projects/:id/attachments",
+            post(attachment_routes::upload)
+                .get(attachment_routes::list)
+                // A 20 MB file, as base64 in JSON.
+                .layer(axum::extract::DefaultBodyLimit::max(28 * 1024 * 1024)),
+        )
+        .route(
+            "/v1/attachments/:id",
+            axum::routing::delete(attachment_routes::remove),
         )
         .route("/v1/projects/:id/runs", post(run_routes::start))
         .route("/v1/runs/:run_id", get(run_routes::get_one))
