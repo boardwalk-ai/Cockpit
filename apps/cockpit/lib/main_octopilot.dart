@@ -99,7 +99,8 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   void initState() {
     super.initState();
     _loadTheme();
-    _loadVoice().then((_) => _voiceEngine.warmUp(_voice.value));
+    // The first greeting, made now: it also loads the on-device model.
+    _loadVoice().then((_) => _services.prepareGreeting());
     _signIns = _auth.authStateChanges().listen((_) => _loadAccount());
     _loadAccount();
   }

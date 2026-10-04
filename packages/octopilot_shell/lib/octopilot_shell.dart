@@ -9,6 +9,7 @@ export 'src/shell_app.dart';
 export 'src/shell_models.dart';
 export 'src/shell_scope.dart';
 export 'src/shell_theme.dart';
+export 'src/voice/greetings.dart';
 export 'src/voice/voice_engine.dart';
 export 'src/voice/voice_orb.dart' show VoiceOrb, VoicePhase;
 export 'src/widgets.dart' show formatCredits;

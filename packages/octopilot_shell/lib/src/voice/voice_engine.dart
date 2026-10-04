@@ -29,18 +29,27 @@ class VoiceUnavailable implements Exception {
 /// the same history.
 abstract class VoiceEngine {
   /// Listens until the user stops talking (or [finishListening]). Returns
-  /// what they said; null if nothing.
+  /// what they said; null if nothing. [held]: the user holds a button while
+  /// talking, so a pause is not the end; only [finishListening] is (the
+  /// recognizer may still end on its own, and is then asked again).
   Future<String?> listen({
     required ValueChanged<String> onPartial,
     required ValueChanged<double> onLevel,
+    bool held = false,
   });
 
-  /// Take what has been heard so far as the whole turn.
+  /// Take what has been heard so far as the whole turn. Also counts when
+  /// it comes right after [listen] was called, before the microphone opened.
   void finishListening();
 
   /// Synthesises [text] in [voice]. The reply is shown only once this is
-  /// done, then its words light up as [play] speaks them.
-  Future<Speech> prepare(String text, {required String voice});
+  /// done, then its words light up as [play] speaks them. [keep]: the same
+  /// text will be asked for again (a greeting), so the engine may keep it.
+  Future<Speech> prepare(
+    String text, {
+    required String voice,
+    bool keep = false,
+  });
 
   /// Plays [speech]. [onProgress] goes 0→1 as it is spoken.
   Future<void> play(
@@ -80,17 +89,22 @@ class DemoVoiceEngine implements VoiceEngine {
   Future<String?> listen({
     required ValueChanged<String> onPartial,
     required ValueChanged<double> onLevel,
+    bool held = false,
   }) async {
     final words = _questions[_turn++ % _questions.length].split(' ');
     _finish = false;
     final cut = _cut = Completer<void>();
     // A breath before they start.
-    if (await _wait(wordTime * 3, cut)) return null;
+    if (await _wait(wordTime * 3, cut) || _finish) return null;
     final heard = <String>[];
     for (final word in words) {
       heard.add(word);
       onPartial(heard.join(' '));
       if (await _talk(wordTime, cut, onLevel) || _finish) break;
+    }
+    // Held: the words are out; wait for the release.
+    while (held && !_finish && !cut.isCompleted) {
+      await _wait(frame, cut);
     }
     onLevel(0);
     if (cut.isCompleted && !_finish) return null;
@@ -104,7 +118,11 @@ class DemoVoiceEngine implements VoiceEngine {
   }
 
   @override
-  Future<Speech> prepare(String text, {required String voice}) async {
+  Future<Speech> prepare(
+    String text, {
+    required String voice,
+    bool keep = false,
+  }) async {
     await Future<void>.delayed(wordTime * 2);
     final words = text.split(' ').length;
     return Speech(text: text, duration: wordTime * 0.7 * words);

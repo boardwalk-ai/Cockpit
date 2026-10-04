@@ -74,6 +74,11 @@ class PocketVoiceEngine implements VoiceEngine {
   bool? _earsReady;
   Completer<String?>? _heard;
   var _partial = '';
+  var _finishAsked = false;
+
+  /// Speech kept for texts said again and again (greetings), by voice and
+  /// text; also on disk off the web, so it outlives the app.
+  final _kept = <String, _Clip>{};
   final _player = AudioPlayer();
 
   /// The model on the phone itself, when this build has it; otherwise the
@@ -88,7 +93,10 @@ class PocketVoiceEngine implements VoiceEngine {
   Future<String?> listen({
     required ValueChanged<String> onPartial,
     required ValueChanged<double> onLevel,
+    bool held = false,
   }) async {
+    // A release can come before the microphone is open (a quick tap).
+    _finishAsked = false;
     _earsReady ??= await _ears.initialize(
       onStatus: (status) {
         if (status == 'done' || status == 'notListening') _finishHearing();
@@ -105,6 +113,7 @@ class PocketVoiceEngine implements VoiceEngine {
     if (_ears.isListening) await _ears.cancel();
     _partial = '';
     final heard = _heard = Completer<String?>();
+    if (_finishAsked) return null;
     await _ears.listen(
       onResult: (SpeechRecognitionResult result) {
         _partial = result.recognizedWords;
@@ -113,15 +122,20 @@ class PocketVoiceEngine implements VoiceEngine {
       },
       // Roughly -2 (quiet) to 10 (loud) dB on Android.
       onSoundLevelChange: (db) => onLevel(((db + 2) / 12).clamp(0.0, 1.0)),
+      // Held: the user's release ends the turn, not a pause. Android's
+      // recognizer can still end on its own; the caller then asks again.
       listenOptions: SpeechListenOptions(
-        listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(milliseconds: 1500),
+        listenFor: Duration(seconds: held ? 120 : 60),
+        pauseFor: held
+            ? const Duration(seconds: 30)
+            : const Duration(milliseconds: 1500),
         localeId: 'en_US',
         partialResults: true,
         cancelOnError: true,
         listenMode: ListenMode.dictation,
       ),
     );
+    if (_finishAsked) finishListening();
     final text = await heard.future;
     onLevel(0);
     return text == null || text.trim().isEmpty ? null : text.trim();
@@ -134,33 +148,63 @@ class PocketVoiceEngine implements VoiceEngine {
 
   @override
   void finishListening() {
+    _finishAsked = true;
     // What was heard so far becomes final, then the status says done.
     if (_ears.isListening) _ears.stop();
     _finishHearing();
   }
 
-  /// Loads the on-device model ahead of the first reply, so that reply
-  /// does not also wait for the model (copying it out and opening it).
-  Future<void> warmUp(String voice) async {
-    final local = _onDevice;
-    if (local == null || !await local.available) return;
+  @override
+  Future<Speech> prepare(
+    String text, {
+    required String voice,
+    bool keep = false,
+  }) async {
+    if (!keep) return _make(text, voice);
+    final key = '$voice\n$text';
+    // Asked again while still being made (opened right after the app).
+    final making = _making[key] ??= _keep(key, text, voice);
     try {
-      await local.speak('Hello there.', voice);
-      // Timing runs only: one typical reply sentence, logged.
-      if (const bool.fromEnvironment('POCKET_TTS_BENCH')) {
-        await local.speak(
-          'Octopilot helps you plan, write and polish your essays, '
-          'and it can explain anything you are studying.',
-          voice,
-        );
-      }
-    } on Object catch (e) {
-      debugPrint('pocket-tts: warm-up failed: $e');
+      return await making;
+    } finally {
+      _making.remove(key);
     }
   }
 
-  @override
-  Future<Speech> prepare(String text, {required String voice}) async {
+  final _making = <String, Future<Speech>>{};
+
+  Future<Speech> _keep(String key, String text, String voice) async {
+    final known = _kept[key];
+    if (known != null) return _speech(text, known);
+    final file = await _keptFile(voice, text);
+    if (file != null && await file.exists()) {
+      final clip = _Clip.fromWav(await file.readAsBytes(), _frame);
+      return _speech(text, _kept[key] = clip);
+    }
+    final made = await _make(text, voice);
+    final clip = _kept[key] = made.audio! as _Clip;
+    await file?.parent.create(recursive: true);
+    await file?.writeAsBytes(clip.wav, flush: true);
+    return made;
+  }
+
+  static Speech _speech(String text, _Clip clip) =>
+      Speech(text: text, duration: clip.duration, audio: clip);
+
+  /// Where a kept clip lives: one file per voice and text.
+  static Future<File?> _keptFile(String voice, String text) async {
+    if (kIsWeb) return null;
+    // FNV-1a: a name that stays the same from run to run.
+    var hash = 0x811c9dc5;
+    for (final unit in utf8.encode(text)) {
+      hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
+    }
+    final dir = await getApplicationSupportDirectory();
+    final name = hash.toRadixString(16).padLeft(8, '0');
+    return File('${dir.path}/voice-kept-v1/$voice-$name.wav');
+  }
+
+  Future<Speech> _make(String text, String voice) async {
     final local = _onDevice;
     if (local != null && await local.available) {
       final samples = await local.speak(_speakable(text), voice);

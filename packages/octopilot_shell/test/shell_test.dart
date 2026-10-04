@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -36,6 +37,7 @@ class Harness {
       ),
     ],
     onVoiceChanged: (id) => savedVoice = id,
+    greeter: lateNightGreeter(),
     modules: const [
       ShellModuleEntry(
         id: 'ghostwriter',
@@ -307,23 +309,31 @@ void main() {
     expect(find.text('Delete account'), findsNothing);
   });
 
-  testWidgets('voice: listens, answers, and the turn lands in the chat', (
+  testWidgets('voice: greets, then hold to talk; the turn lands in the chat', (
     tester,
   ) async {
     final h = Harness(account: ada);
     await h.pump(tester);
+    final greeting = lateNightGreeter().take(name: 'Ada');
 
     await tester.tap(find.byTooltip('Talk'));
+    await pumpUntil(tester, find.text(greeting));
+    await pumpUntil(tester, find.text('Hold to talk'));
+    expect(h.chat.threads.value, isEmpty, reason: 'a greeting is not a turn');
+
+    final hold = await tester.startGesture(
+      tester.getCenter(find.byType(VoiceOrb).last),
+    );
     await pumpUntil(tester, find.text('Listening'));
     await pumpUntil(tester, find.text('How do I write an essay here?'));
+    // Still held: nothing is sent yet.
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(find.text('Listening'), findsOneWidget);
+    await hold.up();
     await pumpUntil(tester, find.text('Speaking'));
     expect(h.chat.threads.value.single.title, 'How do I write an essay here?');
-    await pumpUntil(tester, find.text('Listening'));
+    await pumpUntil(tester, find.text('Hold to talk'));
 
-    // Mute holds it; end goes back to the chat with the turn in it.
-    await tester.tap(find.byTooltip('Mute'));
-    await tester.pump();
-    expect(find.text('Muted'), findsOneWidget);
     await tester.tap(find.byTooltip('End voice'));
     await tester.pumpAndSettle();
     expect(find.text('How do I write an essay here?'), findsOneWidget);
@@ -380,25 +390,9 @@ void main() {
     final h = Harness(account: ada);
     final ready = Completer<void>();
     final slow = _SlowVoice(h.voice, ready.future);
-    final services = ShellServices(
-      chat: h.chat,
-      voice: slow,
-      modules: h.services.modules,
-      account: h.account,
-      themeMode: h.theme,
-      setThemeMode: (_) {},
-    );
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    tester.platformDispatcher.accessibilityFeaturesTestValue =
-        const FakeAccessibilityFeatures(disableAnimations: true);
-    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-    await tester.pumpWidget(OctopilotShellApp(services: services));
-    await tester.pumpAndSettle();
+    final services = await _pumpVoice(tester, h, slow);
 
-    await tester.tap(find.byTooltip('Talk'));
-    await tester.pump();
+    await _holdAndSay(tester);
     await pumpUntil(tester, find.text('Thinking'));
     // The text reply is in, the voice is not: still thinking, nothing said.
     for (var i = 0; i < 30; i++) {
@@ -415,42 +409,82 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('voice: hearing nothing twice waits for a tap', (tester) async {
+  testWidgets('voice: a hold that hears nothing sends nothing', (tester) async {
     final h = Harness(account: ada);
     final deaf = _DeafVoice(h.voice);
-    final services = ShellServices(
-      chat: h.chat,
-      voice: deaf,
-      modules: h.services.modules,
-      account: h.account,
-      themeMode: h.theme,
-      setThemeMode: (_) {},
-    );
-    tester.view.physicalSize = const Size(390, 844);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.reset);
-    tester.platformDispatcher.accessibilityFeaturesTestValue =
-        const FakeAccessibilityFeatures(disableAnimations: true);
-    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-    await tester.pumpWidget(OctopilotShellApp(services: services));
-    await tester.pumpAndSettle();
+    final services = await _pumpVoice(tester, h, deaf);
 
-    await tester.tap(find.byTooltip('Talk'));
+    final hold = await tester.startGesture(
+      tester.getCenter(find.byType(VoiceOrb).last),
+    );
+    await pumpUntil(tester, find.text('Listening'));
+    await hold.up();
     await pumpUntil(tester, find.textContaining("I didn't catch that"));
-    expect(deaf.listens, 2, reason: 'the mic is not opened again and again');
+    expect(services.conversation.messages, isEmpty);
+    final listens = deaf.listens;
     for (var i = 0; i < 50; i++) {
       await tester.pump(const Duration(milliseconds: 20));
     }
-    expect(deaf.listens, 2);
-
-    // A tap on the orb listens again.
-    await tester.tap(find.byType(VoiceOrb).last);
-    await tester.pump(const Duration(milliseconds: 50));
-    expect(deaf.listens, 3);
+    expect(deaf.listens, listens, reason: 'the mic opens only while held');
     await tester.tap(find.byTooltip('End voice'));
     await tester.pumpAndSettle();
-    // Lets the loop's short wait between tries run out.
-    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('voice: the recognizer stopping mid-hold is asked again', (
+    tester,
+  ) async {
+    final h = Harness(account: ada);
+    final choppy = _ChoppyVoice(h.voice);
+    final services = await _pumpVoice(tester, h, choppy);
+
+    final hold = await tester.startGesture(
+      tester.getCenter(find.byType(VoiceOrb).last),
+    );
+    await pumpUntil(tester, find.text('make an essay'));
+    await hold.up();
+    await pumpUntil(tester, find.text('Thinking'));
+    expect(services.conversation.messages.first.text, 'make an essay');
+    expect(choppy.listens, 2);
+    await tester.tap(find.byTooltip('End voice'));
+    await tester.pumpAndSettle();
+  });
+
+  test('greetings fit the time and the name', () {
+    final night = Greeter(clock: () => DateTime(2026, 1, 1, 23));
+    expect(night.choices(), contains('Hey night owl. What are we working on?'));
+    expect(
+      night.choices(),
+      isNot(contains('Good morning! How can I help you?')),
+    );
+    expect(
+      night.choices().where((g) => g.contains('{name}')),
+      isEmpty,
+      reason: 'no name, no presets that need one',
+    );
+    expect(
+      night.choices(name: 'Ada'),
+      contains("Still up, Ada? Let's get it done."),
+    );
+
+    final morning = Greeter(clock: () => DateTime(2026, 1, 1, 7));
+    expect(
+      morning.choices(name: 'Ada'),
+      contains('Morning, Ada. Coffee ready? What are we working on?'),
+    );
+
+    // Never the same twice in a row; the one picked ahead is what is said.
+    final g = Greeter(
+      random: math.Random(3),
+      clock: () => DateTime(2026, 1, 1, 14),
+    );
+    var last = g.take();
+    for (var i = 0; i < 20; i++) {
+      final ahead = g.upcoming();
+      final now = g.take();
+      expect(now, ahead);
+      expect(now, isNot(last));
+      last = now;
+    }
   });
 
   test('credits are written short', () {
@@ -481,15 +515,21 @@ class _SlowVoice implements VoiceEngine {
   Future<String?> listen({
     required ValueChanged<String> onPartial,
     required ValueChanged<double> onLevel,
-  }) => inner.listen(onPartial: onPartial, onLevel: onLevel);
+    bool held = false,
+  }) => inner.listen(onPartial: onPartial, onLevel: onLevel, held: held);
 
   @override
   void finishListening() => inner.finishListening();
 
+  /// Greetings ([keep]) are ready at once; replies wait for [ready].
   @override
-  Future<Speech> prepare(String text, {required String voice}) async {
-    await ready;
-    return inner.prepare(text, voice: voice);
+  Future<Speech> prepare(
+    String text, {
+    required String voice,
+    bool keep = false,
+  }) async {
+    if (!keep) await ready;
+    return inner.prepare(text, voice: voice, keep: keep);
   }
 
   @override
@@ -508,13 +548,107 @@ class _DeafVoice extends _SlowVoice {
   _DeafVoice(VoiceEngine inner) : super(inner, Future.value());
 
   var listens = 0;
+  Completer<void>? _released;
 
   @override
   Future<String?> listen({
     required ValueChanged<String> onPartial,
     required ValueChanged<double> onLevel,
+    bool held = false,
   }) async {
     listens++;
+    await (_released = Completer<void>()).future;
     return null;
   }
+
+  @override
+  void finishListening() => _release();
+
+  @override
+  void stop() {
+    _release();
+    super.stop();
+  }
+
+  void _release() {
+    if (!(_released?.isCompleted ?? true)) _released!.complete();
+  }
+}
+
+/// A recognizer that stops by itself after two words, while the orb is held.
+class _ChoppyVoice extends _SlowVoice {
+  _ChoppyVoice(VoiceEngine inner) : super(inner, Future.value());
+
+  var listens = 0;
+  Completer<void>? _released;
+
+  @override
+  Future<String?> listen({
+    required ValueChanged<String> onPartial,
+    required ValueChanged<double> onLevel,
+    bool held = false,
+  }) async {
+    listens++;
+    if (listens == 1) {
+      onPartial('make an');
+      return 'make an';
+    }
+    onPartial('essay');
+    await (_released = Completer<void>()).future;
+    return 'essay';
+  }
+
+  @override
+  void finishListening() => _release();
+
+  @override
+  void stop() {
+    _release();
+    super.stop();
+  }
+
+  void _release() {
+    if (!(_released?.isCompleted ?? true)) _released!.complete();
+  }
+}
+
+/// The same greeting every run: late at night, the same random picks.
+Greeter lateNightGreeter() =>
+    Greeter(random: math.Random(1), clock: () => DateTime(2026, 1, 1, 23));
+
+/// Voice mode open on [engine], past its greeting.
+Future<ShellServices> _pumpVoice(
+  WidgetTester tester,
+  Harness h,
+  VoiceEngine engine,
+) async {
+  final services = ShellServices(
+    chat: h.chat,
+    voice: engine,
+    modules: h.services.modules,
+    account: h.account,
+    themeMode: h.theme,
+    setThemeMode: (_) {},
+    greeter: lateNightGreeter(),
+  );
+  tester.view.physicalSize = const Size(390, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+  await tester.pumpWidget(OctopilotShellApp(services: services));
+  await tester.pumpAndSettle();
+  await tester.tap(find.byTooltip('Talk'));
+  await pumpUntil(tester, find.text('Hold to talk'));
+  return services;
+}
+
+/// Holds the orb until the demo question is heard, then lets go.
+Future<void> _holdAndSay(WidgetTester tester) async {
+  final hold = await tester.startGesture(
+    tester.getCenter(find.byType(VoiceOrb).last),
+  );
+  await pumpUntil(tester, find.text('How do I write an essay here?'));
+  await hold.up();
 }

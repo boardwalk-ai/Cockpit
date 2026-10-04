@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../aurora.dart';
@@ -8,8 +10,8 @@ import 'voice_loop.dart';
 import 'voice_orb.dart';
 import 'voice_picker.dart';
 
-/// Voice mode: the orb, live captions, mute / end / keyboard. Turns land in
-/// the open conversation.
+/// Voice mode: a greeting, then hold the orb to talk and let go to send;
+/// live captions, end and keyboard. Turns land in the open conversation.
 class VoicePage extends StatefulWidget {
   const VoicePage({super.key});
 
@@ -19,22 +21,26 @@ class VoicePage extends StatefulWidget {
 
 class _VoicePageState extends State<VoicePage> {
   VoiceLoop? _loop;
+  ShellServices? _services;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_loop != null) return;
-    final services = ShellScope.of(context);
+    final services = _services = ShellScope.of(context);
     _loop = VoiceLoop(
       engine: services.voice,
       conversation: services.conversation,
       voice: () => services.currentVoice?.id ?? '',
+      greeting: services.takeGreeting,
     )..start();
   }
 
   @override
   void dispose() {
     _loop?.dispose();
+    // The next opening's greeting, made while the app is quiet.
+    unawaited(_services?.prepareGreeting());
     super.dispose();
   }
 
@@ -44,12 +50,10 @@ class _VoicePageState extends State<VoicePage> {
     Navigator.of(context).pop(typing);
   }
 
-  /// The picker plays samples, so the conversation holds still meanwhile.
+  /// The picker plays samples, so the conversation stops speaking first.
   Future<void> _pickVoice(VoiceLoop loop) async {
-    final wasMuted = loop.muted;
-    if (!wasMuted) loop.toggleMute();
+    loop.interrupt();
     await showVoicePicker(context);
-    if (!wasMuted && loop.muted && mounted) loop.toggleMute();
   }
 
   @override
@@ -100,18 +104,23 @@ class _VoicePageState extends State<VoicePage> {
                     ),
                   ),
                   const Spacer(flex: 2),
-                  GestureDetector(
-                    onTap: () {
-                      Haptics.tap();
-                      loop.tapOrb();
-                    },
-                    child: Hero(
-                      tag: 'voice-orb',
-                      child: VoiceOrb(
-                        size: 300,
-                        phase: loop.phase,
-                        level: loop.level,
-                        colors: voice?.colors,
+                  // Held, not tapped: the microphone is open only while the
+                  // finger is down, so noise cannot end or start a turn.
+                  Listener(
+                    onPointerDown: (_) => loop.holdStart(),
+                    onPointerUp: (_) => loop.holdEnd(),
+                    onPointerCancel: (_) => loop.holdEnd(),
+                    child: Semantics(
+                      button: true,
+                      label: 'Hold to talk',
+                      child: Hero(
+                        tag: 'voice-orb',
+                        child: VoiceOrb(
+                          size: 300,
+                          phase: loop.phase,
+                          level: loop.level,
+                          colors: voice?.colors,
+                        ),
                       ),
                     ),
                   ),
@@ -124,9 +133,11 @@ class _VoicePageState extends State<VoicePage> {
                         text: speaking ? loop.reply : loop.heard,
                         shown: speaking ? loop.spoken : 1,
                         mine: !speaking,
-                        hint: loop.paused
-                            ? "I didn't catch that. Tap the orb when you're ready."
-                            : "Go ahead, I'm listening.",
+                        hint: loop.holding
+                            ? "I'm listening. Let go to send."
+                            : loop.missed
+                            ? "I didn't catch that. Hold the orb while you talk."
+                            : 'Hold the orb and talk. Let go to send.',
                         error: loop.error,
                       ),
                     ),
@@ -137,17 +148,8 @@ class _VoicePageState extends State<VoicePage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _RoundButton(
-                          tooltip: loop.muted ? 'Unmute' : 'Mute',
-                          icon: loop.muted
-                              ? Icons.mic_off_rounded
-                              : Icons.mic_none_rounded,
-                          active: loop.muted,
-                          onTap: () {
-                            Haptics.tap();
-                            loop.toggleMute();
-                          },
-                        ),
+                        // Keeps End in the middle.
+                        const SizedBox(width: 58),
                         _RoundButton(
                           tooltip: 'End voice',
                           icon: Icons.close_rounded,
@@ -184,15 +186,13 @@ class _PhaseLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = ShellColors.of(context);
-    final text = loop.muted
-        ? 'Muted'
-        : switch (loop.phase) {
-            VoicePhase.connecting => 'Connecting',
-            VoicePhase.listening => 'Listening',
-            VoicePhase.thinking => 'Thinking',
-            VoicePhase.speaking => 'Speaking',
-            VoicePhase.idle => loop.paused ? 'Tap to talk' : 'Paused',
-          };
+    final text = switch (loop.phase) {
+      VoicePhase.connecting => 'Connecting',
+      VoicePhase.listening => 'Listening',
+      VoicePhase.thinking => 'Thinking',
+      VoicePhase.speaking => 'Speaking',
+      VoicePhase.idle => 'Hold to talk',
+    };
     return AnimatedSwitcher(
       duration: motion(context, const Duration(milliseconds: 350)),
       transitionBuilder: (child, a) => FadeTransition(
@@ -216,17 +216,14 @@ class _PhaseLabel extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (loop.phase == VoicePhase.thinking && !loop.muted) ...[
+            if (loop.phase == VoicePhase.thinking) ...[
               BouncingDots(color: color, size: 5),
               const SizedBox(width: 8),
             ] else ...[
               Container(
                 width: 7,
                 height: 7,
-                decoration: BoxDecoration(
-                  color: loop.muted ? c.hint : color,
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
               ),
               const SizedBox(width: 8),
             ],
@@ -319,7 +316,6 @@ class _RoundButton extends StatelessWidget {
     required this.onTap,
     this.big = false,
     this.danger = false,
-    this.active = false,
   });
 
   final String tooltip;
@@ -327,22 +323,13 @@ class _RoundButton extends StatelessWidget {
   final VoidCallback onTap;
   final bool big;
   final bool danger;
-  final bool active;
 
   @override
   Widget build(BuildContext context) {
     final c = ShellColors.of(context);
     final size = big ? 76.0 : 58.0;
-    final fill = danger
-        ? c.accent
-        : active
-        ? c.text
-        : c.surface.withValues(alpha: 0.75);
-    final fg = danger
-        ? c.onAccent
-        : active
-        ? c.background
-        : c.text;
+    final fill = danger ? c.accent : c.surface.withValues(alpha: 0.75);
+    final fg = danger ? c.onAccent : c.text;
     return Tooltip(
       message: tooltip,
       child: Semantics(

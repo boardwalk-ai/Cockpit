@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'chat/chat_controller.dart';
 import 'chat/main_chat.dart';
 import 'shell_models.dart';
+import 'voice/greetings.dart';
 import 'voice/voice_engine.dart';
 
 /// Everything the shell needs from the host app. The shell owns the screens;
@@ -28,7 +29,9 @@ class ShellServices {
     this.onSignOut,
     this.onDeleteAccount,
     void Function(BuildContext context, ShellModuleEntry module)? openModule,
+    Greeter? greeter,
   }) : voice = voice ?? DemoVoiceEngine(),
+       greeter = greeter ?? Greeter(),
        voiceId =
            voiceId ?? ValueNotifier(voices.isEmpty ? '' : voices.first.id),
        openModule = openModule ?? _push;
@@ -58,7 +61,28 @@ class ShellServices {
   void setVoice(String id) {
     voiceId.value = id;
     onVoiceChanged?.call(id);
+    prepareGreeting();
   }
+
+  /// Picks what voice mode says on opening.
+  final Greeter greeter;
+
+  /// The signed-in user's first name, for greetings.
+  String? get firstName {
+    final name = account.value?.name.trim() ?? '';
+    return name.isEmpty ? null : name.split(RegExp(r'\s+')).first;
+  }
+
+  /// Voices the next greeting ahead of time (at start, on a voice change,
+  /// after voice mode closes), so voice mode opens speaking.
+  Future<void> prepareGreeting() {
+    final current = currentVoice;
+    if (current == null) return Future.value();
+    return greeter.prepare(voice, current.id, name: firstName);
+  }
+
+  /// The greeting to say now.
+  String takeGreeting() => greeter.take(name: firstName);
 
   /// Every module, out or not, in Library order.
   final List<ShellModuleEntry> modules;

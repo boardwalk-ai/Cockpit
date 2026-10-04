@@ -7,13 +7,16 @@ import '../motion.dart';
 import 'voice_engine.dart';
 import 'voice_orb.dart';
 
-/// A voice conversation: listen, send what was heard through the main chat,
-/// speak the reply, listen again, until it is ended.
+/// A voice conversation: a greeting, then hold-to-talk turns. The user
+/// holds the orb while talking and lets go to send; what was heard goes
+/// through the main chat and the reply is spoken. The microphone is open
+/// only while the orb is held, so a noisy room does not end or eat turns.
 class VoiceLoop extends ChangeNotifier {
   VoiceLoop({
     required this.engine,
     required this.conversation,
     required this.voice,
+    this.greeting,
   });
 
   final VoiceEngine engine;
@@ -22,138 +25,180 @@ class VoiceLoop extends ChangeNotifier {
   /// The voice to answer in, read for every reply (it can change midway).
   final String Function() voice;
 
+  /// What to say on opening; null says nothing.
+  final String Function()? greeting;
+
   VoicePhase phase = VoicePhase.connecting;
   double level = 0;
 
   /// What the user is saying, as it is heard.
   String heard = '';
 
-  /// The reply, and how much of it has been spoken (0–1).
+  /// The reply (or the greeting), and how much of it has been spoken (0–1).
   String reply = '';
   double spoken = 0;
 
-  bool muted = false;
-
-  /// Nothing was heard twice in a row: wait for a tap on the orb rather
-  /// than keep opening the microphone (each opening beeps on Android).
-  bool paused = false;
+  /// The last hold heard nothing.
+  bool missed = false;
   String? error;
 
   var _running = false;
-  var _misses = 0;
+  var _holding = false;
 
-  /// The user cut the reply short: the sentences left are not spoken.
-  var _cutSpeech = false;
+  /// Bumped by each new turn; an older one stops where it is.
+  var _turn = 0;
   var _disposed = false;
+
+  bool get holding => _holding;
 
   void start() {
     if (_running) return;
     _running = true;
-    unawaited(_run());
+    unawaited(_greet());
   }
 
-  Future<void> _run() async {
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    while (_running && !_disposed) {
-      if (muted) {
-        _set(VoicePhase.idle);
-        await _until(() => !muted || !_running);
-        continue;
-      }
-      heard = '';
-      reply = '';
-      spoken = 0;
-      _set(VoicePhase.listening);
-      final String? said;
+  Future<void> _greet() async {
+    final say = greeting?.call();
+    final turn = _turn;
+    if (say != null && say.isNotEmpty) {
       try {
-        said = await engine.listen(
-          onPartial: (text) {
-            heard = text;
-            _notify();
-          },
-          onLevel: _level,
-        );
-      } on Object catch (e) {
-        error = e is VoiceUnavailable
-            ? e.message
-            : "Couldn't hear you. Check the microphone and try again.";
-        _running = false;
-        _set(VoicePhase.idle);
-        break;
-      }
-      if (!_running) break;
-      // Muting cut it short: that is not "heard nothing".
-      if (muted) continue;
-      if (said == null || said.trim().isEmpty) {
-        if (++_misses >= 2) {
-          _misses = 0;
-          paused = true;
-          _set(VoicePhase.idle);
-          await _until(() => !paused || !_running);
-        } else {
-          await Future<void>.delayed(const Duration(milliseconds: 700));
-        }
-        continue;
-      }
-      _misses = 0;
-
-      _set(VoicePhase.thinking);
-      conversation.send(said);
-      await _until(() => !conversation.replying);
-      if (!_running) break;
-      final failure = conversation.failure;
-      if (failure != null) {
-        error = failure.message;
-        _running = false;
-        _set(VoicePhase.idle);
-        break;
-      }
-      final text = conversation.messages.isEmpty
-          ? ''
-          : conversation.messages.last.text;
-      // Still thinking until the first sentence's voice is ready; then the
-      // reply and its voice start together, and each next sentence is made
-      // while the one before it is spoken.
-      final pieces = sentences(text);
-      final total = text.length;
-      _cutSpeech = false;
-      Future<Speech> make(int i) => engine.prepare(pieces[i], voice: voice());
-      Future<Speech>? next = pieces.isEmpty ? null : make(0);
-      var done = 0;
-      for (var i = 0; i < pieces.length && next != null; i++) {
-        final Speech speech;
-        try {
-          speech = await next;
-        } on Object {
-          if (i == 0) {
-            error = "Couldn't get the voice ready. Try again.";
-            _running = false;
-            _set(VoicePhase.idle);
-          }
-          break;
-        }
-        if (!_running || _cutSpeech || muted) break;
-        next = i + 1 < pieces.length ? make(i + 1) : null;
-        // A later sentence that fails is simply not spoken.
-        next?.ignore();
-        if (i == 0) {
-          reply = text;
-          _set(VoicePhase.speaking);
-        }
-        final before = done;
-        final length = pieces[i].length;
+        final speech = await engine.prepare(say, voice: voice(), keep: true);
+        if (turn != _turn || !_running) return;
+        reply = say;
+        spoken = 0;
+        _set(VoicePhase.speaking);
         await engine.play(
           speech,
           onLevel: _level,
           onProgress: (p) {
-            spoken = total == 0 ? 1 : (before + p * length) / total;
+            spoken = p;
             _notify();
           },
         );
-        done += length;
+      } on Object {
+        // No greeting is better than no voice mode.
       }
-      if (!_running) break;
     }
+    if (turn == _turn && _running) _set(VoicePhase.idle);
+  }
+
+  /// The orb is pressed: stop whatever is going on and listen.
+  void holdStart() {
+    if (!_running || _holding) return;
+    final turn = ++_turn;
+    _holding = true;
+    missed = false;
+    error = null;
+    engine.stop();
+    if (conversation.replying) conversation.stop();
+    heard = '';
+    reply = '';
+    spoken = 0;
+    _set(VoicePhase.listening);
+    unawaited(_hear(turn));
+  }
+
+  /// The orb is let go: what was heard is sent.
+  void holdEnd() {
+    if (!_holding) return;
+    _holding = false;
+    engine.finishListening();
+    _notify();
+  }
+
+  Future<void> _hear(int turn) async {
+    // The recognizer can end on its own while the orb is still held (a
+    // pause, noise); then it is asked again and the pieces are joined.
+    final pieces = <String>[];
+    try {
+      while (true) {
+        final said = await engine.listen(
+          held: true,
+          onPartial: (text) {
+            heard = [...pieces, text].where((p) => p.isNotEmpty).join(' ');
+            _notify();
+          },
+          onLevel: _level,
+        );
+        if (said != null && said.trim().isNotEmpty) pieces.add(said.trim());
+        if (!_holding || turn != _turn || !_running) break;
+        // Not straight back in: an ending that repeats should not spin.
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        if (!_holding || turn != _turn || !_running) break;
+      }
+    } on Object catch (e) {
+      _holding = false;
+      error = e is VoiceUnavailable
+          ? e.message
+          : "Couldn't hear you. Check the microphone and try again.";
+      _set(VoicePhase.idle);
+      return;
+    }
+    if (turn != _turn || !_running) return;
+    final text = pieces.join(' ');
+    heard = text;
+    if (text.isEmpty) {
+      missed = true;
+      _set(VoicePhase.idle);
+      return;
+    }
+    await _answer(text, turn);
+  }
+
+  Future<void> _answer(String said, int turn) async {
+    _set(VoicePhase.thinking);
+    conversation.send(said);
+    await _until(() => !conversation.replying || turn != _turn || !_running);
+    if (turn != _turn || !_running) return;
+    final failure = conversation.failure;
+    if (failure != null) {
+      error = failure.message;
+      _set(VoicePhase.idle);
+      return;
+    }
+    final text = conversation.messages.isEmpty
+        ? ''
+        : conversation.messages.last.text;
+    // Still thinking until the first sentence's voice is ready; then the
+    // reply and its voice start together, and each next sentence is made
+    // while the one before it is spoken.
+    final pieces = sentences(text);
+    final total = text.length;
+    Future<Speech> make(int i) => engine.prepare(pieces[i], voice: voice());
+    Future<Speech>? next = pieces.isEmpty ? null : make(0);
+    var done = 0;
+    for (var i = 0; i < pieces.length && next != null; i++) {
+      final Speech speech;
+      try {
+        speech = await next;
+      } on Object {
+        if (i == 0 && turn == _turn) {
+          error = "Couldn't get the voice ready. Try again.";
+        }
+        break;
+      }
+      if (turn != _turn || !_running) return;
+      next = i + 1 < pieces.length ? make(i + 1) : null;
+      // A later sentence that fails is simply not spoken.
+      next?.ignore();
+      if (i == 0) {
+        reply = text;
+        _set(VoicePhase.speaking);
+      }
+      final before = done;
+      final length = pieces[i].length;
+      await engine.play(
+        speech,
+        onLevel: _level,
+        onProgress: (p) {
+          spoken = total == 0 ? 1 : (before + p * length) / total;
+          _notify();
+        },
+      );
+      if (turn != _turn || !_running) return;
+      done += length;
+    }
+    if (turn == _turn && _running) _set(VoicePhase.idle);
   }
 
   /// [text] in sentences to speak one at a time. Very short ones go with
@@ -200,34 +245,20 @@ class VoiceLoop extends ChangeNotifier {
     return out;
   }
 
-  /// Ends the turn now: what was heard is sent; a reply stops being spoken.
-  void tapOrb() {
-    switch (phase) {
-      case VoicePhase.listening:
-        engine.finishListening();
-      case VoicePhase.speaking:
-        _cutSpeech = true;
-        engine.stop();
-      case VoicePhase.thinking:
-        conversation.stop();
-      case VoicePhase.idle:
-        if (paused) {
-          paused = false;
-          _notify();
-        }
-      case VoicePhase.connecting:
-        break;
-    }
-  }
-
-  void toggleMute() {
-    muted = !muted;
-    if (muted) engine.stop();
-    _notify();
+  /// Stops speaking (or waiting for a reply) and waits for the next hold.
+  void interrupt() {
+    if (!_running) return;
+    _turn++;
+    _holding = false;
+    engine.stop();
+    if (conversation.replying) conversation.stop();
+    _set(VoicePhase.idle);
   }
 
   void end() {
     _running = false;
+    _holding = false;
+    _turn++;
     engine.stop();
     conversation.stop();
     _notify();
