@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../session/gw_session.dart';
 import '../session/timeline.dart';
+import 'mobile_attach.dart';
 import 'mobile_cards.dart';
 import 'mobile_composer.dart';
 import 'mobile_details_sheet.dart';
@@ -136,9 +139,17 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
 
   void _send() {
     final text = widget.composer.text.trim();
-    if (text.isEmpty) return;
+    final files = session.canRevise && session.attachmentsReady;
+    if (text.isEmpty && !files) return;
     widget.composer.clear();
     session.send(text);
+  }
+
+  Future<void> _attach() async {
+    final picked = await showGwAttachSheet(context);
+    for (final file in picked) {
+      unawaited(session.attach(file.name, file.bytes));
+    }
   }
 
   String get _hint {
@@ -212,7 +223,18 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
         ),
         GwComposer(
           controller: widget.composer,
-          canSend: canType && widget.composer.text.trim().isNotEmpty,
+          canSend:
+              canType &&
+              !session.uploading &&
+              (widget.composer.text.trim().isNotEmpty ||
+                  (session.canRevise && session.attachmentsReady)),
+          onAttach: session.canAttach ? _attach : null,
+          header: session.attachments.isEmpty
+              ? null
+              : GwAttachmentChips(
+                  attachments: session.attachments,
+                  onRemove: session.removeAttachment,
+                ),
           onChanged: (_) {},
           onSend: _send,
           sendLabel: 'Send',
@@ -228,7 +250,10 @@ class _GhostWriterMobileChatState extends State<GhostWriterMobileChat> {
     final widgets = <Widget>[];
     for (final (index, item) in session.items.indexed) {
       final Widget child = switch (item) {
-        UserItem(:final text) => _UserBubble(text: text),
+        UserItem(:final text, :final attachments) => _UserBubble(
+          text: text,
+          attachments: attachments,
+        ),
         AssistantItem(:final text, :final streaming) => _AssistantBubble(
           text: text,
           streaming: streaming,
@@ -597,12 +622,31 @@ class _GwAppearState extends State<GwAppear>
 }
 
 class _UserBubble extends StatelessWidget {
-  const _UserBubble({required this.text});
+  const _UserBubble({required this.text, this.attachments = const []});
 
   final String text;
+  final List<Map<String, dynamic>> attachments;
 
   @override
   Widget build(BuildContext context) {
+    if (attachments.isEmpty) return _bubble();
+    return Align(
+      alignment: Alignment.centerRight,
+      child: FractionallySizedBox(
+        widthFactor: 0.84,
+        alignment: Alignment.centerRight,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (final card in attachments) GwFileCard(card: card),
+            if (text.isNotEmpty) _bubble() else const SizedBox(height: 6),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bubble() {
     return Align(
       alignment: Alignment.centerRight,
       child: FractionallySizedBox(

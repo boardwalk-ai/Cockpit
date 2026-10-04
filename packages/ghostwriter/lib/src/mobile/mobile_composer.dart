@@ -18,6 +18,8 @@ class GwComposer extends StatefulWidget {
     this.hintText = 'Drop your brief',
     this.sendLabel = 'Start',
     this.onStop,
+    this.onAttach,
+    this.header,
   });
 
   final TextEditingController controller;
@@ -30,6 +32,12 @@ class GwComposer extends StatefulWidget {
   /// While GhostWriter is working: with nothing typed, the send button
   /// becomes Stop (as in ChatGPT). Typing turns it back into Send.
   final VoidCallback? onStop;
+
+  /// The "+" button; null greys it out (files can't be attached now).
+  final VoidCallback? onAttach;
+
+  /// Shown above the text: the attached files.
+  final Widget? header;
 
   @override
   State<GwComposer> createState() => _GwComposerState();
@@ -132,6 +140,10 @@ class _GwComposerState extends State<GwComposer> with TickerProviderStateMixin {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (widget.header case final header?) ...[
+                      header,
+                      const SizedBox(height: 10),
+                    ],
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 10),
                       child: TextField(
@@ -169,11 +181,15 @@ class _GwComposerState extends State<GwComposer> with TickerProviderStateMixin {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        // TODO: wire up attachments, sources and voice input.
-                        GwIconButton(
-                          icon: Icons.add_rounded,
-                          tooltip: 'Attach',
-                          onTap: () {},
+                        // TODO: wire up sources and voice input.
+                        AnimatedOpacity(
+                          opacity: widget.onAttach == null ? 0.35 : 1,
+                          duration: const Duration(milliseconds: 200),
+                          child: GwIconButton(
+                            icon: Icons.add_rounded,
+                            tooltip: 'Attach',
+                            onTap: widget.onAttach ?? () {},
+                          ),
                         ),
                         const SizedBox(width: 6),
                         _SourcePill(compact: widget.canSend, onTap: () {}),

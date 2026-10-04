@@ -31,6 +31,13 @@ void main() {
     const selection = 'HapticFeedbackType.selectionClick';
 
     await expectHaptic(find.byTooltip('Attach'), light);
+    // It opens the attach sheet: files, the cloud drives, photos, camera.
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.text('Google Drive'), findsOneWidget);
+    expect(find.text('OneDrive'), findsOneWidget);
+    expect(find.text('Camera'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pump(const Duration(seconds: 1));
     await expectHaptic(find.byTooltip('Source'), light);
     await expectHaptic(find.byTooltip('Voice'), light);
     await expectHaptic(find.byTooltip('OctoCredits'), selection);

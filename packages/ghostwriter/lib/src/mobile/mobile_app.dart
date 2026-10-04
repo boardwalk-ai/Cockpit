@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../export/gw_pdf.dart';
 import '../session/gw_session.dart';
 import 'mobile_ai_settings.dart';
+import 'mobile_attach.dart';
 import 'mobile_background.dart';
 import 'mobile_chat.dart';
 import 'mobile_drawer.dart';
@@ -63,9 +66,16 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
 
   void _start() {
     final brief = _prompt.text.trim();
-    if (brief.isEmpty) return;
+    if (brief.isEmpty && !session.attachmentsReady) return;
     _prompt.clear();
     session.start(brief);
+  }
+
+  Future<void> _attach() async {
+    final picked = await showGwAttachSheet(context);
+    for (final file in picked) {
+      unawaited(session.attach(file.name, file.bytes));
+    }
   }
 
   void _openEditor() {
@@ -136,10 +146,22 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
                               builder: (context, value, _) =>
                                   GhostWriterMobileLanding(
                                     controller: _prompt,
-                                    canStart: value.text.trim().isNotEmpty,
+                                    canStart:
+                                        !session.uploading &&
+                                        (value.text.trim().isNotEmpty ||
+                                            session.attachmentsReady),
                                     userName: name,
                                     onChanged: (_) {},
                                     onStart: _start,
+                                    onAttach: session.canAttach
+                                        ? _attach
+                                        : null,
+                                    attachments: session.attachments.isEmpty
+                                        ? null
+                                        : GwAttachmentChips(
+                                            attachments: session.attachments,
+                                            onRemove: session.removeAttachment,
+                                          ),
                                   ),
                             ),
                     ),

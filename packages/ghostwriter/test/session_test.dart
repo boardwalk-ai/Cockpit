@@ -199,6 +199,45 @@ void main() {
       expect(session.title, 'Tides');
     });
 
+    test('a file can be sent with no words, into the project it was read '
+        'into', () async {
+      await session.attach('tides.pdf', [1, 2, 3]);
+      // Read into a draft project; the landing stays (no open project yet).
+      expect(server.calls[0], startsWith('PUT /v1/projects/'));
+      expect(
+        server.calls[1],
+        matches(RegExp(r'POST /v1/projects/.+/attachments')),
+      );
+      expect(session.hasProject, isFalse);
+      expect(session.attachmentsReady, isTrue);
+      final draft = server.calls[0].split('/').last;
+      final upload = server.bodies[1] as Map<String, dynamic>;
+      expect(upload['name'], 'tides.pdf');
+      expect(upload['data'], 'AQID');
+
+      await session.start('');
+      expect(session.projectId, draft);
+      final start = server.bodies.last as Map<String, dynamic>;
+      expect(start['instruction'], '');
+      expect(start['attachments'], [upload['id']]);
+      expect(server.calls.where((c) => c.startsWith('PUT')), hasLength(1));
+      final shown = session.timeline.items.single as UserItem;
+      expect(shown.attachments, hasLength(1));
+      expect(session.attachments, isEmpty);
+    });
+
+    test('a file never sent is dropped with its draft project', () async {
+      await session.attach('tides.pdf', [1, 2, 3]);
+      session.newChat();
+      await pumpEventQueue();
+      expect(
+        server.calls,
+        contains(matches(RegExp(r'DELETE /v1/attachments/'))),
+      );
+      expect(server.calls, contains(matches(RegExp(r'DELETE /v1/projects/'))));
+      expect(session.attachments, isEmpty);
+    });
+
     test('a dropped connection picks up after the last seq', () async {
       await session.start('Tides');
       await server.connected();

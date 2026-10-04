@@ -16,12 +16,18 @@ class GhostWriterMobileLanding extends StatefulWidget {
     required this.onChanged,
     required this.onStart,
     this.userName,
+    this.onAttach,
+    this.attachments,
   });
 
   final TextEditingController controller;
   final bool canStart;
   final ValueChanged<String> onChanged;
   final VoidCallback onStart;
+
+  /// The "+" button, and the attached files shown in the composer.
+  final VoidCallback? onAttach;
+  final Widget? attachments;
 
   /// Shown in the greeting; omitted for guests.
   final String? userName;
@@ -139,6 +145,8 @@ class _GhostWriterMobileLandingState extends State<GhostWriterMobileLanding>
                 canSend: widget.canStart,
                 onChanged: widget.onChanged,
                 onSend: widget.onStart,
+                onAttach: widget.onAttach,
+                header: widget.attachments,
               ),
             ),
           ],

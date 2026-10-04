@@ -21,6 +21,9 @@ dependencies:
   doc_oct:
     path: ../doc_oct
   flutter_quill: ^11.5.1
+  # Attaching files (the system picker shows Drive, OneDrive, …) and photos.
+  file_picker: ^8.1.6
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/gw_api.dart';
 import '../data/ids.dart';
+import 'attachments.dart';
 import 'timeline.dart';
 
 class GwProject {
@@ -135,6 +136,83 @@ class GwSession extends ChangeNotifier {
 
   bool get hasProject => projectId != null;
 
+  // ── Attachments ──────────────────────────────────────────────────────────
+
+  /// Files attached to the next message.
+  List<GwAttachment> attachments = [];
+
+  /// The project files are read into before the first message: made on the
+  /// first attach, and becomes [projectId] when the message is sent.
+  String? _draftProject;
+
+  /// Files can be attached to a new essay, or to a written one (to revise
+  /// it), not while a run is going.
+  bool get canAttach => !starting && (projectId == null || canRevise);
+
+  /// Every attached file is read and at least one is.
+  bool get attachmentsReady =>
+      attachments.isNotEmpty &&
+      attachments.every((a) => !a.uploading) &&
+      attachments.any((a) => a.ready);
+
+  bool get uploading => attachments.any((a) => a.uploading);
+
+  /// Uploads a file for the next message.
+  Future<void> attach(String name, List<int> bytes) async {
+    if (!canAttach) return;
+    final file = GwAttachment(id: newId(), name: name);
+    attachments = [...attachments, file];
+    _notify();
+    try {
+      final project = projectId ?? _draftProject;
+      final String target;
+      if (project != null) {
+        target = project;
+      } else {
+        target = _draftProject = newId();
+        await api.putProject(target, instruction: '');
+      }
+      file.card = await api.uploadAttachment(target, file.id, name, bytes);
+    } on GwApiException catch (e) {
+      file.error = e.message;
+    } catch (e) {
+      file.error = "Couldn't upload: ${_describe(e)}";
+    }
+    _notify();
+  }
+
+  void removeAttachment(String id) {
+    final before = attachments.length;
+    attachments = [
+      for (final a in attachments)
+        if (a.id != id) a,
+    ];
+    if (attachments.length == before) return;
+    unawaited(api.deleteAttachment(id).catchError((_) {}));
+    _notify();
+  }
+
+  /// The ready files' ids and cards, taken for a message.
+  (List<String>, List<Map<String, dynamic>>) _takeAttachments() {
+    final ready = [
+      for (final a in attachments)
+        if (a.ready) a,
+    ];
+    attachments = [];
+    return ([for (final a in ready) a.id], [for (final a in ready) a.card!]);
+  }
+
+  /// Drops files never sent, and the empty project made for them.
+  void _discardDraft() {
+    for (final a in attachments) {
+      unawaited(api.deleteAttachment(a.id).catchError((_) {}));
+    }
+    attachments = [];
+    final draft = _draftProject;
+    _draftProject = null;
+    if (draft != null) unawaited(api.deleteProject(draft).catchError((_) {}));
+  }
+
   /// Bumped whenever the open run changes, so an old connection loop stops.
   int _generation = 0;
   bool _disposed = false;
@@ -142,6 +220,7 @@ class GwSession extends ChangeNotifier {
   /// The brief of a start that failed, for [retry].
   String? _failedStart;
   bool _failedCreate = true;
+  List<String> _failedAttachments = const [];
 
   /// The app is in the background: the run is not followed, so the server
   /// knows to notify instead.
@@ -218,6 +297,7 @@ class GwSession extends ChangeNotifier {
 
   /// Back to the landing screen.
   void newChat() {
+    _discardDraft();
     _generation++;
     _stopFollowing();
     _failedStart = null;
@@ -232,46 +312,61 @@ class GwSession extends ChangeNotifier {
     _notify();
   }
 
-  /// Creates a project for [brief] and starts writing it.
+  /// Creates a project for [brief] and starts writing it. With files
+  /// attached, the brief may be empty.
   Future<void> start(String brief) async {
     final text = brief.trim();
-    if (text.isEmpty || starting) return;
+    if (starting || uploading) return;
+    if (text.isEmpty && !attachmentsReady) return;
+    final draft = _draftProject;
+    final (files, cards) = _takeAttachments();
+    _draftProject = null;
     newChat();
-    projectId = newId();
+    projectId = draft ?? newId();
     runId = newId();
-    title = text.length > 80 ? text.substring(0, 80) : text;
+    final named = text.isNotEmpty
+        ? text
+        : (cards.isNotEmpty ? cards.first['title']?.toString() ?? '' : '');
+    title = named.length > 80 ? named.substring(0, 80) : named;
     starting = true;
     // Shown at once; the server's own `user_message` takes its place.
-    timeline.items.add(UserItem(text));
+    timeline.items.add(UserItem(text, attachments: cards));
     _notify();
-    await _startRun(text);
+    await _startRun(text, create: draft == null, attachments: files);
   }
 
   /// Asks for a change to the written essay: a new run on the same project,
   /// shown below the earlier ones.
   Future<void> revise(String request) async {
     final text = request.trim();
-    if (text.isEmpty || !canRevise) return;
+    if (!canRevise || uploading) return;
+    if (text.isEmpty && !attachmentsReady) return;
+    final (files, cards) = _takeAttachments();
     earlier = [...earlier, timeline];
     timeline = RunTimeline();
     runId = newId();
     starting = true;
     actionError = null;
-    timeline.items.add(UserItem(text));
+    timeline.items.add(UserItem(text, attachments: cards));
     _notify();
-    await _startRun(text, create: false);
+    await _startRun(text, create: false, attachments: files);
   }
 
-  Future<void> _startRun(String brief, {bool create = true}) async {
+  Future<void> _startRun(
+    String brief, {
+    bool create = true,
+    List<String> attachments = const [],
+  }) async {
     final project = projectId!, run = runId!;
     final generation = _generation;
     try {
       if (create) await api.putProject(project, instruction: brief);
-      await api.startRun(project, run, brief);
+      await api.startRun(project, run, brief, attachments: attachments);
     } catch (e) {
       if (generation != _generation) return;
       starting = false;
       _failedStart = brief;
+      _failedAttachments = attachments;
       _failedCreate = create;
       actionError = 'Could not start: ${_describe(e)}';
       _notify();
@@ -295,7 +390,11 @@ class GwSession extends ChangeNotifier {
       // a no-op there.
       starting = true;
       _notify();
-      return _startRun(brief, create: _failedCreate);
+      return _startRun(
+        brief,
+        create: _failedCreate,
+        attachments: _failedAttachments,
+      );
     }
     _notify();
     reconnect();
@@ -486,8 +585,9 @@ class GwSession extends ChangeNotifier {
   Future<void> send(String text) async {
     final message = text.trim();
     final run = runId;
-    if (message.isEmpty || run == null) return;
+    if (run == null) return;
     if (canRevise) return revise(message);
+    if (message.isEmpty) return;
     final question = timeline.pending;
     if (question != null) {
       if (question.field == 'essayFocus') {

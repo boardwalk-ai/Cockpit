@@ -12,8 +12,11 @@ enum RunPhase { running, waiting, finished, failed, cancelled }
 sealed class TimelineItem {}
 
 class UserItem extends TimelineItem {
-  UserItem(this.text);
+  UserItem(this.text, {this.attachments = const []});
   final String text;
+
+  /// The cards of the files sent with it.
+  final List<Map<String, dynamic>> attachments;
 }
 
 class AssistantItem extends TimelineItem {
@@ -156,7 +159,17 @@ class RunTimeline {
 
     switch (event['type']) {
       case 'user_message':
-        items.add(UserItem(_text(event)));
+        final files = event['attachments'];
+        items.add(
+          UserItem(
+            _text(event),
+            attachments: [
+              if (files is List)
+                for (final f in files)
+                  if (f is Map<String, dynamic>) f,
+            ],
+          ),
+        );
 
       case 'assistant_delta':
         final open = _streamingMessage();

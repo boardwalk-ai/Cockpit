@@ -92,12 +92,37 @@ class GwApi {
 
   // ── Runs ─────────────────────────────────────────────────────────────────
 
-  /// Starts a run. Sending the same [runId] again is a no-op.
-  Future<void> startRun(String projectId, String runId, String instruction) =>
-      _json('POST', '/v1/projects/$projectId/runs', {
-        'runId': runId,
-        'instruction': instruction,
-      });
+  /// Starts a run. Sending the same [runId] again is a no-op. [attachments]
+  /// are files uploaded with [uploadAttachment]; [instruction] may then be
+  /// empty (the run asks what to do with them).
+  Future<void> startRun(
+    String projectId,
+    String runId,
+    String instruction, {
+    List<String> attachments = const [],
+  }) => _json('POST', '/v1/projects/$projectId/runs', {
+    'runId': runId,
+    'instruction': instruction,
+    if (attachments.isNotEmpty) 'attachments': attachments,
+  });
+
+  // ── Attachments ──────────────────────────────────────────────────────────
+
+  /// Reads a file into the project; returns its card. The same [id] again
+  /// is not read twice.
+  Future<Map<String, dynamic>> uploadAttachment(
+    String projectId,
+    String id,
+    String name,
+    List<int> bytes,
+  ) => _json('POST', '/v1/projects/$projectId/attachments', {
+    'id': id,
+    'name': name,
+    'data': base64Encode(bytes),
+  });
+
+  Future<void> deleteAttachment(String id) =>
+      _json('DELETE', '/v1/attachments/$id');
 
   /// `{ status, pendingQuestion, lastSeq, error }`
   Future<Map<String, dynamic>> run(String runId) =>
