@@ -5,7 +5,8 @@ whole WAV: the app waits for the reply and its audio, then plays them
 together. On phones the same model is meant to run on the device; this
 stands in for it until then.
 
-    python serve.py            # http://127.0.0.1:8792
+    python serve.py                  # http://127.0.0.1:8792
+    python serve.py --host 0.0.0.0   # also reachable from a phone on the Wi-Fi
 
     GET  /v1/voices            -> the voices, as in voices.json
     POST /v1/tts {text, voice} -> audio/wav (16-bit mono)
@@ -79,4 +80,10 @@ def tts(body: Speak):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8792)
+    import argparse
+
+    args = argparse.ArgumentParser()
+    args.add_argument("--host", default="127.0.0.1")
+    args.add_argument("--port", type=int, default=8792)
+    opts = args.parse_args()
+    uvicorn.run(app, host=opts.host, port=opts.port)
