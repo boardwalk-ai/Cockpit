@@ -93,7 +93,7 @@ class _GhostWriterSignInState extends State<GhostWriterSignIn>
                       animation: _entry,
                       from: 0.15,
                       to: 0.6,
-                      child: const GwWordmark(fontSize: 30),
+                      child: const GwWordmark(fontSize: 26),
                     ),
                     const SizedBox(height: 8),
                     GwReveal(
@@ -123,7 +123,7 @@ class _GhostWriterSignInState extends State<GhostWriterSignIn>
                                 _error!,
                                 textAlign: TextAlign.center,
                                 style: kGwBody.copyWith(
-                                  fontSize: 13,
+                                  fontSize: 11,
                                   color: const Color(0xFFFF9A9E),
                                 ),
                               ),
@@ -139,7 +139,7 @@ class _GhostWriterSignInState extends State<GhostWriterSignIn>
                         'Your OctoCredits come with it.',
                         textAlign: TextAlign.center,
                         style: kGwBody.copyWith(
-                          fontSize: 12.5,
+                          fontSize: 11.5,
                           height: 1.5,
                           color: GwColors.hint,
                         ),
@@ -199,7 +199,7 @@ class _GoogleButton extends StatelessWidget {
                 'G',
                 style: TextStyle(
                   color: Color(0xFF4285F4),
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -208,7 +208,7 @@ class _GoogleButton extends StatelessWidget {
               busy ? 'Signing in…' : 'Continue with Google',
               style: const TextStyle(
                 color: Color(0xFF1C1D1F),
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),

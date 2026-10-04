@@ -124,6 +124,9 @@ class _VoicePageState extends State<VoicePage> {
                         text: speaking ? loop.reply : loop.heard,
                         shown: speaking ? loop.spoken : 1,
                         mine: !speaking,
+                        hint: loop.paused
+                            ? "I didn't catch that. Tap the orb when you're ready."
+                            : "Go ahead, I'm listening.",
                         error: loop.error,
                       ),
                     ),
@@ -188,7 +191,7 @@ class _PhaseLabel extends StatelessWidget {
             VoicePhase.listening => 'Listening',
             VoicePhase.thinking => 'Thinking',
             VoicePhase.speaking => 'Speaking',
-            VoicePhase.idle => 'Paused',
+            VoicePhase.idle => loop.paused ? 'Tap to talk' : 'Paused',
           };
     return AnimatedSwitcher(
       duration: motion(context, const Duration(milliseconds: 350)),
@@ -231,7 +234,7 @@ class _PhaseLabel extends StatelessWidget {
               text,
               style: TextStyle(
                 color: c.text,
-                fontSize: 13,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -249,12 +252,16 @@ class _Caption extends StatelessWidget {
     required this.text,
     required this.shown,
     required this.mine,
+    required this.hint,
     this.error,
   });
 
   final String text;
   final double shown;
   final bool mine;
+
+  /// Shown while nothing has been said yet.
+  final String hint;
   final String? error;
 
   @override
@@ -265,15 +272,16 @@ class _Caption extends StatelessWidget {
         child: Text(
           error!,
           textAlign: TextAlign.center,
-          style: TextStyle(color: c.accent, fontSize: 16),
+          style: TextStyle(color: c.accent, fontSize: 14),
         ),
       );
     }
     if (text.isEmpty) {
       return Center(
         child: Text(
-          'Go ahead, I\'m listening.',
-          style: TextStyle(color: c.hint, fontSize: 17),
+          hint,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: c.hint, fontSize: 15),
         ),
       );
     }
@@ -405,7 +413,7 @@ class _VoiceChip extends StatelessWidget {
                 name,
                 style: TextStyle(
                   color: c.text,
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
               ),

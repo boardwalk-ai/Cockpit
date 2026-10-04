@@ -95,6 +95,8 @@ class PocketVoiceEngine implements VoiceEngine {
         "Octopilot can't use the microphone. Allow it in your phone's settings.",
       );
     }
+    // Never two sessions at once (Android answers that with an error).
+    if (_ears.isListening) await _ears.cancel();
     _partial = '';
     final heard = _heard = Completer<String?>();
     await _ears.listen(

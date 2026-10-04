@@ -51,7 +51,7 @@ class ModeLibraryPage extends StatelessWidget {
                               mode.title,
                               style: TextStyle(
                                 color: c.text,
-                                fontSize: 32,
+                                fontSize: 30,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -0.6,
                               ),
@@ -61,7 +61,7 @@ class ModeLibraryPage extends StatelessWidget {
                             delay: const Duration(milliseconds: 180),
                             child: Text(
                               mode.tagline,
-                              style: TextStyle(color: c.muted, fontSize: 15),
+                              style: TextStyle(color: c.muted, fontSize: 13),
                             ),
                           ),
                           const SizedBox(height: 28),
@@ -70,7 +70,7 @@ class ModeLibraryPage extends StatelessWidget {
                               delay: const Duration(milliseconds: 260),
                               child: Text(
                                 'Nothing here yet. New tools are on the way.',
-                                style: TextStyle(color: c.hint, fontSize: 14),
+                                style: TextStyle(color: c.hint, fontSize: 12),
                               ),
                             )
                           else
@@ -216,7 +216,7 @@ class ModuleCard extends StatelessWidget {
                         'Soon',
                         style: TextStyle(
                           color: c.muted,
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -228,7 +228,7 @@ class ModuleCard extends StatelessWidget {
                 module.title,
                 style: TextStyle(
                   color: out ? c.text : c.muted,
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -237,7 +237,7 @@ class ModuleCard extends StatelessWidget {
                 module.description,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: c.hint, fontSize: 12.5, height: 1.4),
+                style: TextStyle(color: c.hint, fontSize: 11.5, height: 1.4),
               ),
             ],
           ),

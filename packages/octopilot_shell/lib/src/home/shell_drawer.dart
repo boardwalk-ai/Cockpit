@@ -53,7 +53,7 @@ class _ShellDrawerState extends State<ShellDrawer> {
                       'Chats',
                       style: TextStyle(
                         color: c.text,
-                        fontSize: 20,
+                        fontSize: 18,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -74,7 +74,7 @@ class _ShellDrawerState extends State<ShellDrawer> {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               child: TextField(
                 onChanged: (q) => setState(() => _query = q.trim()),
-                style: TextStyle(color: c.text, fontSize: 14),
+                style: TextStyle(color: c.text, fontSize: 12),
                 cursorColor: c.accent,
                 decoration: InputDecoration(
                   isDense: true,
@@ -107,7 +107,7 @@ class _ShellDrawerState extends State<ShellDrawer> {
                             ? 'Your chats show up here.'
                             : 'No chats match "$_query".',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: c.hint, fontSize: 14),
+                        style: TextStyle(color: c.hint, fontSize: 12),
                       ),
                     );
                   }
@@ -154,7 +154,7 @@ class _ShellDrawerState extends State<ShellDrawer> {
                     ? null
                     : Text(
                         '${formatCredits(account!.credits!)} OctoCredits',
-                        style: TextStyle(color: c.muted, fontSize: 12),
+                        style: TextStyle(color: c.muted, fontSize: 11),
                       ),
                 trailing: Icon(Icons.settings_outlined, color: c.muted),
                 onTap: () {
@@ -237,7 +237,7 @@ class _ThreadTile extends StatelessWidget {
           thread.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: c.text, fontSize: 14),
+          style: TextStyle(color: c.text, fontSize: 12),
         ),
         trailing: IconButton(
           tooltip: 'Chat options',

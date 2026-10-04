@@ -22,6 +22,9 @@ const QUESTION_LIMIT: usize = 500;
 /// Earlier turns sent with a question, at most.
 const HISTORY_TURNS: usize = 12;
 const DEFAULT_MODEL: &str = "google/gemini-3.1-flash-lite-preview";
+/// The main chat's model unless `system_settings.main_chat_model` says
+/// otherwise. Chosen for speed: its answers are often spoken.
+const MAIN_CHAT_MODEL: &str = "openai/gpt-oss-safeguard-20b";
 
 #[derive(Deserialize)]
 pub struct Ask {
@@ -63,12 +66,14 @@ pub async fn ask(
     };
     // The user's chosen fast model and voice. Octo keeps its own name.
     let ai = crate::agent::snapshot_for(&st, caller.user_id).await;
-    let model = if st.llm.is_some() {
-        model
-    } else {
-        ai.fast.clone().unwrap_or(model)
-    };
     let main_chat = body.scope.as_deref() == Some("app");
+    let model = match (&st.llm, &st.octopilot) {
+        (Some(_), _) => model,
+        (None, Some(pool)) if main_chat => {
+            octo_common::llm::model(pool, "main_chat_model", MAIN_CHAT_MODEL).await
+        }
+        _ => ai.fast.clone().unwrap_or(model),
+    };
     let name = if main_chat { "Octopilot" } else { "Octo" };
     let system_prompt = format!(
         "{}{}",

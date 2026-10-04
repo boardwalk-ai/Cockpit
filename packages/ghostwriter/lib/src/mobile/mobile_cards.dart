@@ -99,7 +99,7 @@ class _GwStepCardState extends State<GwStepCard> {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 13.5,
+                              fontSize: 11.5,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -112,7 +112,7 @@ class _GwStepCardState extends State<GwStepCard> {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: kGwBody.copyWith(
-                                  fontSize: 12.5,
+                                  fontSize: 11.5,
                                   height: 1.35,
                                   color: step.status == StepStatus.failed
                                       ? const Color(0xFFFF9A9E)
@@ -147,7 +147,7 @@ class _GwStepCardState extends State<GwStepCard> {
                             child: Text(
                               line,
                               style: kGwBody.copyWith(
-                                fontSize: 12.5,
+                                fontSize: 11.5,
                                 height: 1.4,
                                 color: const Color(0xFFBDBEC1),
                               ),
@@ -262,7 +262,7 @@ class GwWritingCard extends StatelessWidget {
                       },
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 13.5,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -298,7 +298,7 @@ class _CountingWords extends StatelessWidget {
             : '${value.round()} words',
         style: const TextStyle(
           color: GwColors.muted,
-          fontSize: 12.5,
+          fontSize: 11.5,
           fontWeight: FontWeight.w600,
           fontFeatures: [FontFeature.tabularFigures()],
         ),
@@ -515,7 +515,7 @@ class _GwQuestionCardState extends State<GwQuestionCard> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Color(0xFFFF777D),
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -528,7 +528,7 @@ class _GwQuestionCardState extends State<GwQuestionCard> {
                 q.question,
                 style: kGwBody.copyWith(
                   color: answered ? GwColors.muted : Colors.white,
-                  fontSize: answered ? 13.5 : 15,
+                  fontSize: answered ? 11.5 : 13,
                   height: 1.45,
                 ),
               ),
@@ -770,7 +770,7 @@ class _SourceReviewState extends State<_SourceReview> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 13.5,
+                          fontSize: 11.5,
                           height: 1.3,
                           fontWeight: FontWeight.w600,
                           decoration: rejected
@@ -786,7 +786,7 @@ class _SourceReviewState extends State<_SourceReview> {
                           overflow: TextOverflow.ellipsis,
                           style: kGwBody.copyWith(
                             color: GwColors.muted,
-                            fontSize: 12,
+                            fontSize: 11,
                           ),
                         ),
                       ],
@@ -840,7 +840,7 @@ class _SourceReviewState extends State<_SourceReview> {
                                     'Add a focus note',
                                     style: TextStyle(
                                       color: Color(0xFFFF777D),
-                                      fontSize: 12.5,
+                                      fontSize: 11.5,
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -856,7 +856,7 @@ class _SourceReviewState extends State<_SourceReview> {
                               cursorColor: GwColors.accent,
                               textCapitalization: TextCapitalization.sentences,
                               style: kGwBody.copyWith(
-                                fontSize: 13.5,
+                                fontSize: 11.5,
                                 color: Colors.white,
                               ),
                               decoration: InputDecoration(
@@ -868,7 +868,7 @@ class _SourceReviewState extends State<_SourceReview> {
                                 hintText:
                                     'What should I take from this source?',
                                 hintStyle: kGwBody.copyWith(
-                                  fontSize: 13.5,
+                                  fontSize: 11.5,
                                   color: GwColors.hint,
                                 ),
                               ),
@@ -948,7 +948,7 @@ class GwChoiceChip extends StatelessWidget {
                 label,
                 style: TextStyle(
                   color: selected ? Colors.white : const Color(0xFFD7D7D9),
-                  fontSize: 13.5,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -994,14 +994,14 @@ class _InlineField extends StatelessWidget {
               keyboardType: number ? TextInputType.number : TextInputType.text,
               textInputAction: TextInputAction.send,
               cursorColor: GwColors.accent,
-              style: kGwBody.copyWith(fontSize: 14, color: Colors.white),
+              style: kGwBody.copyWith(fontSize: 12, color: Colors.white),
               decoration: InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
                 filled: false,
                 contentPadding: EdgeInsets.zero,
                 hintText: hint,
-                hintStyle: kGwBody.copyWith(fontSize: 14, color: GwColors.hint),
+                hintStyle: kGwBody.copyWith(fontSize: 12, color: GwColors.hint),
               ),
             ),
           ),
@@ -1054,7 +1054,7 @@ class _ConfirmButton extends StatelessWidget {
           label,
           style: TextStyle(
             color: enabled ? Colors.white : GwColors.hint,
-            fontSize: 14,
+            fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -1121,7 +1121,7 @@ class _AnswerChips extends StatelessWidget {
               _label(v),
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 12.5,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1179,7 +1179,7 @@ class GwEndCard extends StatelessWidget {
                 child: Text(
                   text,
                   style: kGwBody.copyWith(
-                    fontSize: 14,
+                    fontSize: 12,
                     height: 1.35,
                     color: end.phase == RunPhase.failed
                         ? const Color(0xFFFF9A9E)
@@ -1228,7 +1228,7 @@ class GwEditorCard extends StatelessWidget {
                     'Proceed to Editor',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 15,
+                      fontSize: 13,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1236,7 +1236,7 @@ class GwEditorCard extends StatelessWidget {
                     'Read and refine your essay',
                     style: kGwBody.copyWith(
                       color: GwColors.muted,
-                      fontSize: 12.5,
+                      fontSize: 11.5,
                       height: 1.3,
                     ),
                   ),

@@ -147,14 +147,14 @@ class _ModeCardState extends State<ModeCard> {
                         mode.title,
                         style: TextStyle(
                           color: c.text,
-                          fontSize: 17,
+                          fontSize: 15,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         mode.tagline,
-                        style: TextStyle(color: c.muted, fontSize: 13),
+                        style: TextStyle(color: c.muted, fontSize: 11),
                       ),
                     ],
                   ),

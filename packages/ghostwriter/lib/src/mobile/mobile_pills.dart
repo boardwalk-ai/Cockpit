@@ -163,7 +163,7 @@ class _Pill extends StatelessWidget {
                     label,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 13,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),

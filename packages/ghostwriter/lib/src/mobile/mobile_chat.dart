@@ -329,7 +329,7 @@ class _ThreadStrip extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.2,
                         ),
@@ -389,7 +389,7 @@ class _Chip extends StatelessWidget {
             label,
             style: const TextStyle(
               color: Color(0xFFD7D7D9),
-              fontSize: 12.5,
+              fontSize: 11.5,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -490,7 +490,7 @@ class _StatusChipState extends State<_StatusChip>
             widget.label,
             style: TextStyle(
               color: color,
-              fontSize: 12.5,
+              fontSize: 11.5,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -528,7 +528,7 @@ class _ReconnectingBadge extends StatelessWidget {
             'Reconnecting…',
             style: TextStyle(
               color: GwColors.muted,
-              fontSize: 12.5,
+              fontSize: 11.5,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -820,7 +820,7 @@ class _ErrorCard extends StatelessWidget {
               message,
               style: kGwBody.copyWith(
                 color: const Color(0xFFFF9A9E),
-                fontSize: 13.5,
+                fontSize: 11.5,
                 height: 1.4,
               ),
             ),
@@ -844,7 +844,7 @@ class _ErrorCard extends StatelessWidget {
                     'Retry',
                     style: TextStyle(
                       color: Colors.white,
-                      fontSize: 13,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
                   ),

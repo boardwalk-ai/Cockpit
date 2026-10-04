@@ -635,7 +635,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                       // Temporary mascot until real GhostWriter asset is added.
                       const Text(
                         '👻',
-                        style: TextStyle(fontSize: 52, height: 1),
+                        style: TextStyle(fontSize: 50, height: 1),
                       ),
 
                       const SizedBox(height: 28),
@@ -670,7 +670,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Color(0xFF85878D),
-                            fontSize: 16,
+                            fontSize: 14,
                             height: 1.55,
                             fontWeight: FontWeight.w400,
                           ),
@@ -722,7 +722,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
 
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 16,
+                                fontSize: 14,
                                 height: 1.45,
                               ),
 
@@ -746,7 +746,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
 
                                 hintStyle: TextStyle(
                                   color: Color(0xFF62646A),
-                                  fontSize: 16,
+                                  fontSize: 14,
                                   height: 1.45,
                                   fontWeight: FontWeight.w400,
                                 ),
@@ -811,7 +811,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                                             'Source',
                                             style: TextStyle(
                                               color: Colors.white,
-                                              fontSize: 15,
+                                              fontSize: 13,
                                               fontWeight: FontWeight.w700,
                                             ),
                                           ),
@@ -877,7 +877,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                                           'Start',
                                           style: TextStyle(
                                             color: Colors.white,
-                                            fontSize: 16,
+                                            fontSize: 14,
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
@@ -932,7 +932,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               const CircleAvatar(
                 radius: 20,
                 backgroundColor: Color(0xFF1B2230),
-                child: Text('👻', style: TextStyle(fontSize: 20)),
+                child: Text('👻', style: TextStyle(fontSize: 18)),
               ),
               const SizedBox(width: 12),
               const Expanded(
@@ -943,14 +943,14 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                       'Ask Octo',
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
                     SizedBox(height: 3),
                     Text(
                       'Quick guidance for the screen you are on.',
-                      style: TextStyle(color: Color(0xFF85878D), fontSize: 13),
+                      style: TextStyle(color: Color(0xFF85878D), fontSize: 11),
                     ),
                   ],
                 ),
@@ -973,7 +973,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color: Color(0xFF85878D),
-                fontSize: 14,
+                fontSize: 12,
                 height: 1.5,
               ),
             ),
@@ -1065,7 +1065,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             'FOLDERS',
             style: TextStyle(
               color: Color(0xFF5E6065),
-              fontSize: 11,
+              fontSize: 10,
               letterSpacing: 2.2,
               fontWeight: FontWeight.w600,
             ),
@@ -1082,7 +1082,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 'No folders yet',
-                style: TextStyle(color: _muted, fontSize: 13),
+                style: TextStyle(color: _muted, fontSize: 11),
               ),
             )
           else
@@ -1113,7 +1113,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 13,
+                          fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1128,7 +1128,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             'THREADS',
             style: TextStyle(
               color: Color(0xFF5E6065),
-              fontSize: 11,
+              fontSize: 10,
               letterSpacing: 2.2,
               fontWeight: FontWeight.w600,
             ),
@@ -1142,7 +1142,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               child: Center(
                 child: Text(
                   'No saved threads yet',
-                  style: TextStyle(color: _muted, fontSize: 13),
+                  style: TextStyle(color: _muted, fontSize: 11),
                 ),
               ),
             )
@@ -1189,7 +1189,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                                 color: selected
                                     ? Colors.white
                                     : const Color(0xFFD0D1D4),
-                                fontSize: 14,
+                                fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1198,7 +1198,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                               status,
                               style: const TextStyle(
                                 color: _muted,
-                                fontSize: 12,
+                                fontSize: 11,
                               ),
                             ),
                           ],
@@ -1287,7 +1287,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                         message,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 15,
+                          fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -1310,7 +1310,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                         _assistantText,
                         style: const TextStyle(
                           color: Colors.white70,
-                          fontSize: 15,
+                          fontSize: 13,
                           height: 1.5,
                         ),
                       ),
@@ -1336,7 +1336,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                             'GhostWriter needs your input',
                             style: TextStyle(
                               color: Color(0xFFFF777D),
-                              fontSize: 12,
+                              fontSize: 11,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -1345,14 +1345,14 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                             _pendingQuestion!,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 15,
+                              fontSize: 13,
                               height: 1.4,
                             ),
                           ),
                           const SizedBox(height: 8),
                           const Text(
                             'Answer below and press send.',
-                            style: TextStyle(color: _muted, fontSize: 12),
+                            style: TextStyle(color: _muted, fontSize: 11),
                           ),
                         ],
                       ),
@@ -1378,7 +1378,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                               _errorMessage!,
                               style: const TextStyle(
                                 color: Color(0xFFFF777D),
-                                fontSize: 14,
+                                fontSize: 12,
                               ),
                             ),
                           ),
@@ -1420,7 +1420,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
         children: [
           const Text(
             'Your GhostWriter draft is complete.',
-            style: TextStyle(color: Colors.white70, fontSize: 16, height: 1.5),
+            style: TextStyle(color: Colors.white70, fontSize: 14, height: 1.5),
           ),
           const SizedBox(height: 18),
           Container(
@@ -1448,7 +1448,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                       SizedBox(height: 4),
                       Text(
                         'Review and refine your generated essay',
-                        style: TextStyle(color: _muted, fontSize: 13),
+                        style: TextStyle(color: _muted, fontSize: 11),
                       ),
                     ],
                   ),
@@ -1462,7 +1462,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             'FINAL ESSAY',
             style: TextStyle(
               color: Color(0xFF5E6065),
-              fontSize: 11,
+              fontSize: 10,
               letterSpacing: 2.0,
               fontWeight: FontWeight.w700,
             ),
@@ -1482,7 +1482,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                   : essay,
               style: const TextStyle(
                 color: Colors.white70,
-                fontSize: 14,
+                fontSize: 12,
                 height: 1.55,
               ),
             ),
@@ -1493,7 +1493,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               'REFERENCES',
               style: TextStyle(
                 color: Color(0xFF5E6065),
-                fontSize: 11,
+                fontSize: 10,
                 letterSpacing: 2.0,
                 fontWeight: FontWeight.w700,
               ),
@@ -1511,7 +1511,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                 bibliography,
                 style: const TextStyle(
                   color: Colors.white70,
-                  fontSize: 13,
+                  fontSize: 11,
                   height: 1.55,
                 ),
               ),
@@ -1560,7 +1560,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
           'ESSAY INFORMATION',
           style: TextStyle(
             color: Color(0xFF5E6065),
-            fontSize: 11,
+            fontSize: 10,
             letterSpacing: 2.0,
             fontWeight: FontWeight.w700,
           ),
@@ -1609,7 +1609,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
             'SOURCES',
             style: TextStyle(
               color: Color(0xFF5E6065),
-              fontSize: 11,
+              fontSize: 10,
               letterSpacing: 2.0,
               fontWeight: FontWeight.w700,
             ),
@@ -1626,7 +1626,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               ),
               child: const Text(
                 'No sources were returned by the backend.',
-                style: TextStyle(color: _muted, fontSize: 13, height: 1.4),
+                style: TextStyle(color: _muted, fontSize: 11, height: 1.4),
               ),
             )
           else
@@ -1635,7 +1635,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                 (source['title'] ?? 'Untitled source').toString(),
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 14,
+                  fontSize: 12,
                   height: 1.35,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1644,14 +1644,14 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               if ((source['author'] ?? '').toString().trim().isNotEmpty)
                 Text(
                   source['author'].toString(),
-                  style: const TextStyle(color: _muted, fontSize: 12),
+                  style: const TextStyle(color: _muted, fontSize: 11),
                 ),
               if ((source['publisher'] ?? '').toString().trim().isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     source['publisher'].toString(),
-                    style: const TextStyle(color: _muted, fontSize: 12),
+                    style: const TextStyle(color: _muted, fontSize: 11),
                   ),
                 ),
               if ((source['url'] ?? '').toString().trim().isNotEmpty)
@@ -1661,7 +1661,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
                     source['url'].toString(),
                     style: const TextStyle(
                       color: Color(0xFFFF6268),
-                      fontSize: 12,
+                      fontSize: 11,
                     ),
                   ),
                 ),
@@ -1675,7 +1675,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               'REFERENCE LIST',
               style: TextStyle(
                 color: Color(0xFF5E6065),
-                fontSize: 11,
+                fontSize: 10,
                 letterSpacing: 2.0,
                 fontWeight: FontWeight.w700,
               ),
@@ -1685,7 +1685,7 @@ class _GhostWriterPageState extends State<GhostWriterPage> {
               bibliography,
               style: const TextStyle(
                 color: Colors.white60,
-                fontSize: 12,
+                fontSize: 11,
                 height: 1.5,
               ),
             ),
@@ -1884,7 +1884,7 @@ class _WorkspaceHeader extends StatelessWidget {
                         '👻  GHOSTWRITER',
                         style: TextStyle(
                           color: Color(0xFFFF555A),
-                          fontSize: 11,
+                          fontSize: 10,
                           letterSpacing: 1,
                           fontWeight: FontWeight.w700,
                         ),
@@ -1895,7 +1895,7 @@ class _WorkspaceHeader extends StatelessWidget {
                       title,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 23,
+                        fontSize: 21,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1904,7 +1904,7 @@ class _WorkspaceHeader extends StatelessWidget {
                       finished ? '●  Finished' : '●  Asking: essayFocus',
                       style: const TextStyle(
                         color: Color(0xFF85878D),
-                        fontSize: 13,
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -1949,7 +1949,7 @@ class _InfoBlock extends StatelessWidget {
             label,
             style: const TextStyle(
               color: Color(0xFF5E6065),
-              fontSize: 11,
+              fontSize: 10,
               letterSpacing: 1.3,
             ),
           ),
@@ -1958,7 +1958,7 @@ class _InfoBlock extends StatelessWidget {
             value,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -2004,7 +2004,7 @@ class _TopChip extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white60,
-                fontSize: 11,
+                fontSize: 10,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1,
               ),

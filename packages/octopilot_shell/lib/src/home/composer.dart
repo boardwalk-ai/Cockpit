@@ -96,7 +96,7 @@ class _ShellComposerState extends State<ShellComposer> {
                   minLines: 1,
                   maxLines: 6,
                   textInputAction: TextInputAction.newline,
-                  style: TextStyle(color: c.text, fontSize: 15, height: 1.4),
+                  style: TextStyle(color: c.text, fontSize: 13, height: 1.4),
                   cursorColor: c.accent,
                   decoration: InputDecoration(
                     hintText: 'Message Octopilot',

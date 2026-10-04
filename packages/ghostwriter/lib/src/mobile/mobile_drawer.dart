@@ -256,7 +256,7 @@ class _Header extends StatelessWidget {
         children: [
           Image.asset(GwAssets.ghost, width: 34, height: 34),
           const SizedBox(width: 10),
-          const Expanded(child: GwWordmark(fontSize: 19)),
+          const Expanded(child: GwWordmark(fontSize: 15)),
           GwPressable(
             tooltip: 'Close',
             onTap: onClose,
@@ -309,7 +309,7 @@ class _NewChatButton extends StatelessWidget {
               'New chat',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 15,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -349,7 +349,7 @@ class _SearchField extends StatelessWidget {
                 color: Colors.white,
                 fontFamily: GwFonts.secondary,
                 fontFamilyFallback: GwFonts.secondaryFallback,
-                fontSize: 14.5,
+                fontSize: 12.5,
               ),
               decoration: const InputDecoration(
                 border: InputBorder.none,
@@ -361,7 +361,7 @@ class _SearchField extends StatelessWidget {
                   color: GwColors.hint,
                   fontFamily: GwFonts.secondary,
                   fontFamilyFallback: GwFonts.secondaryFallback,
-                  fontSize: 14.5,
+                  fontSize: 12.5,
                 ),
               ),
             ),
@@ -382,7 +382,7 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     const style = TextStyle(
       color: GwColors.hint,
-      fontSize: 11,
+      fontSize: 10,
       letterSpacing: 1.6,
       fontWeight: FontWeight.w700,
     );
@@ -425,7 +425,7 @@ class _FolderRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Color(0xFFD7D7D9),
-                fontSize: 14.5,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -489,7 +489,7 @@ class _ThreadRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: selected ? Colors.white : const Color(0xFFD7D7D9),
-                      fontSize: 14.5,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -502,7 +502,7 @@ class _ThreadRow extends StatelessWidget {
                       color: GwColors.muted,
                       fontFamily: GwFonts.secondary,
                       fontFamilyFallback: GwFonts.secondaryFallback,
-                      fontSize: 12,
+                      fontSize: 11,
                     ),
                   ),
                 ],
@@ -536,7 +536,7 @@ class _EmptyThreads extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Color(0xFFD7D7D9),
-              fontSize: 14.5,
+              fontSize: 12.5,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -550,7 +550,7 @@ class _EmptyThreads extends StatelessWidget {
               color: GwColors.muted,
               fontFamily: GwFonts.secondary,
               fontFamilyFallback: GwFonts.secondaryFallback,
-              fontSize: 13,
+              fontSize: 11,
             ),
           ),
         ],
@@ -602,7 +602,7 @@ class _AccountRow extends StatelessWidget {
               display[0],
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 15,
+                fontSize: 13,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -615,7 +615,7 @@ class _AccountRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 15,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),

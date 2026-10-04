@@ -169,7 +169,7 @@ class _Notice extends StatelessWidget {
             child: Text(
               message,
               style: kGwBody.copyWith(
-                fontSize: 13,
+                fontSize: 11,
                 height: 1.35,
                 color: const Color(0xFFFF9A9E),
               ),

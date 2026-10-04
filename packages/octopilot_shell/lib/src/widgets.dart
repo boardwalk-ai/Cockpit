@@ -90,7 +90,7 @@ class ShellTopBar extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: c.text,
-                  fontSize: 17,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                 ),
               ),

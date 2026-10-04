@@ -136,7 +136,7 @@ class _OctoSheetState extends State<_OctoSheet> {
                             'Ask Octo',
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 17,
+                              fontSize: 15,
                               fontWeight: FontWeight.w700,
                               letterSpacing: -0.3,
                             ),
@@ -147,7 +147,7 @@ class _OctoSheetState extends State<_OctoSheet> {
                               color: GwColors.muted,
                               fontFamily: GwFonts.secondary,
                               fontFamilyFallback: GwFonts.secondaryFallback,
-                              fontSize: 12.5,
+                              fontSize: 11.5,
                             ),
                           ),
                         ],
@@ -203,7 +203,7 @@ class _OctoSheetState extends State<_OctoSheet> {
                               color: GwColors.hint,
                               fontFamily: GwFonts.secondary,
                               fontFamilyFallback: GwFonts.secondaryFallback,
-                              fontSize: 15,
+                              fontSize: 13,
                             ),
                           ),
                         ),
@@ -278,7 +278,7 @@ class _Suggestions extends StatelessWidget {
                     ),
                     child: Text(
                       item,
-                      style: kGwBody.copyWith(fontSize: 13.5, height: 1.2),
+                      style: kGwBody.copyWith(fontSize: 11.5, height: 1.2),
                     ),
                   ),
                 ),
@@ -320,14 +320,14 @@ class _Exchange extends StatelessWidget {
               color: const Color(0x1AFFFFFF),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: Text(question, style: kGwBody.copyWith(fontSize: 14.5)),
+            child: Text(question, style: kGwBody.copyWith(fontSize: 12.5)),
           ),
         ),
         const SizedBox(height: 12),
         if (error != null)
           Text(
             error,
-            style: kGwBody.copyWith(color: GwColors.accentSoft, fontSize: 14),
+            style: kGwBody.copyWith(color: GwColors.accentSoft, fontSize: 12),
           )
         else if (answer != null)
           SelectableText(answer, style: kGwBody)

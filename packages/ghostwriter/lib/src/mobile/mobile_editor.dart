@@ -200,7 +200,7 @@ class _GwEditorPageState extends State<GwEditorPage>
   }
 
   Widget _page(bool editable) {
-    const bodySize = 17.0;
+    const bodySize = 15.0;
     final paper = TextStyle(
       fontFamily: _Paper.serif,
       fontSize: bodySize,
@@ -228,7 +228,7 @@ class _GwEditorPageState extends State<GwEditorPage>
                 style: const TextStyle(
                   fontFamily: _Paper.serif,
                   color: _Paper.ink,
-                  fontSize: 25,
+                  fontSize: 23,
                   height: 1.25,
                   fontWeight: FontWeight.w700,
                 ),
@@ -265,12 +265,12 @@ class _GwEditorPageState extends State<GwEditorPage>
                     paragraph: _block(paper, after: 14),
                     placeHolder: _block(paper.copyWith(color: _Paper.faint)),
                     h1: _block(
-                      paper.copyWith(fontSize: 24, fontWeight: FontWeight.w700),
+                      paper.copyWith(fontSize: 22, fontWeight: FontWeight.w700),
                       before: 8,
                       after: 10,
                     ),
                     h2: _block(
-                      paper.copyWith(fontSize: 20, fontWeight: FontWeight.w700),
+                      paper.copyWith(fontSize: 18, fontWeight: FontWeight.w700),
                       before: 6,
                       after: 8,
                     ),
@@ -282,7 +282,7 @@ class _GwEditorPageState extends State<GwEditorPage>
                 'REFERENCES',
                 style: TextStyle(
                   color: _Paper.muted,
-                  fontSize: 11,
+                  fontSize: 10,
                   letterSpacing: 1.6,
                   fontWeight: FontWeight.w700,
                 ),
@@ -293,7 +293,7 @@ class _GwEditorPageState extends State<GwEditorPage>
                 enabled: editable,
                 hint: 'No references yet.',
                 maxLines: null,
-                style: paper.copyWith(fontSize: 14.5, height: 1.6),
+                style: paper.copyWith(fontSize: 12.5, height: 1.6),
               ),
             ],
           ),
@@ -381,7 +381,7 @@ class _DetailsToggle extends StatelessWidget {
                 filled ? 'Title page details' : 'Add title page details',
                 style: const TextStyle(
                   color: _Paper.muted,
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -428,7 +428,7 @@ class _Details extends StatelessWidget {
                       label,
                       style: const TextStyle(
                         color: _Paper.muted,
-                        fontSize: 13,
+                        fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -440,7 +440,7 @@ class _Details extends StatelessWidget {
                       hint: '—',
                       style: const TextStyle(
                         color: _Paper.ink,
-                        fontSize: 15,
+                        fontSize: 13,
                         fontFamily: GwFonts.secondary,
                         fontFamilyFallback: GwFonts.secondaryFallback,
                       ),
@@ -499,7 +499,7 @@ class _Bar extends StatelessWidget {
               'Editor',
               style: TextStyle(
                 color: _Paper.ink,
-                fontSize: 16,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -516,7 +516,7 @@ class _Bar extends StatelessWidget {
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 12.5,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w700,
                 fontFeatures: const [FontFeature.tabularFigures()],
               ),
@@ -580,7 +580,7 @@ class _Notices extends StatelessWidget {
                       text,
                       style: const TextStyle(
                         color: GwColors.accent,
-                        fontSize: 13,
+                        fontSize: 11,
                         height: 1.35,
                       ),
                     ),
@@ -623,7 +623,7 @@ class _LockedFooter extends StatelessWidget {
           Expanded(
             child: Text(
               'Read-only while GhostWriter writes.',
-              style: TextStyle(color: _Paper.muted, fontSize: 12.5),
+              style: TextStyle(color: _Paper.muted, fontSize: 11.5),
             ),
           ),
         ],
@@ -876,14 +876,14 @@ class _HistorySheetState extends State<_HistorySheet> {
                 'History',
                 style: TextStyle(
                   color: _Paper.ink,
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(height: 4),
               const Text(
                 'Earlier versions of this essay. Tap one to go back to it.',
-                style: TextStyle(color: _Paper.muted, fontSize: 13),
+                style: TextStyle(color: _Paper.muted, fontSize: 11),
               ),
               const SizedBox(height: 12),
               if (snapshot.connectionState != ConnectionState.done)
@@ -926,7 +926,7 @@ class _HistorySheetState extends State<_HistorySheet> {
                                 reasonLabel(v['reason']?.toString() ?? ''),
                                 style: const TextStyle(
                                   color: _Paper.ink,
-                                  fontSize: 14.5,
+                                  fontSize: 12.5,
                                   fontWeight: FontWeight.w700,
                                 ),
                               ),
@@ -936,7 +936,7 @@ class _HistorySheetState extends State<_HistorySheet> {
                                 '${v['wordCount'] ?? 0} words',
                                 style: const TextStyle(
                                   color: _Paper.muted,
-                                  fontSize: 12.5,
+                                  fontSize: 11.5,
                                 ),
                               ),
                               if ((v['preview']?.toString() ?? '').isNotEmpty)
@@ -949,7 +949,7 @@ class _HistorySheetState extends State<_HistorySheet> {
                                     style: const TextStyle(
                                       color: _Paper.muted,
                                       fontFamily: _Paper.serif,
-                                      fontSize: 13.5,
+                                      fontSize: 11.5,
                                     ),
                                   ),
                                 ),

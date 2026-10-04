@@ -83,7 +83,7 @@ class _ShellMessageListState extends State<ShellMessageList> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
                 failure.message,
-                style: TextStyle(color: c.accent, fontSize: 14),
+                style: TextStyle(color: c.accent, fontSize: 12),
               ),
             ),
           ),
@@ -100,7 +100,7 @@ class _Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = ShellColors.of(context);
-    final text = TextStyle(color: c.text, fontSize: 15, height: 1.55);
+    final text = TextStyle(color: c.text, fontSize: 13, height: 1.55);
     if (message.role == ChatRole.assistant) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 10),

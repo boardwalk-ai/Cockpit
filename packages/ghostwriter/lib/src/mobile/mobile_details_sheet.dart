@@ -139,7 +139,7 @@ class _DetailsSheet extends StatelessWidget {
                     color: Color(0xFFC9CACC),
                     fontFamily: GwFonts.secondary,
                     fontFamilyFallback: GwFonts.secondaryFallback,
-                    fontSize: 13,
+                    fontSize: 11,
                     height: 1.55,
                   ),
                 ),
@@ -170,7 +170,7 @@ class _Heading extends StatelessWidget {
             text,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 17,
+              fontSize: 15,
               fontWeight: FontWeight.w700,
               letterSpacing: -0.2,
             ),
@@ -187,7 +187,7 @@ class _Heading extends StatelessWidget {
                 trailing,
                 style: const TextStyle(
                   color: GwColors.accentSoft,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -232,7 +232,7 @@ class _Tile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 14.5,
+              fontSize: 12.5,
               height: 1.3,
               fontWeight: FontWeight.w600,
             ),
@@ -263,7 +263,7 @@ class _Note extends StatelessWidget {
           color: GwColors.muted,
           fontFamily: GwFonts.secondary,
           fontFamilyFallback: GwFonts.secondaryFallback,
-          fontSize: 13,
+          fontSize: 11,
           height: 1.4,
         ),
       ),
@@ -292,7 +292,7 @@ class _SourceCard extends StatelessWidget {
       color: GwColors.muted,
       fontFamily: GwFonts.secondary,
       fontFamilyFallback: GwFonts.secondaryFallback,
-      fontSize: 12.5,
+      fontSize: 11.5,
       height: 1.35,
     );
 
@@ -329,7 +329,7 @@ class _SourceCard extends StatelessWidget {
                 title.isEmpty ? 'Untitled source' : title,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 14.5,
+                  fontSize: 12.5,
                   height: 1.3,
                   fontWeight: FontWeight.w600,
                 ),

@@ -186,7 +186,7 @@ class _AiSettingsState extends State<_AiSettings> {
                 'AI settings',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 19,
+                  fontSize: 17,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -0.3,
                 ),
@@ -221,7 +221,7 @@ class _AiSettingsState extends State<_AiSettings> {
                     _notice!,
                     style: kGwBody.copyWith(
                       color: GwColors.accentSoft,
-                      fontSize: 13.5,
+                      fontSize: 11.5,
                     ),
                   ),
                 ],
@@ -238,7 +238,7 @@ class _AiSettingsState extends State<_AiSettings> {
                     'No models to choose from yet.',
                     style: kGwBody.copyWith(
                       color: GwColors.muted,
-                      fontSize: 14,
+                      fontSize: 12,
                     ),
                   )
                 else
@@ -262,7 +262,7 @@ class _AiSettingsState extends State<_AiSettings> {
                 ),
                 Text(
                   'How the AI talks to you in chat. Your essay always stays academic.',
-                  style: kGwBody.copyWith(color: GwColors.muted, fontSize: 13),
+                  style: kGwBody.copyWith(color: GwColors.muted, fontSize: 11),
                 ),
                 const SizedBox(height: 10),
                 Wrap(
@@ -313,7 +313,7 @@ class _ScopeSwitch extends StatelessWidget {
               label,
               style: TextStyle(
                 color: on ? Colors.white : GwColors.muted,
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -360,7 +360,7 @@ class _Heading extends StatelessWidget {
           if (following)
             Text(
               'Same as all apps',
-              style: kGwBody.copyWith(color: GwColors.hint, fontSize: 12),
+              style: kGwBody.copyWith(color: GwColors.hint, fontSize: 11),
             )
           else if (onFollow != null)
             GwPressable(
@@ -370,7 +370,7 @@ class _Heading extends StatelessWidget {
                 'Use all-apps setting',
                 style: kGwBody.copyWith(
                   color: GwColors.accentSoft,
-                  fontSize: 12,
+                  fontSize: 11,
                 ),
               ),
             ),
@@ -425,7 +425,7 @@ class _ModelCard extends StatelessWidget {
                               color: model.locked
                                   ? GwColors.muted
                                   : Colors.white,
-                              fontSize: 15.5,
+                              fontSize: 13.5,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -460,7 +460,7 @@ class _ModelCard extends StatelessWidget {
                         model.tagline,
                         style: kGwBody.copyWith(
                           color: GwColors.muted,
-                          fontSize: 13,
+                          fontSize: 11,
                           height: 1.3,
                         ),
                       ),
@@ -523,7 +523,7 @@ class _VoiceChip extends StatelessWidget {
             voice.name,
             style: TextStyle(
               color: selected ? Colors.white : const Color(0xFFD5D6D8),
-              fontSize: 14,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),

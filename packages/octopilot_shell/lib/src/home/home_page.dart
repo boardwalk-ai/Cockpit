@@ -250,7 +250,7 @@ class _VoiceDock extends StatelessWidget {
               'Tap to talk',
               style: TextStyle(
                 color: c.muted,
-                fontSize: 13,
+                fontSize: 11,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -321,7 +321,7 @@ class _Welcome extends StatelessWidget {
                       _greeting(account),
                       style: TextStyle(
                         color: c.muted,
-                        fontSize: 15,
+                        fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -334,7 +334,7 @@ class _Welcome extends StatelessWidget {
                     'What will you do today?',
                     style: TextStyle(
                       color: c.text,
-                      fontSize: 27,
+                      fontSize: 25,
                       fontWeight: FontWeight.w700,
                       height: 1.2,
                       letterSpacing: -0.4,

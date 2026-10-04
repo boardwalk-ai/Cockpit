@@ -72,7 +72,7 @@ class ShellSettingsPage extends StatelessWidget {
                                               account?.name ?? 'Not signed in',
                                               style: TextStyle(
                                                 color: c.text,
-                                                fontSize: 17,
+                                                fontSize: 15,
                                                 fontWeight: FontWeight.w600,
                                               ),
                                             ),
@@ -81,7 +81,7 @@ class ShellSettingsPage extends StatelessWidget {
                                                 account!.email!,
                                                 style: TextStyle(
                                                   color: c.muted,
-                                                  fontSize: 13,
+                                                  fontSize: 11,
                                                 ),
                                               ),
                                             if (account?.plan != null)
@@ -89,7 +89,7 @@ class ShellSettingsPage extends StatelessWidget {
                                                 account!.plan!,
                                                 style: TextStyle(
                                                   color: c.hint,
-                                                  fontSize: 12,
+                                                  fontSize: 11,
                                                 ),
                                               ),
                                           ],
@@ -255,7 +255,7 @@ class _Label extends StatelessWidget {
       text,
       style: TextStyle(
         color: ShellColors.of(context).hint,
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.4,
       ),
@@ -314,12 +314,12 @@ class _Row extends StatelessWidget {
     final color = danger ? c.accent : c.text;
     return ListTile(
       leading: Icon(icon, color: danger ? c.accent : c.muted),
-      title: Text(title, style: TextStyle(color: color, fontSize: 15)),
+      title: Text(title, style: TextStyle(color: color, fontSize: 13)),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (value != null)
-            Text(value!, style: TextStyle(color: c.muted, fontSize: 14)),
+            Text(value!, style: TextStyle(color: c.muted, fontSize: 12)),
           if (!danger) Icon(Icons.chevron_right_rounded, color: c.hint),
         ],
       ),
@@ -344,7 +344,7 @@ class _Appearance extends StatelessWidget {
             children: [
               Icon(Icons.contrast_rounded, color: c.muted),
               const SizedBox(width: 16),
-              Text('Appearance', style: TextStyle(color: c.text, fontSize: 15)),
+              Text('Appearance', style: TextStyle(color: c.text, fontSize: 13)),
             ],
           ),
           const SizedBox(height: 12),

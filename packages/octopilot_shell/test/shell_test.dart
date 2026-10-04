@@ -314,10 +314,6 @@ void main() {
     await h.pump(tester);
 
     await tester.tap(find.byTooltip('Talk'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 700));
-    expect(find.text('Connecting'), findsNothing);
-
     await pumpUntil(tester, find.text('Listening'));
     await pumpUntil(tester, find.text('How do I write an essay here?'));
     await pumpUntil(tester, find.text('Speaking'));
@@ -419,6 +415,44 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('voice: hearing nothing twice waits for a tap', (tester) async {
+    final h = Harness(account: ada);
+    final deaf = _DeafVoice(h.voice);
+    final services = ShellServices(
+      chat: h.chat,
+      voice: deaf,
+      modules: h.services.modules,
+      account: h.account,
+      themeMode: h.theme,
+      setThemeMode: (_) {},
+    );
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tester.pumpWidget(OctopilotShellApp(services: services));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Talk'));
+    await pumpUntil(tester, find.textContaining("I didn't catch that"));
+    expect(deaf.listens, 2, reason: 'the mic is not opened again and again');
+    for (var i = 0; i < 50; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(deaf.listens, 2);
+
+    // A tap on the orb listens again.
+    await tester.tap(find.byType(VoiceOrb).last);
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(deaf.listens, 3);
+    await tester.tap(find.byTooltip('End voice'));
+    await tester.pumpAndSettle();
+    // Lets the loop's short wait between tries run out.
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   test('credits are written short', () {
     expect(formatCredits(980), '980');
     expect(formatCredits(1240), '1,240');
@@ -467,4 +501,20 @@ class _SlowVoice implements VoiceEngine {
 
   @override
   void stop() => inner.stop();
+}
+
+/// A microphone that never hears anything.
+class _DeafVoice extends _SlowVoice {
+  _DeafVoice(VoiceEngine inner) : super(inner, Future.value());
+
+  var listens = 0;
+
+  @override
+  Future<String?> listen({
+    required ValueChanged<String> onPartial,
+    required ValueChanged<double> onLevel,
+  }) async {
+    listens++;
+    return null;
+  }
 }

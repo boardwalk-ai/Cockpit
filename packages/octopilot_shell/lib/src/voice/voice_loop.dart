@@ -33,9 +33,14 @@ class VoiceLoop extends ChangeNotifier {
   double spoken = 0;
 
   bool muted = false;
+
+  /// Nothing was heard twice in a row: wait for a tap on the orb rather
+  /// than keep opening the microphone (each opening beeps on Android).
+  bool paused = false;
   String? error;
 
   var _running = false;
+  var _misses = 0;
   var _disposed = false;
 
   void start() {
@@ -74,7 +79,20 @@ class VoiceLoop extends ChangeNotifier {
         break;
       }
       if (!_running) break;
-      if (said == null || said.trim().isEmpty) continue;
+      // Muting cut it short: that is not "heard nothing".
+      if (muted) continue;
+      if (said == null || said.trim().isEmpty) {
+        if (++_misses >= 2) {
+          _misses = 0;
+          paused = true;
+          _set(VoicePhase.idle);
+          await _until(() => !paused || !_running);
+        } else {
+          await Future<void>.delayed(const Duration(milliseconds: 700));
+        }
+        continue;
+      }
+      _misses = 0;
 
       _set(VoicePhase.thinking);
       conversation.send(said);
@@ -124,7 +142,12 @@ class VoiceLoop extends ChangeNotifier {
         engine.stop();
       case VoicePhase.thinking:
         conversation.stop();
-      case VoicePhase.idle || VoicePhase.connecting:
+      case VoicePhase.idle:
+        if (paused) {
+          paused = false;
+          _notify();
+        }
+      case VoicePhase.connecting:
         break;
     }
   }

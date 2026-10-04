@@ -97,14 +97,14 @@ class _VoicePickerState extends State<_VoicePicker> {
               'Voice',
               style: TextStyle(
                 color: c.text,
-                fontSize: 22,
+                fontSize: 20,
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               'Tap one to hear it.',
-              style: TextStyle(color: c.muted, fontSize: 14),
+              style: TextStyle(color: c.muted, fontSize: 12),
             ),
             const SizedBox(height: 18),
             ValueListenableBuilder(
@@ -115,7 +115,7 @@ class _VoicePickerState extends State<_VoicePicker> {
                 physics: const NeverScrollableScrollPhysics(),
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 0.78,
+                childAspectRatio: 0.8,
                 children: [
                   for (final (i, voice) in voices.indexed)
                     Reveal(
@@ -183,34 +183,42 @@ class _VoiceCard extends StatelessWidget {
           ),
           child: Stack(
             children: [
-              Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    VoiceOrb(
-                      size: 78,
-                      colors: voice.colors,
-                      phase: preparing
-                          ? VoicePhase.thinking
-                          : playing
-                          ? VoicePhase.speaking
-                          : VoicePhase.idle,
-                      level: level,
+              // Large system fonts shrink the card's content instead of
+              // spilling out of it.
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        VoiceOrb(
+                          size: 70,
+                          colors: voice.colors,
+                          phase: preparing
+                              ? VoicePhase.thinking
+                              : playing
+                              ? VoicePhase.speaking
+                              : VoicePhase.idle,
+                          level: level,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          voice.name,
+                          style: TextStyle(
+                            color: c.text,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          voice.female ? 'Female' : 'Male',
+                          style: TextStyle(color: c.hint, fontSize: 11),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      voice.name,
-                      style: TextStyle(
-                        color: c.text,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    Text(
-                      voice.female ? 'Female' : 'Male',
-                      style: TextStyle(color: c.hint, fontSize: 12),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               if (chosen)

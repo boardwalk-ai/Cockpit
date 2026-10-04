@@ -147,7 +147,7 @@ class _GwComposerState extends State<GwComposer> with TickerProviderStateMixin {
                           color: Colors.white,
                           fontFamily: GwFonts.secondary,
                           fontFamilyFallback: GwFonts.secondaryFallback,
-                          fontSize: 16,
+                          fontSize: 14,
                           height: 1.4,
                         ),
                         decoration: InputDecoration(
@@ -160,7 +160,7 @@ class _GwComposerState extends State<GwComposer> with TickerProviderStateMixin {
                             color: GwColors.hint,
                             fontFamily: GwFonts.secondary,
                             fontFamilyFallback: GwFonts.secondaryFallback,
-                            fontSize: 16,
+                            fontSize: 14,
                             height: 1.4,
                           ),
                         ),
@@ -243,7 +243,7 @@ class _SourcePill extends StatelessWidget {
                         softWrap: false,
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 14,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -331,7 +331,7 @@ class _SendButton extends StatelessWidget {
                         softWrap: false,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 15,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
                         ),
                       ),

@@ -75,7 +75,7 @@ class GhostWriterMobileTopBar extends StatelessWidget {
                   const SizedBox(width: 10),
                   Image.asset(GwAssets.ghost, width: 28, height: 28),
                   const SizedBox(width: 7),
-                  const Expanded(child: GwWordmark(fontSize: 17)),
+                  const Expanded(child: GwWordmark(fontSize: 15)),
                   if (onSave != null)
                     GwPressable(
                       tooltip: saving ? 'Saving...' : 'Save',
@@ -282,7 +282,7 @@ class _OctoCreditsPillState extends State<OctoCreditsPill>
                       _format(value.round()),
                       style: const TextStyle(
                         color: Color(0xFFFFE9B0),
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         letterSpacing: 0.1,
                         fontFeatures: [FontFeature.tabularFigures()],

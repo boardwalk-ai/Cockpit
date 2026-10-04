@@ -39,14 +39,14 @@ const TextStyle kGwBody = TextStyle(
   color: Color(0xFFE6E6E8),
   fontFamily: GwFonts.secondary,
   fontFamilyFallback: GwFonts.secondaryFallback,
-  fontSize: 15,
+  fontSize: 13,
   height: 1.55,
 );
 
 /// Small uppercase label above a section.
 const TextStyle kGwLabel = TextStyle(
   color: GwColors.hint,
-  fontSize: 11,
+  fontSize: 10,
   letterSpacing: 1.6,
   fontWeight: FontWeight.w700,
 );
