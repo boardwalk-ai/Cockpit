@@ -26,7 +26,12 @@ impl FromRequestParts<AppState> for Caller {
         let user = st.firebase.authenticate(&parts.headers).await?;
         let user_id = match &st.octopilot {
             Some(pool) => {
-                let id = st.user_ids.user_id(pool, &user.uid).await?.ok_or_else(|| {
+                let mut id = st.user_ids.user_id(pool, &user.uid).await?;
+                // Staging: an allowed tester gets an account on first sign-in.
+                if id.is_none() && provision(st, pool, &user).await? {
+                    id = st.user_ids.user_id(pool, &user.uid).await?;
+                }
+                let id = id.ok_or_else(|| {
                     ApiError::new(
                         StatusCode::FORBIDDEN,
                         "no Octopilot account for this sign-in",
@@ -47,4 +52,43 @@ impl FromRequestParts<AppState> for Caller {
             user_id,
         })
     }
+}
+
+/// Makes an account for a first sign-in whose verified email is on the
+/// allowlist (`ACCOUNT_ALLOWLIST`, staging only), with the starting
+/// OctoCredits. True if one was made. Production leaves the list empty:
+/// accounts come from the Octopilot sign-up.
+pub async fn provision(
+    st: &AppState,
+    pool: &sqlx::PgPool,
+    user: &octo_common::auth::AuthedUser,
+) -> Result<bool, ApiError> {
+    let allowed = &st.config.account_allowlist;
+    let Some(email) = user.email.as_deref().map(str::to_lowercase) else {
+        return Ok(false);
+    };
+    if allowed.is_empty() || !user.email_verified || !allowed.contains(&email) {
+        return Ok(false);
+    }
+    let made = sqlx::query(
+        "INSERT INTO users (firebase_uid, email, name, plan, octo_credits) \
+         VALUES ($1, $2, $3, 'Staging Tester', $4) \
+         ON CONFLICT DO NOTHING",
+    )
+    .bind(&user.uid)
+    .bind(&email)
+    .bind(user.name.as_deref().unwrap_or(&email))
+    .bind(st.config.starting_credits)
+    .execute(pool)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "could not make a tester account");
+        ApiError::internal("could not make the account")
+    })?
+    .rows_affected()
+        > 0;
+    if made {
+        tracing::info!(%email, "tester account made");
+    }
+    Ok(made)
 }

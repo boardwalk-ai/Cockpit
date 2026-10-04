@@ -244,3 +244,41 @@ async fn maintenance_closes_the_api_but_not_the_status_check() {
 
     t.cleanup().await;
 }
+
+#[tokio::test]
+async fn an_allowed_tester_gets_an_account_on_first_sign_in() {
+    let t = TestApp::with(|config| {
+        config.account_allowlist = vec!["pm@example.com".into()];
+        config.starting_credits = 9999;
+    })
+    .await;
+    let pool = t.state.octopilot.clone().unwrap();
+    let user = |uid: &str, email: &str, verified: bool| octo_common::auth::AuthedUser {
+        uid: uid.into(),
+        email: Some(email.into()),
+        email_verified: verified,
+        name: Some("Pat Manager".into()),
+    };
+    let provision = |u| {
+        let st = t.state.clone();
+        let pool = pool.clone();
+        async move {
+            ghostwriter_api::ctx::provision(&st, &pool, &u)
+                .await
+                .unwrap()
+        }
+    };
+
+    // Not on the list, or not verified: no account.
+    assert!(!provision(user("stranger", "x@example.com", true)).await);
+    assert!(!provision(user("faker", "pm@example.com", false)).await);
+    // On the list (any case): an account with the starting credits, once.
+    assert!(provision(user("pm-uid", "PM@Example.com", true)).await);
+    assert!(!provision(user("pm-uid", "pm@example.com", true)).await);
+    let (credits, plan): (i32, String) =
+        sqlx::query_as("SELECT octo_credits, plan FROM users WHERE firebase_uid = 'pm-uid'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!((credits, plan.as_str()), (9999, "Staging Tester"));
+}

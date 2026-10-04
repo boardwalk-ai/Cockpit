@@ -1,0 +1,28 @@
+[Unit]
+Description=GhostWriter API, staging (ghostwriter-api, Rust)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gw-staging
+Group=gw-staging
+EnvironmentFile=/opt/ghostwriter-staging/app.env
+WorkingDirectory=/var/lib/gw-staging
+ExecStart=/opt/ghostwriter-staging/bin/ghostwriter-api
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gw-staging
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

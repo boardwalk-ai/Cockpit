@@ -1,0 +1,24 @@
+# GhostWriter staging's own Postgres, apart from production: the
+# `ghostwriter` database and `octopilot_staging` (a stand-in for the shared
+# octopilot tables: users, credits, keys, settings). Loopback only.
+#   docker compose -f docker-compose.yml --env-file /opt/ghostwriter-staging/db.env up -d
+services:
+  gw-staging-db:
+    image: postgres:17
+    container_name: gw-staging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ghostwriter
+      POSTGRES_USER: gw_staging
+      POSTGRES_PASSWORD: ${GW_STAGING_DB_PASSWORD:?set in db.env}
+    ports:
+      - "127.0.0.1:5439:5432"
+    volumes:
+      - gw-staging-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gw_staging -d ghostwriter"]
+      interval: 10s
+      retries: 10
+
+volumes:
+  gw-staging-pg:

@@ -31,6 +31,9 @@ pub struct AuthedUser {
     /// Firebase UID (maps to `users.firebase_uid` in the shared octopilot DB).
     pub uid: String,
     pub email: Option<String>,
+    /// Firebase has confirmed the user owns [email] (true for Google sign-in).
+    pub email_verified: bool,
+    pub name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -38,6 +41,10 @@ struct Claims {
     sub: String,
     #[serde(default)]
     email: Option<String>,
+    #[serde(default)]
+    email_verified: Option<bool>,
+    #[serde(default)]
+    name: Option<String>,
     #[serde(default)]
     user_id: Option<String>,
 }
@@ -141,6 +148,8 @@ impl FirebaseAuth {
         Ok(AuthedUser {
             uid: c.user_id.unwrap_or(c.sub),
             email: c.email,
+            email_verified: c.email_verified.unwrap_or(false),
+            name: c.name,
         })
     }
 
@@ -156,7 +165,12 @@ impl FirebaseAuth {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("dev-user")
                 .to_string();
-            return Ok(AuthedUser { uid, email: None });
+            return Ok(AuthedUser {
+                uid,
+                email: None,
+                email_verified: false,
+                name: None,
+            });
         }
         let token = headers
             .get("authorization")

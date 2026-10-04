@@ -52,6 +52,11 @@ pub struct Config {
     pub fcm_service_account_file: Option<String>,
     /// How often deleted accounts' data is swept.
     pub sweep_every: Duration,
+    /// Staging only: verified emails that get an account on first sign-in
+    /// (lowercase). Empty in production.
+    pub account_allowlist: Vec<String>,
+    /// The OctoCredits such an account starts with.
+    pub starting_credits: i32,
 }
 
 impl Config {
@@ -88,6 +93,14 @@ impl Config {
                 .unwrap_or_else(|_| "https://api.octopilotai.com/api/scrape".into()),
             fcm_service_account_file: env_opt("FCM_SERVICE_ACCOUNT_FILE"),
             sweep_every: millis("SWEEP_EVERY_MS").unwrap_or(Duration::from_secs(600)),
+            account_allowlist: list("ACCOUNT_ALLOWLIST")
+                .into_iter()
+                .map(|e| e.to_lowercase())
+                .collect(),
+            starting_credits: std::env::var("STARTING_CREDITS")
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+                .unwrap_or(0),
         }
     }
 }
