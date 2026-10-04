@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: allow plain HTTP to the dev machine, by any address
+     (the emulator's 10.0.2.2, USB-forwarded localhost, or the PC on the
+     Wi-Fi). Release builds keep Android's HTTPS-only default. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

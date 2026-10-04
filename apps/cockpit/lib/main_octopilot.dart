@@ -46,13 +46,14 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   final _account = ValueNotifier<ShellAccount?>(null);
   final _theme = ValueNotifier<ThemeMode>(ThemeMode.system);
   final _voice = ValueNotifier<String>(octopilotVoices.first.id);
+  final _voiceEngine = PocketVoiceEngine();
   StreamSubscription<bool>? _signIns;
 
   late final ShellServices _services = ShellServices(
     // Until the app's own API exists, the main chat is answered by
     // GhostWriter's API (Ask Octo, scoped to the whole app).
     chat: LocalMainChat(answer: _answer),
-    voice: PocketVoiceEngine(),
+    voice: _voiceEngine,
     voices: octopilotVoices,
     voiceId: _voice,
     onVoiceChanged: _saveVoice,
@@ -98,7 +99,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   void initState() {
     super.initState();
     _loadTheme();
-    _loadVoice();
+    _loadVoice().then((_) => _voiceEngine.warmUp(_voice.value));
     _signIns = _auth.authStateChanges().listen((_) => _loadAccount());
     _loadAccount();
   }

@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# On-device voice model (tools/voice/fetch_onnx_bundle.py), ~120 MB.
+/assets/tts/*
+!/assets/tts/README.md
+!/assets/tts/voices/
+/assets/tts/voices/*
+!/assets/tts/voices/.gitkeep

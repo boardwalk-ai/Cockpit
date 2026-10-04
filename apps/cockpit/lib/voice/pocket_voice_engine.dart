@@ -12,6 +12,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
+import 'on_device_tts.dart';
+
 /// Octopilot's voices (`tools/voice/voices.json`), each with its orb colours.
 const octopilotVoices = [
   ShellVoice(
@@ -49,9 +51,9 @@ const octopilotVoices = [
   ),
 ];
 
-/// Hears with the phone's own speech recognition and speaks with Pocket TTS
-/// through the voice server (`tools/voice/serve.py`), a whole reply at a
-/// time.
+/// Hears with the phone's own speech recognition and speaks with Pocket TTS,
+/// on the phone when the model is bundled (on_device_tts.dart), otherwise
+/// through the voice server (`tools/voice/serve.py`); a sentence at a time.
 class PocketVoiceEngine implements VoiceEngine {
   PocketVoiceEngine({String? baseUrl, http.Client? client})
     : baseUrl = baseUrl ?? defaultBaseUrl,
@@ -73,6 +75,10 @@ class PocketVoiceEngine implements VoiceEngine {
   Completer<String?>? _heard;
   var _partial = '';
   final _player = AudioPlayer();
+
+  /// The model on the phone itself, when this build has it; otherwise the
+  /// voice server speaks.
+  final OnDeviceTts? _onDevice = createOnDeviceTts();
   Completer<void>? _cut;
 
   /// The loudness envelope is sampled this often.
@@ -133,8 +139,34 @@ class PocketVoiceEngine implements VoiceEngine {
     _finishHearing();
   }
 
+  /// Loads the on-device model ahead of the first reply, so that reply
+  /// does not also wait for the model (copying it out and opening it).
+  Future<void> warmUp(String voice) async {
+    final local = _onDevice;
+    if (local == null || !await local.available) return;
+    try {
+      await local.speak('Hello there.', voice);
+      // Timing runs only: one typical reply sentence, logged.
+      if (const bool.fromEnvironment('POCKET_TTS_BENCH')) {
+        await local.speak(
+          'Octopilot helps you plan, write and polish your essays, '
+          'and it can explain anything you are studying.',
+          voice,
+        );
+      }
+    } on Object catch (e) {
+      debugPrint('pocket-tts: warm-up failed: $e');
+    }
+  }
+
   @override
   Future<Speech> prepare(String text, {required String voice}) async {
+    final local = _onDevice;
+    if (local != null && await local.available) {
+      final samples = await local.speak(_speakable(text), voice);
+      final clip = _Clip.fromWav(wavFromSamples(samples, 24000), _frame);
+      return Speech(text: text, duration: clip.duration, audio: clip);
+    }
     final response = await _client.post(
       Uri.parse('$baseUrl/v1/tts'),
       headers: {'content-type': 'application/json'},
@@ -261,4 +293,33 @@ class _Clip {
     final i = at.inMilliseconds ~/ frame.inMilliseconds;
     return i < 0 || i >= levels.length ? 0 : levels[i];
   }
+}
+
+/// 16-bit mono WAV bytes for [samples] (floats in -1..1).
+Uint8List wavFromSamples(Float32List samples, int rate) {
+  final data = ByteData(44 + samples.length * 2);
+  void ascii(int at, String s) {
+    for (var i = 0; i < s.length; i++) {
+      data.setUint8(at + i, s.codeUnitAt(i));
+    }
+  }
+
+  ascii(0, 'RIFF');
+  data.setUint32(4, 36 + samples.length * 2, Endian.little);
+  ascii(8, 'WAVE');
+  ascii(12, 'fmt ');
+  data.setUint32(16, 16, Endian.little);
+  data.setUint16(20, 1, Endian.little); // PCM
+  data.setUint16(22, 1, Endian.little); // mono
+  data.setUint32(24, rate, Endian.little);
+  data.setUint32(28, rate * 2, Endian.little);
+  data.setUint16(32, 2, Endian.little);
+  data.setUint16(34, 16, Endian.little);
+  ascii(36, 'data');
+  data.setUint32(40, samples.length * 2, Endian.little);
+  for (var i = 0; i < samples.length; i++) {
+    final s = (samples[i].clamp(-1.0, 1.0) * 32767).round();
+    data.setInt16(44 + i * 2, s, Endian.little);
+  }
+  return data.buffer.asUint8List();
 }

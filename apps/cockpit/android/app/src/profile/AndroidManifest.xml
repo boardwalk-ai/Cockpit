@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- Profile builds are for measuring on a phone against the local dev
+         API, so plain HTTP is allowed here as in debug. Release keeps
+         Android's HTTPS-only default. -->
+    <application android:networkSecurityConfig="@xml/network_security_config"/>
 </manifest>
