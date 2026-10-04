@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -58,11 +60,17 @@ class OctopilotShellApp extends StatefulWidget {
     required this.services,
     this.moduleRoutes = const [],
     this.initialLocation = '/',
+    this.textScale = 0.92,
   });
 
   final ShellServices services;
   final List<RouteBase> moduleRoutes;
   final String initialLocation;
+
+  /// How big text is drawn, for every screen (modules too). The phone's own
+  /// larger-text setting is followed up to its normal size, no further, so
+  /// screens keep their layout.
+  final double textScale;
 
   @override
   State<OctopilotShellApp> createState() => _OctopilotShellAppState();
@@ -91,8 +99,16 @@ class _OctopilotShellAppState extends State<OctopilotShellApp> {
         darkTheme: buildShellTheme(Brightness.dark),
         themeMode: mode,
         routerConfig: _router,
-        builder: (context, child) =>
-            ShellScope(services: widget.services, child: child!),
+        builder: (context, child) {
+          final media = MediaQuery.of(context);
+          final system = math.min(media.textScaler.scale(1), 1.0);
+          return MediaQuery(
+            data: media.copyWith(
+              textScaler: TextScaler.linear(system * widget.textScale),
+            ),
+            child: ShellScope(services: widget.services, child: child!),
+          );
+        },
       ),
     );
   }
