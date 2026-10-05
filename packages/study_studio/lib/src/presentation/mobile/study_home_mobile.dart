@@ -1,14 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
-import '../format.dart';
 import 'mobile_motion.dart';
 import 'mobile_style.dart';
 
-/// Study Studio's home on a phone: a greeting, the one main action, what to
-/// continue, what to do next, and the studios. Hairlines, not cards.
+/// Study Studio's home on a phone, centred: today's focus (the AI's pick, to
+/// start now), the studios as a ring carousel to swipe through, and a clear
+/// way to make a new one. Hairlines and space, not cards.
 class StudyHomeMobile extends StatelessWidget {
   const StudyHomeMobile({
     super.key,
@@ -29,52 +31,64 @@ class StudyHomeMobile extends StatelessWidget {
   /// For the greeting's time of day (tests).
   final DateTime? now;
 
-  /// How many studios the home lists; the rest are in the library.
-  static const listed = 3;
-
   @override
   Widget build(BuildContext context) {
     final c = SmColors.of(context);
     final t = SmText.of(context);
     final ordered = byRecent(studios);
-    final current = ordered.isEmpty ? null : ordered.first;
-    final next = weakestTopic(studios);
+    final focus = weakestTopic(studios);
+    void newStudio() => context.go('/study/upload');
 
     var i = 0;
     Widget appear(Widget child) => SmAppear(index: i++, child: child);
 
     final children = <Widget>[
-      appear(Text(_greeting(now ?? DateTime.now(), name), style: t.greeting)),
-      const SizedBox(height: 6),
-      appear(_Summary(studios: studios)),
-      const SizedBox(height: 18),
-      appear(_NewStudioButton(onTap: () => context.go('/study/upload'))),
-      if (studios.isEmpty) ...[
-        const SizedBox(height: 40),
-        appear(const _Empty()),
-      ],
-      if (current != null) ...[
-        _Section(label: 'CONTINUE', index: i++),
-        appear(_ContinueRow(studio: current)),
-      ],
-      if (next != null) ...[
-        _Section(label: 'UP NEXT', index: i++),
-        appear(_UpNextRow(studio: next.studio, topic: next.topic)),
-      ],
-      if (studios.isNotEmpty) ...[
-        _Section(
-          label: 'YOUR STUDIOS',
-          index: i++,
-          action: studios.length > listed ? 'View all ${studios.length}' : null,
-          onAction: () => context.go('/study/library'),
+      appear(
+        Text(
+          greeting(now ?? DateTime.now(), name),
+          textAlign: TextAlign.center,
+          style: t.small.copyWith(fontSize: 13),
         ),
-        for (final (k, studio) in ordered.take(listed).indexed)
-          appear(
-            StudioRow(
-              studio: studio,
-              divider: k < listed - 1 && k < ordered.length - 1,
+      ),
+      if (studios.isEmpty) ...[
+        const SizedBox(height: 70),
+        appear(const _Empty()),
+        const SizedBox(height: 28),
+        appear(_NewStudioButton(filled: true, onTap: newStudio)),
+      ] else ...[
+        if (focus != null) ...[
+          const SizedBox(height: 22),
+          appear(_Label("TODAY'S FOCUS")),
+          const SizedBox(height: 6),
+          appear(_Focus(studio: focus.studio, topic: focus.topic)),
+        ],
+        const SizedBox(height: 30),
+        appear(_Label('YOUR STUDIOS')),
+        const SizedBox(height: 10),
+        appear(_StudioCarousel(studios: ordered, onNew: newStudio)),
+        const SizedBox(height: 24),
+        appear(_NewStudioButton(filled: false, onTap: newStudio)),
+        const SizedBox(height: 18),
+        appear(_Totals(studios: studios)),
+        const SizedBox(height: 4),
+        appear(
+          Center(
+            child: SmPressable(
+              semanticLabel: 'View all studios',
+              onTap: () => context.go('/study/library'),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(
+                  'View all ${studios.length}',
+                  style: t.small.copyWith(
+                    color: c.accentSoft,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
             ),
           ),
+        ),
       ],
       const SizedBox(height: 32),
     ];
@@ -83,7 +97,7 @@ class StudyHomeMobile extends StatelessWidget {
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
       children: children,
     );
 
@@ -113,7 +127,8 @@ class StudyHomeMobile extends StatelessWidget {
     );
   }
 
-  static String _greeting(DateTime now, String? name) {
+  /// "Good afternoon, Dev" (no name: "Good afternoon").
+  static String greeting(DateTime now, String? name) {
     final part = switch (now.hour) {
       >= 5 && < 12 => 'Good morning',
       >= 12 && < 17 => 'Good afternoon',
@@ -121,8 +136,8 @@ class StudyHomeMobile extends StatelessWidget {
       _ => 'Still studying',
     };
     final first = name?.trim().split(RegExp(r'\s+')).first ?? '';
-    if (first.isEmpty || first == 'Guest') return '$part.';
-    return '$part,\n$first';
+    if (first.isEmpty || first == 'Guest') return part;
+    return '$part, $first';
   }
 }
 
@@ -206,9 +221,417 @@ class SmTopBar extends StatelessWidget {
   }
 }
 
+class _Label extends StatelessWidget {
+  const _Label(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    textAlign: TextAlign.center,
+    style: SmText.of(context).section,
+  );
+}
+
+/// The AI's pick for today: how long it takes, what it is, and Start.
+class _Focus extends StatelessWidget {
+  const _Focus({required this.studio, required this.topic});
+
+  final Studio studio;
+  final Topic topic;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final t = SmText.of(context);
+    return Column(
+      children: [
+        Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '${topic.estimatedStudyTimeMinutes}',
+                style: TextStyle(
+                  fontFamily: SmFonts.heading,
+                  fontSize: 48,
+                  height: 1.05,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -1.5,
+                  color: c.text,
+                ),
+              ),
+              TextSpan(
+                text: ' min',
+                style: TextStyle(
+                  fontFamily: SmFonts.heading,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  color: c.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Review ${topic.title}',
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: t.title.copyWith(fontSize: 16),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.auto_awesome_rounded, size: 13, color: c.accentSoft),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                'Your weakest topic · ${studio.title}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.small.copyWith(color: c.accentSoft),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _Pill(
+          label: 'Start',
+          icon: Icons.play_arrow_rounded,
+          filled: true,
+          onTap: () => context.go('/study/${studio.id}/teach/${topic.id}'),
+        ),
+      ],
+    );
+  }
+}
+
+/// The studios as mastery rings to swipe through; the one in the middle is
+/// big, its neighbours shrink and fade. A last ring makes a new studio.
+class _StudioCarousel extends StatefulWidget {
+  const _StudioCarousel({required this.studios, required this.onNew});
+
+  final List<Studio> studios;
+  final VoidCallback onNew;
+
+  @override
+  State<_StudioCarousel> createState() => _StudioCarouselState();
+}
+
+class _StudioCarouselState extends State<_StudioCarousel> {
+  final _pages = PageController(viewportFraction: 0.42);
+  var _page = 0;
+
+  @override
+  void dispose() {
+    _pages.dispose();
+    super.dispose();
+  }
+
+  void _go(int page) {
+    _pages.animateToPage(
+      page,
+      duration: smReduceMotion(context)
+          ? Duration.zero
+          : const Duration(milliseconds: 380),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final t = SmText.of(context);
+    final count = widget.studios.length + 1; // and the "new" ring
+    final current = _page < widget.studios.length
+        ? widget.studios[_page]
+        : null;
+
+    return Column(
+      children: [
+        SizedBox(
+          height: 132,
+          child: PageView.builder(
+            controller: _pages,
+            itemCount: count,
+            onPageChanged: (page) {
+              SmHaptics.select();
+              setState(() => _page = page);
+            },
+            itemBuilder: (context, index) => AnimatedBuilder(
+              animation: _pages,
+              builder: (context, child) {
+                final position =
+                    _pages.hasClients && _pages.position.haveDimensions
+                    ? _pages.page ?? _page.toDouble()
+                    : _page.toDouble();
+                final distance = (position - index).abs().clamp(0.0, 1.0);
+                return Opacity(
+                  opacity: 1 - distance * 0.6,
+                  child: Transform.scale(
+                    scale: 1 - distance * 0.45,
+                    child: child,
+                  ),
+                );
+              },
+              child: Center(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (index != _page) {
+                      SmHaptics.select();
+                      _go(index);
+                    } else if (index == widget.studios.length) {
+                      SmHaptics.thud();
+                      widget.onNew();
+                    } else {
+                      SmHaptics.select();
+                      context.go('/study/${widget.studios[index].id}');
+                    }
+                  },
+                  child: index == widget.studios.length
+                      ? const _NewRing()
+                      : SmRing(
+                          value: widget.studios[index].overallMastery,
+                          size: 120,
+                          stroke: 7,
+                          labelSize: 22,
+                        ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        AnimatedSwitcher(
+          duration: smReduceMotion(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
+          child: Column(
+            key: ValueKey(current?.id ?? 'new'),
+            children: [
+              Text(
+                current?.title ?? 'A new studio',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.title,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                current == null
+                    ? 'From your notes, a textbook, slides'
+                    : current.topicCount == 0
+                    ? 'Empty'
+                    : '${current.topicCount} topics · '
+                          '${current.flashcardCount} cards',
+                style: t.small,
+              ),
+              const SizedBox(height: 8),
+              SmPressable(
+                semanticLabel: current == null
+                    ? 'New study studio'
+                    : 'Open ${current.title}',
+                onTap: current == null
+                    ? widget.onNew
+                    : () => context.go('/study/${current.id}'),
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Text(
+                    current == null ? 'Create ›' : 'Open ›',
+                    style: t.small.copyWith(
+                      color: c.accentSoft,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        _Dots(count: count, current: _page),
+      ],
+    );
+  }
+}
+
+/// The last ring of the carousel: a dashed "+".
+class _NewRing extends StatelessWidget {
+  const _NewRing();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    return SizedBox(
+      width: 120,
+      height: 120,
+      child: CustomPaint(
+        painter: _DashedCircle(c.line),
+        child: Icon(Icons.add_rounded, size: 34, color: c.muted),
+      ),
+    );
+  }
+}
+
+class _DashedCircle extends CustomPainter {
+  _DashedCircle(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    final rect = (Offset.zero & size).deflate(2);
+    const dashes = 28;
+    for (var i = 0; i < dashes; i++) {
+      final start = i * 2 * math.pi / dashes;
+      canvas.drawArc(rect, start, math.pi / dashes, false, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedCircle old) => old.color != color;
+}
+
+class _Dots extends StatelessWidget {
+  const _Dots({required this.count, required this.current});
+
+  final int count;
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    // Long lists show a window of dots around the current one.
+    const most = 9;
+    final first = (current - most ~/ 2).clamp(0, math.max(0, count - most));
+    final last = math.min(count, first + most);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        for (var i = first; i < last; i++)
+          AnimatedContainer(
+            duration: smReduceMotion(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 220),
+            margin: const EdgeInsets.symmetric(horizontal: 2.5),
+            width: i == current ? 16 : 5,
+            height: 5,
+            decoration: BoxDecoration(
+              color: i == current ? c.accent : c.line,
+              borderRadius: BorderRadius.circular(9),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// "+ New study studio": tinted red under the carousel, solid red when
+/// there are no studios yet. Either way it is easy to find.
+class _NewStudioButton extends StatelessWidget {
+  const _NewStudioButton({required this.filled, required this.onTap});
+
+  final bool filled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final fg = filled ? Colors.white : c.accentSoft;
+    return SmPressable(
+      semanticLabel: 'New study studio',
+      haptic: SmHaptics.thud,
+      onTap: onTap,
+      child: Container(
+        height: 50,
+        decoration: BoxDecoration(
+          color: filled ? c.accent : c.accent.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: filled ? c.accent : c.accent.withValues(alpha: 0.55),
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.add_rounded, color: fg, size: 20),
+            const SizedBox(width: 6),
+            Text(
+              'New study studio',
+              style: TextStyle(
+                fontFamily: SmFonts.heading,
+                color: fg,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.label,
+    required this.icon,
+    required this.filled,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool filled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final fg = filled ? Colors.white : c.text;
+    return SmPressable(
+      semanticLabel: label,
+      haptic: SmHaptics.tap,
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 11),
+        decoration: BoxDecoration(
+          color: filled ? c.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+          border: filled ? null : Border.all(color: c.line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: fg, size: 19),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontFamily: SmFonts.heading,
+                color: fg,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// "8 studios · 64 topics · 1% mastered".
-class _Summary extends StatelessWidget {
-  const _Summary({required this.studios});
+class _Totals extends StatelessWidget {
+  const _Totals({required this.studios});
 
   final List<Studio> studios;
 
@@ -225,8 +648,9 @@ class _Summary extends StatelessWidget {
               .round();
     String plural(int n, String word) => '$n $word${n == 1 ? '' : 's'}';
     return Text.rich(
+      textAlign: TextAlign.center,
       TextSpan(
-        style: t.small.copyWith(fontSize: 12),
+        style: t.small.copyWith(color: c.hint),
         children: [
           TextSpan(text: '${plural(studios.length, 'studio')} · '),
           TextSpan(text: '${plural(topics, 'topic')} · '),
@@ -240,205 +664,7 @@ class _Summary extends StatelessWidget {
   }
 }
 
-class _NewStudioButton extends StatelessWidget {
-  const _NewStudioButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SmColors.of(context);
-    return SmPressable(
-      semanticLabel: 'New study studio',
-      haptic: SmHaptics.thud,
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: c.accent,
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.add_rounded, color: Colors.white, size: 20),
-            SizedBox(width: 6),
-            Text(
-              'New study studio',
-              style: TextStyle(
-                fontFamily: SmFonts.heading,
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// A small grey label over a section, and an optional action on its right.
-class _Section extends StatelessWidget {
-  const _Section({
-    required this.label,
-    required this.index,
-    this.action,
-    this.onAction,
-  });
-
-  final String label;
-  final int index;
-  final String? action;
-  final VoidCallback? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SmColors.of(context);
-    final t = SmText.of(context);
-    return SmAppear(
-      index: index,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 26, bottom: 4),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: t.section)),
-            if (action != null)
-              SmPressable(
-                semanticLabel: action,
-                onTap: onAction,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Text(
-                    action!,
-                    style: t.small.copyWith(
-                      color: c.accentSoft,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The studio to pick up again: its ring, its name, play.
-class _ContinueRow extends StatelessWidget {
-  const _ContinueRow({required this.studio});
-
-  final Studio studio;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SmColors.of(context);
-    final t = SmText.of(context);
-    final started = studio.lastStudied != null;
-    return SmPressable(
-      semanticLabel: 'Continue ${studio.title}',
-      onTap: () => context.go('/study/${studio.id}'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            SmRing(value: studio.overallMastery, size: 50),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    studio.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.title,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${studio.topicCount} topics · '
-                    '${studio.flashcardCount} cards · '
-                    '${started ? relativeDay(studio.lastStudied).toLowerCase() : 'not started'}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.small,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: c.accent.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                Icons.play_arrow_rounded,
-                color: c.accentSoft,
-                size: 22,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// The AI's pick: the weakest topic, to review now.
-class _UpNextRow extends StatelessWidget {
-  const _UpNextRow({required this.studio, required this.topic});
-
-  final Studio studio;
-  final Topic topic;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SmColors.of(context);
-    final t = SmText.of(context);
-    return SmPressable(
-      semanticLabel: 'Review ${topic.title}',
-      onTap: () => context.go('/study/${studio.id}/teach/${topic.id}'),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          border: Border.symmetric(horizontal: BorderSide(color: c.line)),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.auto_awesome_rounded, size: 18, color: c.accentSoft),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Review ${topic.title}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: t.body,
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Your weakest topic · ${topic.estimatedStudyTimeMinutes} min',
-                    style: t.small.copyWith(color: c.hint),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: c.hint),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// One studio in a list: name, size, mastery. Shared with the library.
+/// One studio in a list: name, size, mastery. Used by the library.
 class StudioRow extends StatelessWidget {
   const StudioRow({super.key, required this.studio, this.divider = true});
 
@@ -508,15 +734,15 @@ class _Empty extends StatelessWidget {
     final t = SmText.of(context);
     return Column(
       children: [
-        Icon(Icons.auto_stories_outlined, size: 34, color: c.hint),
-        const SizedBox(height: 10),
-        Text('Start your first studio', style: t.title),
-        const SizedBox(height: 4),
+        Icon(Icons.auto_stories_outlined, size: 40, color: c.hint),
+        const SizedBox(height: 12),
+        Text('Start your first studio', style: t.title.copyWith(fontSize: 18)),
+        const SizedBox(height: 6),
         Text(
           'Upload lecture notes or a textbook chapter. AI turns it into '
           'topics, flashcards and quizzes.',
           textAlign: TextAlign.center,
-          style: t.small,
+          style: t.small.copyWith(fontSize: 12),
         ),
       ],
     );

@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:study_studio/src/data/mock/mock_data.dart';
 import 'package:study_studio/src/domain/entities/studio.dart';
 import 'package:study_studio/src/presentation/home/study_home_page.dart';
-import 'package:study_studio/src/presentation/mobile/study_home_mobile.dart';
 import 'package:study_studio/src/presentation/mobile/studio_library_page.dart';
+import 'package:study_studio/src/presentation/mobile/study_home_mobile.dart';
 
 import '../helpers/test_app.dart';
 
@@ -49,7 +49,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Start your first studio'), findsOneWidget);
       expect(find.text('New study studio'), findsOneWidget);
-      expect(find.text('CONTINUE'), findsNothing);
+      expect(find.text('YOUR STUDIOS'), findsNothing);
     });
 
     testWidgets('says when the studios did not load', (tester) async {
@@ -64,30 +64,30 @@ void main() {
       expect(find.text('Try again'), findsOneWidget);
     });
 
-    testWidgets('shows what to continue, what is next, and the studios', (
+    testWidgets('shows today\'s focus, the studios, and a new one', (
       tester,
     ) async {
       viewport(tester, phone);
       final mock = buildMockStudiosStashed();
       await pumpTestApp(tester, child: const StudyHomePage(), studios: mock);
       await tester.pumpAndSettle();
-      expect(find.text('New study studio'), findsOneWidget);
-      expect(find.text('CONTINUE'), findsOneWidget);
-      expect(find.text('UP NEXT'), findsOneWidget);
+      expect(find.text("TODAY'S FOCUS"), findsOneWidget);
+      expect(find.text('Start'), findsOneWidget);
       expect(find.text('YOUR STUDIOS'), findsOneWidget);
-      expect(find.text(mock.first.title), findsWidgets);
+      expect(find.text('New study studio'), findsOneWidget);
+      expect(find.text('View all ${mock.length}'), findsOneWidget);
       // No desktop tab bar or theme switcher on the phone.
       expect(find.text('Cockpit'), findsNothing);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('lists three studios and links the rest', (tester) async {
+    testWidgets('greets, and swipes through the studios', (tester) async {
       viewport(tester, phone);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: StudyHomeMobile(
-              studios: studios(5),
+              studios: studios(3),
               name: 'Dev Trhein',
               credits: 56085,
               now: DateTime(2026, 10, 5, 15),
@@ -96,13 +96,26 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Good afternoon,\nDev'), findsOneWidget);
+      expect(find.text('Good afternoon, Dev'), findsOneWidget);
       expect(find.text('56,085'), findsOneWidget);
-      expect(find.text('View all 5'), findsOneWidget);
-      // The most recent first; only three.
-      expect(find.text('Studio 0'), findsWidgets);
-      expect(find.text('Studio 2'), findsOneWidget);
-      expect(find.text('Studio 3'), findsNothing);
+      // No topics anywhere: no focus to suggest.
+      expect(find.text("TODAY'S FOCUS"), findsNothing);
+      // The most recent studio is in the middle.
+      expect(find.text('Studio 0'), findsOneWidget);
+      expect(find.text('Open \u203a'), findsOneWidget);
+
+      await tester.drag(find.byType(PageView), const Offset(-160, 0));
+      await tester.pumpAndSettle();
+      expect(find.text('Studio 1'), findsOneWidget);
+      expect(find.text('Studio 0'), findsNothing);
+
+      // Past the last studio: the ring that makes a new one.
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(find.byType(PageView), const Offset(-160, 0));
+        await tester.pumpAndSettle();
+      }
+      expect(find.text('A new studio'), findsOneWidget);
+      expect(find.text('Create \u203a'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   });
@@ -116,7 +129,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('New Study Studio'), findsOneWidget);
-    expect(find.text('CONTINUE'), findsNothing);
+    expect(find.text("TODAY'S FOCUS"), findsNothing);
   });
 
   group('the studio library', () {
