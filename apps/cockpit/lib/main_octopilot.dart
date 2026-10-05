@@ -43,6 +43,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     auth: _auth,
     push: ref.read(ghostWriterPushProvider),
   );
+  final _studyStudio = const StudyStudioModule();
   final _account = ValueNotifier<ShellAccount?>(null);
   final _theme = ValueNotifier<ThemeMode>(ThemeMode.system);
   final _voice = ValueNotifier<String>(octopilotVoices.first.id);
@@ -66,12 +67,13 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
         icon: Icons.history_edu_rounded,
         path: _ghostWriter.rootPath,
       ),
-      const ShellModuleEntry(
-        id: 'study_studio',
+      ShellModuleEntry(
+        id: _studyStudio.id,
         mode: ShellMode.learn,
         title: 'Study Studio',
         description: 'Flashcards and practice from your material.',
         icon: Icons.style_outlined,
+        path: _studyStudio.rootPath,
       ),
       const ShellModuleEntry(
         id: 'octo_notes',
@@ -195,6 +197,6 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   @override
   Widget build(BuildContext context) => OctopilotShellApp(
     services: _services,
-    moduleRoutes: _ghostWriter.routes(),
+    moduleRoutes: [..._ghostWriter.routes(), ..._studyStudio.routes()],
   );
 }
