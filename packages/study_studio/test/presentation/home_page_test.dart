@@ -61,6 +61,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.textContaining("Couldn't load your studios"), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
     });
 
     testWidgets('shows what to continue, what is next, and the studios', (

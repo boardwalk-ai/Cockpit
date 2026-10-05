@@ -7,6 +7,7 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
+import '../mobile/mobile_motion.dart';
 import '../mobile/mobile_style.dart';
 import '../mobile/study_home_mobile.dart';
 import '../widgets/studio_scaffold.dart';
@@ -77,9 +78,31 @@ class StudyHomePage extends ConsumerWidget {
             ? plain(const _SignInGate())
             : plain(
                 Center(
-                  child: Text(
-                    "Couldn't load your studios. Pull to try again.",
-                    style: SmText.of(context).small,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Couldn't load your studios.",
+                        style: SmText.of(context).small,
+                      ),
+                      const SizedBox(height: 12),
+                      SmPressable(
+                        semanticLabel: 'Try again',
+                        haptic: SmHaptics.tap,
+                        onTap: () => ref.invalidate(studioListProvider),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 9,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: c.line),
+                          ),
+                          child: Text('Try again', style: SmText.of(context).body),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
