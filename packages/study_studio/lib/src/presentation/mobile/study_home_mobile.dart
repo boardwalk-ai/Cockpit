@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
+import 'mobile_header.dart';
 import 'mobile_motion.dart';
 import 'mobile_style.dart';
+import 'study_greeting.dart';
 
 /// Study Studio's home on a phone, centred: the studio to pick up again as
 /// one large mastery ring with Continue and New, the AI's next topic, and
@@ -18,6 +20,7 @@ class StudyHomeMobile extends StatelessWidget {
     this.credits,
     this.onRefresh,
     this.now,
+    this.greetingSeed,
   });
 
   final List<Studio> studios;
@@ -30,8 +33,11 @@ class StudyHomeMobile extends StatelessWidget {
   /// For the greeting's time of day (tests).
   final DateTime? now;
 
+  /// Picks the greeting; the same all session unless given (tests).
+  final int? greetingSeed;
+
   /// The other studios listed under the ring; the rest are in the library.
-  static const listed = 2;
+  static const listed = 3;
 
   @override
   Widget build(BuildContext context) {
@@ -45,15 +51,17 @@ class StudyHomeMobile extends StatelessWidget {
     Widget appear(Widget child) => SmAppear(index: i++, child: child);
 
     final hello = appear(
-      Text(
-        greeting(now ?? DateTime.now(), name),
-        textAlign: TextAlign.center,
-        style: t.small.copyWith(fontSize: 13),
+      SmGreeting(
+        text: StudyGreetings.pick(
+          now ?? DateTime.now(),
+          name,
+          seed: greetingSeed ?? StudyGreetings.sessionSeed,
+        ),
       ),
     );
 
-    // Three groups spread over the screen's height (a short screen
-    // scrolls): the studio to continue, what is next, the other studios.
+    // The studio to continue, what is next, the other studios: close
+    // together and centred in the screen (a short screen scrolls).
     final List<Widget> groups;
     if (ordered.isEmpty) {
       groups = [
@@ -68,7 +76,7 @@ class StudyHomeMobile extends StatelessWidget {
         Column(
           children: [
             hello,
-            const SizedBox(height: 4),
+            const SizedBox(height: 6),
             appear(
               Text(
                 'Pick up where you left off',
@@ -177,21 +185,22 @@ class StudyHomeMobile extends StatelessWidget {
       ];
     }
 
+    final top = MediaQuery.paddingOf(context).top + SmHeader.clearance;
     final body = LayoutBuilder(
       builder: (context, box) => SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(
           parent: BouncingScrollPhysics(),
         ),
-        padding: const EdgeInsets.fromLTRB(22, 0, 22, 16),
+        padding: EdgeInsets.fromLTRB(22, top, 22, 28),
         child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: box.maxHeight - 16),
+          constraints: BoxConstraints(
+            minHeight: (box.maxHeight - top - 28).clamp(0, double.infinity),
+          ),
           child: Column(
-            mainAxisAlignment: ordered.isEmpty
-                ? MainAxisAlignment.spaceEvenly
-                : MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               for (final (k, group) in groups.indexed) ...[
-                if (k > 0) const SizedBox(height: 26),
+                if (k > 0) const SizedBox(height: 34),
                 group,
               ],
             ],
@@ -200,29 +209,20 @@ class StudyHomeMobile extends StatelessWidget {
       ),
     );
 
-    return ColoredBox(
-      color: c.background,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            SmTopBar(credits: credits, home: true),
-            Expanded(
-              child: onRefresh == null
-                  ? body
-                  : RefreshIndicator(
-                      color: c.accent,
-                      backgroundColor: c.raised,
-                      onRefresh: () async {
-                        SmHaptics.tap();
-                        await onRefresh!();
-                      },
-                      child: body,
-                    ),
+    return SmHeaderPage(
+      header: SmHeader(home: true, credits: credits),
+      child: onRefresh == null
+          ? body
+          : RefreshIndicator(
+              color: c.accent,
+              backgroundColor: c.raised,
+              edgeOffset: top,
+              onRefresh: () async {
+                SmHaptics.tap();
+                await onRefresh!();
+              },
+              child: body,
             ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -232,19 +232,6 @@ class StudyHomeMobile extends StatelessWidget {
         ? 'not started'
         : relativeDay(s.lastStudied).toLowerCase();
     return '${s.topicCount} topics · ${s.flashcardCount} cards · $when';
-  }
-
-  /// "Good afternoon, Dev" (no name: "Good afternoon").
-  static String greeting(DateTime now, String? name) {
-    final part = switch (now.hour) {
-      >= 5 && < 12 => 'Good morning',
-      >= 12 && < 17 => 'Good afternoon',
-      >= 17 && < 22 => 'Good evening',
-      _ => 'Still studying',
-    };
-    final first = name?.trim().split(RegExp(r'\s+')).first ?? '';
-    if (first.isEmpty || first == 'Guest') return part;
-    return '$part, $first';
   }
 }
 
@@ -265,71 +252,6 @@ List<Studio> byRecent(List<Studio> studios) {
     }
   }
   return best;
-}
-
-/// Back (or, on the home, Home) and the OctoCredits.
-class SmTopBar extends StatelessWidget {
-  const SmTopBar({super.key, this.credits, this.title, this.home = false});
-
-  final int? credits;
-  final String? title;
-
-  /// The leading button goes to the app's home instead of back.
-  final bool home;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = SmColors.of(context);
-    final t = SmText.of(context);
-    return SizedBox(
-      height: 52,
-      child: Row(
-        children: [
-          const SizedBox(width: 6),
-          SmPressable(
-            semanticLabel: home ? 'Home' : 'Back',
-            haptic: SmHaptics.tap,
-            scale: 0.9,
-            onTap: () =>
-                home || !context.canPop() ? context.go('/') : context.pop(),
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Icon(
-                home ? Icons.home_outlined : Icons.arrow_back_ios_new_rounded,
-                size: home ? 22 : 18,
-                color: c.muted,
-              ),
-            ),
-          ),
-          if (title != null)
-            Expanded(child: Text(title!, style: t.title))
-          else
-            const Spacer(),
-          if (credits != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 18),
-              child: Row(
-                children: [
-                  Icon(Icons.bolt_rounded, size: 15, color: c.gold),
-                  const SizedBox(width: 3),
-                  Text(_thousands(credits!), style: t.small),
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  static String _thousands(int n) {
-    final s = n.toString();
-    final out = StringBuffer();
-    for (var i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
-      out.write(s[i]);
-    }
-    return out.toString();
-  }
 }
 
 class _Label extends StatelessWidget {

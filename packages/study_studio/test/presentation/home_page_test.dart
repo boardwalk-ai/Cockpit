@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:study_studio/src/data/mock/mock_data.dart';
 import 'package:study_studio/src/domain/entities/studio.dart';
 import 'package:study_studio/src/presentation/home/study_home_page.dart';
+import 'package:study_studio/src/presentation/mobile/mobile_header.dart';
 import 'package:study_studio/src/presentation/mobile/studio_library_page.dart';
+import 'package:study_studio/src/presentation/mobile/study_greeting.dart';
 import 'package:study_studio/src/presentation/mobile/study_home_mobile.dart';
 
 import '../helpers/test_app.dart';
@@ -13,6 +15,11 @@ void viewport(WidgetTester tester, Size size) {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  // The shines loop forever; with reduced motion they stay still, so the
+  // tests can settle (and that path is covered too).
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
+  addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
 }
 
 const phone = Size(390, 844);
@@ -94,26 +101,52 @@ void main() {
               name: 'Dev Trhein',
               credits: 56085,
               now: DateTime(2026, 10, 5, 15),
+              greetingSeed: 1,
             ),
           ),
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Good afternoon, Dev'), findsOneWidget);
+      expect(
+        find.text(
+          StudyGreetings.pick(DateTime(2026, 10, 5, 15), 'Dev Trhein', seed: 1),
+        ),
+        findsOneWidget,
+      );
       expect(find.text('56,085'), findsOneWidget);
+      // GhostWriter's floating header: Home, the wordmark, the credits.
       expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+      expect(find.byType(SmHeader), findsOneWidget);
       // The most recent in the ring, the next two listed, not again.
       expect(find.text('Studio 0'), findsOneWidget);
       expect(find.text('mastered'), findsOneWidget);
       expect(find.text('Studio 1'), findsOneWidget);
-      expect(find.text('Studio 2'), findsOneWidget);
-      expect(find.text('Studio 3'), findsNothing);
+      expect(find.text('Studio 3'), findsOneWidget);
+      expect(find.text('Studio 4'), findsNothing);
       // No topics anywhere: nothing to suggest.
       expect(find.text('UP NEXT'), findsNothing);
-      // The page fills the screen: the library link sits at its foot.
-      expect(tester.getCenter(find.text('View all 5')).dy, greaterThan(650));
+      // Everything fits on the screen, under the header.
+      expect(tester.getCenter(find.text('View all 5')).dy, lessThan(844));
+      expect(
+        tester.getTopLeft(find.text('Pick up where you left off')).dy,
+        greaterThan(tester.getBottomLeft(find.byType(SmHeader)).dy),
+      );
       expect(tester.takeException(), isNull);
     });
+  });
+
+  test('greetings fit the time of day and the name', () {
+    final night = StudyGreetings.choices(DateTime(2026, 1, 1, 23), null);
+    expect(night, contains('Hey night owl'));
+    expect(night.any((g) => g.contains('{name}')), isFalse);
+    final morning = StudyGreetings.choices(DateTime(2026, 1, 1, 8), 'Dev T');
+    expect(morning, contains('Morning, Dev. Fresh mind, fresh notes'));
+    expect(morning, isNot(contains('Hey night owl')));
+    // The same seed, the same line.
+    expect(
+      StudyGreetings.pick(DateTime(2026, 1, 1, 8), 'Dev', seed: 7),
+      StudyGreetings.pick(DateTime(2026, 1, 1, 8), 'Dev', seed: 7),
+    );
   });
 
   testWidgets('the desktop home is unchanged', (tester) async {

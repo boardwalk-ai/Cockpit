@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -23,19 +24,27 @@ class _SmAppearState extends State<SmAppear>
     duration: const Duration(milliseconds: 520),
   );
 
+  Timer? _start;
+  var _scheduled = false;
+
   @override
-  void initState() {
-    super.initState();
-    Future<void>.delayed(
-      Duration(milliseconds: 45 * math.min(widget.index, 12)),
-      () {
-        if (mounted) _in.forward();
-      },
-    );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_scheduled) return;
+    _scheduled = true;
+    // Still: show at once, no timer.
+    if (smReduceMotion(context)) {
+      _in.value = 1;
+      return;
+    }
+    _start = Timer(Duration(milliseconds: 45 * math.min(widget.index, 12)), () {
+      if (mounted) _in.forward();
+    });
   }
 
   @override
   void dispose() {
+    _start?.cancel();
     _in.dispose();
     super.dispose();
   }

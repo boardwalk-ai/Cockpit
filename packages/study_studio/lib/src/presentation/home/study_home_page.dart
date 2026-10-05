@@ -7,6 +7,7 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
+import '../mobile/mobile_header.dart';
 import '../mobile/mobile_motion.dart';
 import '../mobile/mobile_style.dart';
 import '../mobile/study_home_mobile.dart';
@@ -52,13 +53,9 @@ class StudyHomePage extends ConsumerWidget {
         auth.valueOrNull ?? ref.watch(authServiceProvider).isSignedIn;
     Widget plain(Widget child) => Scaffold(
       backgroundColor: c.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const SmTopBar(home: true),
-            Expanded(child: child),
-          ],
-        ),
+      body: SmHeaderPage(
+        header: const SmHeader(home: true),
+        child: SafeArea(child: child),
       ),
     );
     Widget spinner() => Center(

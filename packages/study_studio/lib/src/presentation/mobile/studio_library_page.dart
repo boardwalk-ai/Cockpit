@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
+import 'mobile_header.dart';
 import 'mobile_motion.dart';
 import 'mobile_style.dart';
 import 'study_home_mobile.dart';
@@ -90,11 +91,11 @@ class _StudioLibraryState extends State<StudioLibrary> {
     final t = SmText.of(context);
     final shown = _shown;
 
-    final list = ListView(
+    Widget list(double top) => ListView(
       physics: const AlwaysScrollableScrollPhysics(
         parent: BouncingScrollPhysics(),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+      padding: EdgeInsets.fromLTRB(20, top, 20, 32),
       children: [
         SmAppear(index: 0, child: Text('Your studios', style: t.greeting)),
         const SizedBox(height: 4),
@@ -156,40 +157,37 @@ class _StudioLibraryState extends State<StudioLibrary> {
       ],
     );
 
-    return SafeArea(
-      bottom: false,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const Expanded(child: SmTopBar()),
-              SmPressable(
-                semanticLabel: 'New study studio',
-                haptic: SmHaptics.thud,
-                scale: 0.9,
-                onTap: () => context.go('/study/upload'),
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(10, 10, 18, 10),
-                  child: Icon(Icons.add_rounded, color: c.accentSoft, size: 24),
-                ),
-              ),
-            ],
+    final top = MediaQuery.paddingOf(context).top + SmHeader.clearance;
+    return SmHeaderPage(
+      header: SmHeader(
+        trailing: SmPressable(
+          semanticLabel: 'New study studio',
+          haptic: SmHaptics.thud,
+          scale: 0.9,
+          onTap: () => context.go('/study/upload'),
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: c.accent.withValues(alpha: 0.12),
+            ),
+            child: Icon(Icons.add_rounded, color: c.accentSoft, size: 24),
           ),
-          Expanded(
-            child: widget.onRefresh == null
-                ? list
-                : RefreshIndicator(
-                    color: c.accent,
-                    backgroundColor: c.raised,
-                    onRefresh: () async {
-                      SmHaptics.tap();
-                      await widget.onRefresh!();
-                    },
-                    child: list,
-                  ),
-          ),
-        ],
+        ),
       ),
+      child: widget.onRefresh == null
+          ? list(top)
+          : RefreshIndicator(
+              color: c.accent,
+              backgroundColor: c.raised,
+              edgeOffset: top,
+              onRefresh: () async {
+                SmHaptics.tap();
+                await widget.onRefresh!();
+              },
+              child: list(top),
+            ),
     );
   }
 }
