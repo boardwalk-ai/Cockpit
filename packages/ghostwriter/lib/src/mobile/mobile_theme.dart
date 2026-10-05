@@ -19,7 +19,7 @@ abstract final class GwColors {
 abstract final class GwFonts {
   // Package fonts are namespaced by Flutter as `packages/<package>/<family>`.
   static const primary = 'packages/cockpit_ui/PlusJakartaSans';
-  static const secondary = 'packages/ghostwriter/Poppins';
+  static const secondary = 'packages/cockpit_ui/Poppins';
 
   /// Secondary text falls back to the primary face if Poppins is missing.
   static const secondaryFallback = [primary];

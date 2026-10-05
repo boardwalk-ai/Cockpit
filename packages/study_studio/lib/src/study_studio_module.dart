@@ -12,6 +12,7 @@ import 'presentation/knowledge_graph/knowledge_graph_page.dart';
 import 'presentation/lightning_recall/lightning_recall_page.dart';
 import 'presentation/manage/manage_study_studio_page.dart';
 import 'presentation/mastery_report/mastery_report_page.dart';
+import 'presentation/mobile/studio_library_page.dart';
 import 'presentation/progress/progress_page.dart';
 import 'presentation/quiz_me/quiz_me_page.dart';
 import 'presentation/ready/ready_page.dart';
@@ -65,6 +66,7 @@ class StudyStudioModule extends CockpitModule {
           ),
         ),
         GoRoute(path: 'welcome', builder: (_, _) => const WelcomeBackPage()),
+        GoRoute(path: 'library', builder: (_, _) => const StudioLibraryPage()),
         GoRoute(
           path: ':studioId',
           builder: (_, state) => DashboardPage(

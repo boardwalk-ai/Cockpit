@@ -7,6 +7,8 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
+import '../mobile/mobile_style.dart';
+import '../mobile/study_home_mobile.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 1 — Study Studio Home. A dark, editorial "learning cockpit": one red
@@ -18,6 +20,9 @@ class StudyHomePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A phone gets its own home (mobile/study_home_mobile.dart); everything
+    // below is the desktop and web layout, unchanged.
+    if (!isDesktop(context)) return _phone(context, ref);
     // EXPERIMENT: the whole first page is wrapped in the shared borderless
     // design system (Poppins · neutral #222323 · no card/divider outlines) to
     // trial the OctoNotes look in Study Studio. Reversible — remove this wrap to
@@ -35,6 +40,60 @@ class StudyHomePage extends ConsumerWidget {
             child: ThemeSwitcher(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _phone(BuildContext context, WidgetRef ref) {
+    final c = SmColors.of(context);
+    final auth = ref.watch(authStateProvider);
+    final signedIn =
+        auth.valueOrNull ?? ref.watch(authServiceProvider).isSignedIn;
+    Widget plain(Widget child) => Scaffold(
+      backgroundColor: c.background,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const SmTopBar(),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+    Widget spinner() => Center(
+      child: CircularProgressIndicator(color: c.accent, strokeWidth: 2.5),
+    );
+
+    if (auth.isLoading) return plain(spinner());
+    if (!signedIn) return plain(const _SignInGate());
+
+    final studios = ref.watch(studioListProvider);
+    final me = ref.watch(meProvider).valueOrNull;
+    return Scaffold(
+      backgroundColor: c.background,
+      body: studios.when(
+        loading: () => plain(spinner()),
+        error: (e, _) => _isUnauthorized(e)
+            ? plain(const _SignInGate())
+            : plain(
+                Center(
+                  child: Text(
+                    "Couldn't load your studios. Pull to try again.",
+                    style: SmText.of(context).small,
+                  ),
+                ),
+              ),
+        data: (list) => StudyHomeMobile(
+          studios: list,
+          name: me?.displayName,
+          credits: me?.credits,
+          onRefresh: () async {
+            ref
+              ..invalidate(meProvider)
+              ..invalidate(studioListProvider);
+            await ref.read(studioListProvider.future);
+          },
+        ),
       ),
     );
   }

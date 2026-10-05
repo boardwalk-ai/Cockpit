@@ -32,3 +32,12 @@ flutter:
           weight: 600
         - asset: assets/fonts/PlusJakartaSans-Bold.ttf
           weight: 700
+    # Poppins — the body face of the phone modules (GhostWriter, Study
+    # Studio), family `packages/cockpit_ui/Poppins` (OFL).
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+          weight: 600
