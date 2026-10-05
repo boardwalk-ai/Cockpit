@@ -98,6 +98,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Good afternoon, Dev'), findsOneWidget);
       expect(find.text('56,085'), findsOneWidget);
+      // Home, not back; the page fills the screen, a new studio at the foot.
+      expect(find.byIcon(Icons.home_outlined), findsOneWidget);
+      expect(
+        tester.getCenter(find.text('New study studio')).dy,
+        greaterThan(600),
+      );
       // No topics anywhere: no focus to suggest.
       expect(find.text("TODAY'S FOCUS"), findsNothing);
       // The most recent studio is in the middle.

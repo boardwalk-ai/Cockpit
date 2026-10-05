@@ -55,7 +55,7 @@ class StudyHomePage extends ConsumerWidget {
       body: SafeArea(
         child: Column(
           children: [
-            const SmTopBar(),
+            const SmTopBar(home: true),
             Expanded(child: child),
           ],
         ),

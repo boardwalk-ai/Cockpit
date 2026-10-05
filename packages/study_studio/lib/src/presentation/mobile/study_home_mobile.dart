@@ -42,63 +42,91 @@ class StudyHomeMobile extends StatelessWidget {
     var i = 0;
     Widget appear(Widget child) => SmAppear(index: i++, child: child);
 
-    final children = <Widget>[
-      appear(
-        Text(
-          greeting(now ?? DateTime.now(), name),
-          textAlign: TextAlign.center,
-          style: t.small.copyWith(fontSize: 13),
-        ),
+    final hello = appear(
+      Text(
+        greeting(now ?? DateTime.now(), name),
+        textAlign: TextAlign.center,
+        style: t.small.copyWith(fontSize: 13),
       ),
-      if (studios.isEmpty) ...[
-        const SizedBox(height: 70),
+    );
+
+    // Three groups spread over the screen's height: what to do today at
+    // the top, the studios in the middle, making a new one at the bottom.
+    // A short screen scrolls instead.
+    final List<Widget> groups;
+    if (studios.isEmpty) {
+      groups = [
+        hello,
         appear(const _Empty()),
-        const SizedBox(height: 28),
         appear(_NewStudioButton(filled: true, onTap: newStudio)),
-      ] else ...[
-        if (focus != null) ...[
-          const SizedBox(height: 22),
-          appear(_Label("TODAY'S FOCUS")),
-          const SizedBox(height: 6),
-          appear(_Focus(studio: focus.studio, topic: focus.topic)),
-        ],
-        const SizedBox(height: 30),
-        appear(_Label('YOUR STUDIOS')),
-        const SizedBox(height: 10),
-        appear(_StudioCarousel(studios: ordered, onNew: newStudio)),
-        const SizedBox(height: 24),
-        appear(_NewStudioButton(filled: false, onTap: newStudio)),
-        const SizedBox(height: 18),
-        appear(_Totals(studios: studios)),
-        const SizedBox(height: 4),
-        appear(
-          Center(
-            child: SmPressable(
-              semanticLabel: 'View all studios',
-              onTap: () => context.go('/study/library'),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Text(
-                  'View all ${studios.length}',
-                  style: t.small.copyWith(
-                    color: c.accentSoft,
-                    fontWeight: FontWeight.w500,
+      ];
+    } else {
+      groups = [
+        Column(
+          children: [
+            hello,
+            if (focus != null) ...[
+              const SizedBox(height: 26),
+              appear(_Label("TODAY'S FOCUS")),
+              const SizedBox(height: 8),
+              appear(_Focus(studio: focus.studio, topic: focus.topic)),
+            ],
+          ],
+        ),
+        Column(
+          children: [
+            appear(_Label('YOUR STUDIOS')),
+            const SizedBox(height: 12),
+            appear(_StudioCarousel(studios: ordered, onNew: newStudio)),
+          ],
+        ),
+        Column(
+          children: [
+            appear(_NewStudioButton(filled: false, onTap: newStudio)),
+            const SizedBox(height: 16),
+            appear(_Totals(studios: studios)),
+            appear(
+              SmPressable(
+                semanticLabel: 'View all studios',
+                onTap: () => context.go('/study/library'),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Text(
+                    'View all ${studios.length}',
+                    style: t.small.copyWith(
+                      color: c.accentSoft,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                 ),
               ),
             ),
+          ],
+        ),
+      ];
+    }
+
+    final body = LayoutBuilder(
+      builder: (context, box) => SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: box.maxHeight - 24),
+          child: Column(
+            mainAxisAlignment: studios.isEmpty
+                ? MainAxisAlignment.spaceEvenly
+                : MainAxisAlignment.spaceBetween,
+            children: [
+              for (final (k, group) in groups.indexed) ...[
+                if (k > 0) const SizedBox(height: 28),
+                group,
+              ],
+            ],
           ),
         ),
-      ],
-      const SizedBox(height: 32),
-    ];
-
-    final list = ListView(
-      physics: const AlwaysScrollableScrollPhysics(
-        parent: BouncingScrollPhysics(),
       ),
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
-      children: children,
     );
 
     return ColoredBox(
@@ -107,10 +135,10 @@ class StudyHomeMobile extends StatelessWidget {
         bottom: false,
         child: Column(
           children: [
-            SmTopBar(credits: credits),
+            SmTopBar(credits: credits, home: true),
             Expanded(
               child: onRefresh == null
-                  ? list
+                  ? body
                   : RefreshIndicator(
                       color: c.accent,
                       backgroundColor: c.raised,
@@ -118,7 +146,7 @@ class StudyHomeMobile extends StatelessWidget {
                         SmHaptics.tap();
                         await onRefresh!();
                       },
-                      child: list,
+                      child: body,
                     ),
             ),
           ],
@@ -160,12 +188,15 @@ List<Studio> byRecent(List<Studio> studios) {
   return best;
 }
 
-/// Back to wherever the user came from, and the OctoCredits.
+/// Back (or, on the home, Home) and the OctoCredits.
 class SmTopBar extends StatelessWidget {
-  const SmTopBar({super.key, this.credits, this.title});
+  const SmTopBar({super.key, this.credits, this.title, this.home = false});
 
   final int? credits;
   final String? title;
+
+  /// The leading button goes to the app's home instead of back.
+  final bool home;
 
   @override
   Widget build(BuildContext context) {
@@ -177,15 +208,16 @@ class SmTopBar extends StatelessWidget {
         children: [
           const SizedBox(width: 6),
           SmPressable(
-            semanticLabel: 'Back',
+            semanticLabel: home ? 'Home' : 'Back',
             haptic: SmHaptics.tap,
             scale: 0.9,
-            onTap: () => context.canPop() ? context.pop() : context.go('/'),
+            onTap: () =>
+                home || !context.canPop() ? context.go('/') : context.pop(),
             child: Padding(
               padding: const EdgeInsets.all(10),
               child: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 18,
+                home ? Icons.home_outlined : Icons.arrow_back_ios_new_rounded,
+                size: home ? 22 : 18,
                 color: c.muted,
               ),
             ),
@@ -254,7 +286,7 @@ class _Focus extends StatelessWidget {
                 text: '${topic.estimatedStudyTimeMinutes}',
                 style: TextStyle(
                   fontFamily: SmFonts.heading,
-                  fontSize: 48,
+                  fontSize: 56,
                   height: 1.05,
                   fontWeight: FontWeight.w700,
                   letterSpacing: -1.5,
@@ -353,7 +385,7 @@ class _StudioCarouselState extends State<_StudioCarousel> {
     return Column(
       children: [
         SizedBox(
-          height: 132,
+          height: 150,
           child: PageView.builder(
             controller: _pages,
             itemCount: count,
@@ -396,9 +428,9 @@ class _StudioCarouselState extends State<_StudioCarousel> {
                       ? const _NewRing()
                       : SmRing(
                           value: widget.studios[index].overallMastery,
-                          size: 120,
-                          stroke: 7,
-                          labelSize: 22,
+                          size: 138,
+                          stroke: 8,
+                          labelSize: 24,
                         ),
                 ),
               ),
@@ -466,8 +498,8 @@ class _NewRing extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = SmColors.of(context);
     return SizedBox(
-      width: 120,
-      height: 120,
+      width: 138,
+      height: 138,
       child: CustomPaint(
         painter: _DashedCircle(c.line),
         child: Icon(Icons.add_rounded, size: 34, color: c.muted),
