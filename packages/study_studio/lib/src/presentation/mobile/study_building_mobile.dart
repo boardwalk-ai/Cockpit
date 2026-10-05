@@ -33,6 +33,9 @@ class StudyBuildingMobile extends StatefulWidget {
 
 class _StudyBuildingMobileState extends State<StudyBuildingMobile> {
   Timer? _timer;
+
+  /// Keeps the time left counting down between the server's updates.
+  Timer? _tick;
   var _actions = false;
 
   @override
@@ -41,10 +44,18 @@ class _StudyBuildingMobileState extends State<StudyBuildingMobile> {
     _timer = Timer(widget.actionsAfter, () {
       if (mounted) setState(() => _actions = true);
     });
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (widget.run.isDone || widget.run.isFailed) {
+        _tick?.cancel();
+      } else if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
+    _tick?.cancel();
     _timer?.cancel();
     super.dispose();
   }
@@ -235,8 +246,27 @@ class _Progress extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 8),
-        Text(run.eta, style: t.small),
+        const SizedBox(height: 10),
+        // The time left, right under what it measures, from the start.
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          child: Row(
+            key: ValueKey(run.eta),
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                run.isDone ? Icons.check_rounded : Icons.schedule_rounded,
+                size: 14,
+                color: run.isDone ? const Color(0xFF30A46C) : c.muted,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                run.eta,
+                style: t.small.copyWith(fontSize: 12, color: c.muted),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -465,23 +495,53 @@ class _Actions extends StatelessWidget {
       IconData icon, {
       required VoidCallback onTap,
       bool filled = false,
+      bool locked = false,
       void Function() haptic = SmHaptics.tap,
     }) {
-      final color = filled ? Colors.white : c.text;
+      // Locked: the accent, dimmed, until the studio is ready; then it
+      // lights up.
+      final color = locked
+          ? c.accentSoft.withValues(alpha: 0.55)
+          : filled
+          ? Colors.white
+          : c.text;
       return SmPressable(
         semanticLabel: label,
         haptic: haptic,
-        onTap: shown ? onTap : null,
-        child: Container(
+        onTap: shown && !locked ? onTap : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 450),
+          curve: Curves.easeOutCubic,
           height: 50,
           decoration: BoxDecoration(
-            color: filled ? c.accent : c.raised,
+            color: locked
+                ? c.accent.withValues(alpha: 0.12)
+                : filled
+                ? c.accent
+                : c.raised,
             borderRadius: BorderRadius.circular(999),
+            boxShadow: [
+              BoxShadow(
+                color: c.accent.withValues(alpha: filled && !locked ? 0.35 : 0),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 19, color: color),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, a) =>
+                    ScaleTransition(scale: a, child: child),
+                child: Icon(
+                  locked ? Icons.lock_outline_rounded : icon,
+                  key: ValueKey(locked),
+                  size: 19,
+                  color: color,
+                ),
+              ),
               const SizedBox(width: 8),
               Text(
                 label,
@@ -522,9 +582,10 @@ class _Actions extends StatelessWidget {
                 )
               else
                 button(
-                  run.isDone ? 'Open studio' : 'Proceed to studio',
+                  'Proceed to studio',
                   Icons.arrow_forward_rounded,
                   filled: true,
+                  locked: !run.isDone,
                   haptic: SmHaptics.thud,
                   onTap: onProceed,
                 ),

@@ -114,8 +114,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Ready'), findsOne);
-    expect(find.text('Open studio'), findsOne);
-    await tester.tap(find.text('Open studio'));
+    expect(find.text('Your studio is ready'), findsOne);
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.tap(find.text('Proceed to studio'));
     expect(proceeded, 1);
     run.dispose();
   });
@@ -133,7 +134,10 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pump(const Duration(milliseconds: 700));
     expect(tester.widget<AnimatedOpacity>(out).opacity, 1);
-    expect(find.text('Proceed to studio'), findsOne);
+    // Proceed stays locked until the studio is ready; the other works.
+    await tester.tap(find.text('Proceed to studio'));
+    expect(proceeded, 0);
+    expect(find.byIcon(Icons.lock_outline_rounded), findsOne);
     await tester.tap(find.text('Continue in background'));
     expect(left, 1);
     server.reads['a.pdf']!.complete();
