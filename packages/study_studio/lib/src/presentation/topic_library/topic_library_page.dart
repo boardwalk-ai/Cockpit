@@ -5,6 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
 import '../../domain/entities/topic.dart';
+import '../mobile/mobile_header.dart';
+import '../mobile/mobile_style.dart';
+import '../mobile/topic_library_mobile.dart';
+import '../widgets/studio_scaffold.dart';
 import '../widgets/topic_card.dart';
 
 enum _Filter { all, weak, mastered, highImportance, hard }
@@ -62,6 +66,36 @@ class _TopicLibraryPageState extends ConsumerState<TopicLibraryPage> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(studioProvider(widget.studioId));
+    // A phone gets its own library (mobile/topic_library_mobile.dart).
+    if (!isDesktop(context)) {
+      final c = SmColors.of(context);
+      final base = '/study/${widget.studioId}';
+      Widget plain(Widget child) => Scaffold(
+        backgroundColor: c.background,
+        body: SmHeaderPage(
+          header: SmHeader(title: 'Topics', onBack: () => context.go(base)),
+          child: SafeArea(child: Center(child: child)),
+        ),
+      );
+      return async.when(
+        skipLoadingOnRefresh: true,
+        skipLoadingOnReload: true,
+        loading: () => plain(
+          CircularProgressIndicator(color: c.accent, strokeWidth: 2.5),
+        ),
+        error: (_, _) => plain(
+          Text(
+            'Couldn’t load the topics',
+            style: SmText.of(context).small.copyWith(fontSize: 13),
+          ),
+        ),
+        data: (studio) => TopicLibraryMobile(
+          topics: studio.topics,
+          onBack: () => context.go(base),
+          onOpen: (t) => context.go('$base/topics/${t.id}'),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
