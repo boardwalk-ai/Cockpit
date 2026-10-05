@@ -64,10 +64,14 @@ class SmHeader extends StatelessWidget {
     this.title,
     this.credits,
     this.trailing,
+    this.onBack,
   });
 
   /// The leading button goes to the app's home instead of back.
   final bool home;
+
+  /// Replaces what the leading button does.
+  final VoidCallback? onBack;
 
   /// Shown instead of the wordmark.
   final String? title;
@@ -119,9 +123,11 @@ class SmHeader extends StatelessWidget {
                     semanticLabel: home ? 'Home' : 'Back',
                     haptic: SmHaptics.tap,
                     scale: 0.9,
-                    onTap: () => home || !context.canPop()
-                        ? context.go('/')
-                        : context.pop(),
+                    onTap:
+                        onBack ??
+                        () => home || !context.canPop()
+                            ? context.go('/')
+                            : context.pop(),
                     child: Container(
                       width: 42,
                       height: 42,

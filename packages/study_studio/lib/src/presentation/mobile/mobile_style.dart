@@ -126,6 +126,12 @@ abstract final class SmHaptics {
 
   /// The main action (a new studio).
   static void thud() => HapticFeedback.mediumImpact();
+
+  /// Something went wrong.
+  static void error() => HapticFeedback.vibrate();
+
+  /// A long wait is over: the studio is ready.
+  static void done() => HapticFeedback.heavyImpact();
 }
 
 /// True when the user asked for less motion.

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:cockpit_ui/cockpit_ui.dart';
@@ -7,7 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../../data/api/upload_api.dart';
 import '../../domain/entities/source.dart';
+import '../../domain/repositories/studio_repository.dart';
+import '../mobile/mobile_style.dart';
+import '../mobile/study_build_run.dart';
+import '../mobile/study_building_mobile.dart';
 import '../mobile/study_create_mobile.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -46,6 +52,9 @@ class _UploadPageState extends ConsumerState<UploadPage> {
 
   /// The phone's materials (mobile/study_create_mobile.dart).
   final _picked = <SmPickedFile>[];
+
+  /// The phone's build, once started.
+  StudyBuildRun? _run;
   bool _building = false;
 
   @override
@@ -56,6 +65,7 @@ class _UploadPageState extends ConsumerState<UploadPage> {
 
   @override
   void dispose() {
+    _run?.leave();
     _nameController.dispose();
     super.dispose();
   }
@@ -117,6 +127,23 @@ class _UploadPageState extends ConsumerState<UploadPage> {
       return;
     }
 
+    // The phone follows every file and the build on its own page.
+    if (phone) {
+      SmHaptics.thud();
+      final run = StudyBuildRun(
+        backend: _ApiBackend(ref.read(studioRepositoryProvider), upload),
+        title: title,
+        files: List.of(_picked),
+      );
+      setState(() => _run = run);
+      unawaited(
+        run.start().whenComplete(() {
+          if (run.isDone) ref.invalidate(studioListProvider);
+        }),
+      );
+      return;
+    }
+
     setState(() => _building = true);
     try {
       final studio = await ref.read(studioRepositoryProvider).createStudio(title: title);
@@ -149,6 +176,28 @@ class _UploadPageState extends ConsumerState<UploadPage> {
 
   @override
   Widget build(BuildContext context) {
+    final run = _run;
+    if (!isDesktop(context) && run != null) {
+      return StudyBuildingMobile(
+        run: run,
+        onProceed: () {
+          ref.invalidate(studioListProvider);
+          final id = run.studioId;
+          final build = run.buildId;
+          context.go(
+            id == null
+                ? '/study'
+                : build == null || run.isDone
+                ? '/study/$id'
+                : '/study/$id?building=$build',
+          );
+        },
+        onBackground: () {
+          ref.invalidate(studioListProvider);
+          context.go('/study');
+        },
+      );
+    }
     if (!isDesktop(context)) {
       return StudyCreateMobile(
         files: _picked,
@@ -1062,4 +1111,32 @@ class _DashedRRectPainter extends CustomPainter {
       old.dash != dash ||
       old.gap != gap ||
       old.strokeWidth != strokeWidth;
+}
+
+/// The build's way to the Study API.
+class _ApiBackend implements StudyBuildBackend {
+  _ApiBackend(this._studios, this._upload);
+
+  final StudioRepository _studios;
+  final UploadApi _upload;
+
+  @override
+  Future<String> createStudio(String title) async =>
+      (await _studios.createStudio(title: title)).id;
+
+  @override
+  Future<String> upload(String studioId, String name, Uint8List bytes) =>
+      _upload.uploadDocument(studioId: studioId, filename: name, bytes: bytes);
+
+  @override
+  Future<void> ingested(String studioId, String jobId) =>
+      _upload.watchBuild(studioId: studioId, jobId: jobId);
+
+  @override
+  Future<String> startBuild(String studioId) =>
+      _upload.startBuild(studioId: studioId);
+
+  @override
+  Future<BuildSnapshot> snapshot(String studioId, String buildId) =>
+      _upload.buildSnapshot(studioId: studioId, buildId: buildId);
 }

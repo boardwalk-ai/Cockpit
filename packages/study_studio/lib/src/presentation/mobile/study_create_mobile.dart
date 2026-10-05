@@ -573,8 +573,8 @@ class _DashedBorder extends CustomPainter {
   SourceFileType.video => (Icons.videocam_outlined, const Color(0xFF8B83E6)),
 };
 
-class _TypeIcon extends StatelessWidget {
-  const _TypeIcon({required this.type, this.size = 30});
+class SmFileTypeIcon extends StatelessWidget {
+  const SmFileTypeIcon({super.key, required this.type, this.size = 30});
 
   final SourceFileType type;
   final double size;
@@ -613,7 +613,7 @@ class _FileCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          _TypeIcon(type: file.type),
+          SmFileTypeIcon(type: file.type),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -689,7 +689,7 @@ class _Summary extends StatelessWidget {
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: c.raised, width: 2),
                         ),
-                        child: _TypeIcon(type: f.type, size: 26),
+                        child: SmFileTypeIcon(type: f.type, size: 26),
                       ),
                     ),
                 ],
@@ -773,7 +773,7 @@ Future<void> showSmFilesSheet(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
                   children: [
-                    _TypeIcon(type: f.type),
+                    SmFileTypeIcon(type: f.type),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
