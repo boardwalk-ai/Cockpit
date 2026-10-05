@@ -27,7 +27,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Error:'), findsOneWidget);
+    expect(find.text('Couldn’t load the cards'), findsOneWidget);
   });
 
   testWidgets('shows empty flashcards state', (tester) async {
@@ -44,7 +44,7 @@ void main() {
 
     expect(find.text('No flashcards yet'), findsOneWidget);
     expect(
-      find.text('This selection has no cards to review.'),
+      find.text('Cards appear as your studio finishes building.'),
       findsOneWidget,
     );
   });
@@ -61,10 +61,11 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Flashcards'), findsOneWidget);
-    expect(find.textContaining('Card 1 of'), findsOneWidget);
-    expect(find.text('Front'), findsOneWidget);
-    expect(find.text('Tap to reveal'), findsOneWidget);
+    // The phone's deck: the first card's question, counted.
+    final first = studio.topics.expand((t) => t.flashcards).first;
+    expect(find.text(first.front), findsOneWidget);
+    expect(find.textContaining('1/'), findsOneWidget);
+    expect(find.text('Tap the card to see the answer'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

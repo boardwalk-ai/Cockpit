@@ -77,6 +77,14 @@ class FakeStudioRepository implements StudioRepository {
   }) async {}
 
   @override
+  Future<void> reviewFlashcard({
+    required String studioId,
+    required String topicId,
+    required String cardId,
+    required int grade,
+  }) async {}
+
+  @override
   Future<void> markReviewed(
     String studioId,
     String topicId,

@@ -120,6 +120,10 @@ Flashcard flashcardFromJson(Map<String, dynamic> j) {
     status:
         _enumByName(FlashcardStatus.values, j['status'], FlashcardStatus.fresh),
     dueDate: _dateOrNull(j['dueDate']),
+    reps: (j['reps'] as num?)?.toInt() ?? 0,
+    intervalDays: (j['intervalDays'] as num?)?.toDouble() ?? 0,
+    ease: (j['ease'] as num?)?.toDouble() ?? 2.5,
+    lapses: (j['lapses'] as num?)?.toInt() ?? 0,
   );
 }
 

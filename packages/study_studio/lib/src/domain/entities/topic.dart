@@ -61,7 +61,7 @@ class Topic {
 
   bool get isWeak => mastery < 0.6;
 
-  Topic copyWith({double? mastery}) {
+  Topic copyWith({double? mastery, List<Flashcard>? flashcards}) {
     return Topic(
       id: id,
       studioId: studioId,
@@ -78,7 +78,7 @@ class Topic {
       prerequisites: prerequisites,
       memoryHooks: memoryHooks,
       sources: sources,
-      flashcards: flashcards,
+      flashcards: flashcards ?? this.flashcards,
       quizQuestions: quizQuestions,
       difficulty: difficulty,
       importance: importance,

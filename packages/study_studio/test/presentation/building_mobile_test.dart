@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:study_studio/src/data/api/upload_api.dart';
-import 'package:study_studio/src/domain/entities/source.dart';
 import 'package:study_studio/src/presentation/mobile/study_build_run.dart';
 import 'package:study_studio/src/presentation/mobile/study_building_mobile.dart';
 import 'package:study_studio/src/presentation/mobile/study_create_mobile.dart';

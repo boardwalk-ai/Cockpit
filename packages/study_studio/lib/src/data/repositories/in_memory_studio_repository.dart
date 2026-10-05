@@ -1,3 +1,4 @@
+import '../../domain/card_schedule.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../../domain/repositories/studio_repository.dart';
@@ -69,6 +70,33 @@ class InMemoryStudioRepository implements StudioRepository {
   }) async {
     // Map quality 0..1 to a mastery delta of -0.04..+0.06.
     _adjustMastery(studioId, topicId, (quality * 0.10) - 0.04);
+  }
+
+  @override
+  Future<void> reviewFlashcard({
+    required String studioId,
+    required String topicId,
+    required String cardId,
+    required int grade,
+  }) async {
+    final studio = _studios[studioId];
+    if (studio == null) return;
+    final now = DateTime.now();
+    _studios[studioId] = studio.copyWith(
+      topics: [
+        for (final t in studio.topics)
+          if (t.id == topicId)
+            t.copyWith(
+              mastery: (t.mastery + grade / 3 * 0.10 - 0.04).clamp(0.0, 1.0),
+              flashcards: [
+                for (final c in t.flashcards)
+                  c.id == cardId ? CardSchedule.review(c, grade, now) : c,
+              ],
+            )
+          else
+            t,
+      ],
+    );
   }
 
   @override

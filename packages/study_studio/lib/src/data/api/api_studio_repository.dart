@@ -83,6 +83,19 @@ class ApiStudioRepository implements StudioRepository {
   }
 
   @override
+  Future<void> reviewFlashcard({
+    required String studioId,
+    required String topicId,
+    required String cardId,
+    required int grade,
+  }) async {
+    await _sse.post(
+      '/studios/$studioId/flashcards/${Uri.encodeComponent(cardId)}/review',
+      query: {'topic_id': topicId, 'grade': grade},
+    );
+  }
+
+  @override
   Future<void> markReviewed(String studioId, String topicId) async {
     await _sse.post('/studios/$studioId/topics/$topicId/mark-reviewed');
   }

@@ -148,3 +148,35 @@ def test_outline_keeps_only_earlier_lessons_as_prerequisites(monkeypatch):
         ["TCP basics"],
         ["TCP basics", "Sliding window"],
     ]
+
+
+# The same table is checked by the app's port (flashcard_schedule_test.dart).
+SCHEDULE_CASES = [
+    # (reps, interval, ease, lapses), grade -> (reps, interval, ease, lapses), wait
+    ((0, 0.0, 2.5, 0), 0, (0, 0.0, 2.3, 1), ("minutes", 1)),
+    ((0, 0.0, 2.5, 0), 1, (0, 0.0, 2.35, 0), ("minutes", 10)),
+    ((0, 0.0, 2.5, 0), 2, (1, 1.0, 2.5, 0), ("days", 1)),
+    ((0, 0.0, 2.5, 0), 3, (1, 4.0, 2.65, 0), ("days", 4)),
+    ((1, 1.0, 2.5, 0), 2, (2, 3.0, 2.5, 0), ("days", 3)),
+    ((2, 3.0, 2.5, 0), 2, (3, 7.5, 2.5, 0), ("days", 7.5)),
+    ((2, 3.0, 2.5, 0), 1, (3, 3.6, 2.35, 0), ("days", 3.6)),
+    ((2, 3.0, 2.5, 0), 3, (3, 9.75, 2.65, 0), ("days", 9.75)),
+    ((3, 7.5, 1.35, 1), 0, (0, 0.0, 1.3, 2), ("minutes", 1)),
+    ((3, 7.5, 2.95, 0), 3, (4, 28.7625, 3.0, 0), ("days", 28.7625)),
+]
+
+
+def test_schedule_follows_the_table():
+    from datetime import timedelta
+
+    import pytest
+
+    from app.services.schedule import CardState, next_state
+
+    for before, grade, after, (unit, n) in SCHEDULE_CASES:
+        state, wait = next_state(CardState(*before), grade)
+        assert state.reps == after[0], (before, grade)
+        assert state.interval_days == pytest.approx(after[1]), (before, grade)
+        assert state.ease == pytest.approx(after[2]), (before, grade)
+        assert state.lapses == after[3], (before, grade)
+        assert wait == timedelta(**{unit: n}), (before, grade)

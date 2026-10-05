@@ -13,6 +13,10 @@ class Flashcard {
     this.difficulty = 2,
     this.status = FlashcardStatus.fresh,
     this.dueDate,
+    this.reps = 0,
+    this.intervalDays = 0,
+    this.ease = 2.5,
+    this.lapses = 0,
   });
 
   final String id;
@@ -24,10 +28,21 @@ class Flashcard {
   final FlashcardStatus status;
   final DateTime? dueDate;
 
+  /// Spaced repetition (domain/card_schedule.dart): reviews in a row,
+  /// days between them, how easy it is, times forgotten.
+  final int reps;
+  final double intervalDays;
+  final double ease;
+  final int lapses;
+
   Flashcard copyWith({
     FlashcardStatus? status,
     DateTime? dueDate,
     int? difficulty,
+    int? reps,
+    double? intervalDays,
+    double? ease,
+    int? lapses,
   }) {
     return Flashcard(
       id: id,
@@ -38,6 +53,10 @@ class Flashcard {
       difficulty: difficulty ?? this.difficulty,
       status: status ?? this.status,
       dueDate: dueDate ?? this.dueDate,
+      reps: reps ?? this.reps,
+      intervalDays: intervalDays ?? this.intervalDays,
+      ease: ease ?? this.ease,
+      lapses: lapses ?? this.lapses,
     );
   }
 }

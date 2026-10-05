@@ -63,6 +63,11 @@ class FlashcardDTO(_Base):
     difficulty: int = 2
     status: FlashcardStatus = FlashcardStatus.fresh
     due_date: datetime | None = None
+    # Spaced repetition (services/schedule): overlaid per user at load.
+    reps: int = 0
+    interval_days: float = 0.0
+    ease: float = 2.5
+    lapses: int = 0
 
 
 class QuizQuestionDTO(_Base):

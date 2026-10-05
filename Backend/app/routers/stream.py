@@ -30,7 +30,7 @@ from ..models.cockpit import (
     StudioBuild,
 )
 from ..seed import seed_studios
-from ..services import llm, progress, rag, vectorstore
+from ..services import llm, progress, rag, schedule, vectorstore
 from ..services.objectstore import get_object_store
 from ..sse import done, error, event
 
@@ -94,12 +94,28 @@ async def _load_topics(
                 )
             except Exception:  # noqa: BLE001 — mastery overlay is best-effort
                 mastery = {}
+        cards: dict[str, dict] = {}
+        if user_id is not None:
+            try:
+                cards = await schedule.schedule_map(
+                    cockpit, user_id=user_id, studio_id=studio_id
+                )
+            except Exception:  # noqa: BLE001 — schedule overlay is best-effort
+                cards = {}
         out: list[TopicDTO] = []
         for r in rows.scalars():
             payload = r.payload
             tid = payload.get("id")
             if tid in mastery:
                 payload = {**payload, "mastery": mastery[tid]}
+            if cards and payload.get("flashcards"):
+                payload = {
+                    **payload,
+                    "flashcards": [
+                        {**fc, **cards[fc.get("id")]} if fc.get("id") in cards else fc
+                        for fc in payload["flashcards"]
+                    ],
+                }
             out.append(TopicDTO.model_validate(payload))
         return out
     except Exception:  # noqa: BLE001
@@ -599,6 +615,39 @@ async def flashcard_review(
     except Exception:  # noqa: BLE001
         pass
     return _ack()
+
+
+@router.post("/studios/{studio_id}/flashcards/{card_id}/review")
+async def flashcard_schedule_review(
+    studio_id: str,
+    card_id: str,
+    topic_id: str = Query(..., max_length=64),
+    grade: int = Query(..., ge=0, le=3),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+) -> EventSourceResponse:
+    """Grade a card (0 Again .. 3 Easy): schedules when it comes back and
+    moves the topic's mastery like a flashcard review."""
+    fields: dict = {}
+    try:
+        sid = await _owned_studio_uuid(studio_id, user_id)
+        if sid is not None and len(card_id) <= 64:
+            async with CockpitSession() as cockpit:
+                fields = await schedule.record(
+                    cockpit, user_id=user_id, studio_id=sid,
+                    topic_id=topic_id, card_id=card_id, grade=grade,
+                )
+                await progress.record_flashcard(
+                    cockpit, user_id=user_id, studio_id=sid,
+                    topic_id=topic_id, quality=grade / 3,
+                )
+    except Exception:  # noqa: BLE001 — never fail the client's ack
+        fields = {}
+
+    async def gen() -> AsyncIterator[dict]:
+        yield event("data", fields)
+        yield done()
+
+    return EventSourceResponse(gen())
 
 
 @router.post("/studios/{studio_id}/topics/{topic_id}/mark-reviewed")

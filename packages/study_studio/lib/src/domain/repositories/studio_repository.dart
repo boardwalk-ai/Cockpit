@@ -33,4 +33,13 @@ abstract interface class StudioRepository {
   });
 
   Future<void> markReviewed(String studioId, String topicId);
+
+  /// Grades a flashcard 0 (Again) to 3 (Easy): schedules when it comes back
+  /// and moves its topic's mastery.
+  Future<void> reviewFlashcard({
+    required String studioId,
+    required String topicId,
+    required String cardId,
+    required int grade,
+  });
 }

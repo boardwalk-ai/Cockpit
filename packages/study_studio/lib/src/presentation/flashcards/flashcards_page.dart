@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +9,9 @@ import '../../application/providers.dart';
 import '../../domain/entities/flashcard.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
+import '../mobile/flashcards_mobile.dart';
+import '../mobile/mobile_header.dart';
+import '../mobile/mobile_style.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -83,6 +88,53 @@ class _FlashcardsPageState extends ConsumerState<FlashcardsPage> {
   Widget build(BuildContext context) {
     final async = ref.watch(studioProvider(widget.studioId));
     final base = '/study/${widget.studioId}';
+    // A phone gets its own deck (mobile/flashcards_mobile.dart).
+    if (!isDesktop(context)) {
+      final c = SmColors.of(context);
+      void close() {
+        ref.invalidate(studioProvider(widget.studioId));
+        context.go(
+          widget.topicId == null ? base : '$base/topics/${widget.topicId}',
+        );
+      }
+
+      Widget plain(Widget child) => Scaffold(
+        backgroundColor: c.background,
+        body: SmHeaderPage(
+          header: SmHeader(title: 'Flashcards', onBack: close),
+          child: SafeArea(child: Center(child: child)),
+        ),
+      );
+      return async.when(
+        skipLoadingOnRefresh: true,
+        skipLoadingOnReload: true,
+        loading: () => plain(
+          CircularProgressIndicator(color: c.accent, strokeWidth: 2.5),
+        ),
+        error: (_, _) => plain(
+          Text(
+            'Couldn’t load the cards',
+            style: SmText.of(context).small.copyWith(fontSize: 13),
+          ),
+        ),
+        data: (studio) => FlashcardsMobile(
+          cards: _cards(studio),
+          topicTitles: {for (final t in studio.topics) t.id: t.title},
+          onClose: close,
+          onGrade: (card, grade) => unawaited(
+            ref
+                .read(studioRepositoryProvider)
+                .reviewFlashcard(
+                  studioId: widget.studioId,
+                  topicId: card.topicId,
+                  cardId: card.id,
+                  grade: grade,
+                )
+                .catchError((Object _) {}),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       body: SafeArea(
         bottom: false,

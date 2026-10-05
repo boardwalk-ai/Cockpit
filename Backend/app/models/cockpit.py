@@ -162,6 +162,37 @@ class TopicProgress(CockpitBase):
     )
 
 
+class FlashcardSchedule(CockpitBase):
+    """When a user's flashcard comes back (spaced repetition, services/schedule).
+
+    Cards live as JSON inside GeneratedTopic, so this keys on the card's string
+    id (payload flashcards[].id, e.g. "fc_…"). The studio DTO overlays these
+    fields onto each card at load time.
+    """
+
+    __tablename__ = "flashcard_schedule"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), index=True)
+    studio_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("studios.id", ondelete="CASCADE"), index=True
+    )
+    topic_id: Mapped[str] = mapped_column(String(64))
+    card_id: Mapped[str] = mapped_column(String(64))
+    reps: Mapped[int] = mapped_column(Integer, default=0)
+    interval_days: Mapped[float] = mapped_column(default=0.0)
+    ease: Mapped[float] = mapped_column(default=2.5)
+    lapses: Mapped[int] = mapped_column(Integer, default=0)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        Index("ux_flashcard_schedule_user_card", "user_id", "card_id", unique=True),
+    )
+
+
 class GeneratedScenario(CockpitBase):
     """An application scenario (Scenario Mode) generated from the studio's chunks.
 
