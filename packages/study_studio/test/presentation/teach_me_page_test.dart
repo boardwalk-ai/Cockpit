@@ -33,7 +33,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Error:'), findsOneWidget);
+    expect(find.text('Couldn’t open this lesson'), findsOneWidget);
   });
 
   testWidgets('shows topic not found', (tester) async {
@@ -50,7 +50,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('Topic not found'), findsOneWidget);
+    expect(find.text('This topic is gone'), findsOneWidget);
   });
 
   testWidgets('shows lesson data', (tester) async {
@@ -69,10 +69,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(topic.title), findsWidgets);
-    expect(find.text('Teach Me'), findsWidgets);
-    expect(find.text('Current Topic'), findsOneWidget);
-    expect(find.text('Start Lesson'), findsOneWidget);
-    expect(find.text('Ask Anything'), findsOneWidget);
+    // The phone's lesson page.
+    expect(find.text('Got it · Next topic'), findsOneWidget);
+    expect(find.text('Aa'), findsOneWidget);
 
     expect(tester.takeException(), isNull);
   });

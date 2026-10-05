@@ -7,6 +7,7 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../widgets/studio_scaffold.dart';
+import 'lesson_phone_page.dart';
 
 /// Screen 6 — Teach Me.
 ///
@@ -85,6 +86,13 @@ class _TeachMePageState extends ConsumerState<TeachMePage> {
 
   @override
   Widget build(BuildContext context) {
+    // A phone reads the lesson on its own page (lesson_phone_page.dart).
+    if (!isDesktop(context)) {
+      return LessonPhonePage(
+        studioId: widget.studioId,
+        topicId: widget.topicId,
+      );
+    }
     final async = ref.watch(studioProvider(widget.studioId));
     return Scaffold(
       body: SafeArea(

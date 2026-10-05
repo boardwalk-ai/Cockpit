@@ -10,6 +10,9 @@ abstract final class SmFonts {
 
   /// Body text.
   static const body = 'packages/cockpit_ui/Poppins';
+
+  /// Long reading (a lesson's text): a serif made for screens.
+  static const reading = 'packages/cockpit_ui/Literata';
 }
 
 class SmColors {

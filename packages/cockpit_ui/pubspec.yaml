@@ -41,3 +41,8 @@ flutter:
           weight: 500
         - asset: assets/fonts/Poppins-SemiBold.ttf
           weight: 600
+    # Literata — the reading face for long lesson text (variable: wght,
+    # opsz), family `packages/cockpit_ui/Literata` (OFL).
+    - family: Literata
+      fonts:
+        - asset: assets/fonts/Literata-Variable.ttf
