@@ -95,6 +95,8 @@ class TopicDTO(_Base):
     studio_id: str
     title: str
     subject: str
+    # 3 key points for the topic's overview; empty on studios built before it.
+    summary: list[str] = []
     definition: str
     simple_explanation: str
     detailed_explanation: str

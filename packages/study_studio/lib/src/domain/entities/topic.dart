@@ -14,6 +14,7 @@ class Topic {
     required this.simpleExplanation,
     required this.detailedExplanation,
     required this.whyItMatters,
+    this.summary = const [],
     this.examples = const [],
     this.commonMistakes = const [],
     this.relatedTopicIds = const [],
@@ -37,6 +38,9 @@ class Topic {
   final String simpleExplanation;
   final String detailedExplanation;
   final String whyItMatters;
+
+  /// Three key points for the topic's overview (empty on older studios).
+  final List<String> summary;
 
   final List<String> examples;
   final List<String> commonMistakes;
@@ -67,6 +71,7 @@ class Topic {
       simpleExplanation: simpleExplanation,
       detailedExplanation: detailedExplanation,
       whyItMatters: whyItMatters,
+      summary: summary,
       examples: examples,
       commonMistakes: commonMistakes,
       relatedTopicIds: relatedTopicIds,

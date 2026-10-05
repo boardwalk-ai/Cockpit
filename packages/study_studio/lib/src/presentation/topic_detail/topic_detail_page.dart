@@ -6,6 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
+import '../mobile/mobile_header.dart';
+import '../mobile/mobile_style.dart';
+import '../mobile/topic_overview_mobile.dart';
+import '../widgets/studio_scaffold.dart';
 
 class TopicDetailPage extends ConsumerWidget {
   const TopicDetailPage({
@@ -20,6 +24,42 @@ class TopicDetailPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(studioProvider(studioId));
+    // A phone gets the topic's overview (mobile/topic_overview_mobile.dart).
+    if (!isDesktop(context)) {
+      final c = SmColors.of(context);
+      final base = '/study/$studioId';
+      Widget plain(Widget child) => Scaffold(
+        backgroundColor: c.background,
+        body: SmHeaderPage(
+          header: SmHeader(title: '', onBack: () => context.go(base)),
+          child: SafeArea(child: Center(child: child)),
+        ),
+      );
+      final note = SmText.of(context).small.copyWith(fontSize: 13);
+      return async.when(
+        skipLoadingOnRefresh: true,
+        skipLoadingOnReload: true,
+        loading: () =>
+            plain(CircularProgressIndicator(color: c.accent, strokeWidth: 2.5)),
+        error: (_, _) => plain(Text('Couldn’t open this topic', style: note)),
+        data: (studio) {
+          final topics = studio.topics;
+          final i = topics.indexWhere((t) => t.id == topicId);
+          if (i < 0) return plain(Text('This topic is gone', style: note));
+          return TopicOverviewMobile(
+            topic: topics[i],
+            number: i + 1,
+            total: topics.length,
+            earlier: {for (final t in topics.take(i)) t.title: t},
+            onBack: () => context.go(base),
+            onStart: () => context.go('$base/teach/$topicId'),
+            onQuiz: () => context.go('$base/quiz?topicId=$topicId'),
+            onFlashcards: () => context.go('$base/flashcards?topicId=$topicId'),
+            onOpenTopic: (t) => context.go('$base/topics/${t.id}'),
+          );
+        },
+      );
+    }
     return Scaffold(
       appBar: AppBar(
         title: const Text('Topic'),

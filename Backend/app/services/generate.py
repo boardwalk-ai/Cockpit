@@ -39,8 +39,12 @@ or section. Let the material decide the count (don't merge unrelated concepts,
 don't cap it): a short note may be 2-3, a chapter 6-12, a full textbook 20+.
 Cover the WHOLE material, ordered the way it should be studied.
 
-Return ONLY JSON: an array of {"title": str, "scope": str} where scope is a
-one-line note on exactly what that lesson should cover. No prose outside JSON.
+Return ONLY JSON: an array of {"title": str, "scope": str, "buildsOn": [str]}
+where scope is a one-line note on exactly what that lesson should cover, and
+buildsOn lists the titles of EARLIER lessons in this array that it directly
+relies on (0-2, often none). No prose outside JSON.
+Titles are short names, not sentences: 2-5 words, no colon, no numbering
+(e.g. "TCP congestion control", not "Understanding how TCP controls congestion").
 """.strip()
 
 # --- Pass 2: one rich call per lesson --------------------------------------
@@ -59,6 +63,7 @@ Focus: {scope}
 Return ONLY a JSON object:
 {{
   "title": "{title}",
+  "summary": [str, str, str],        // EXACTLY 3 key points, each ONE plain sentence of at most 12 words
   "definition": str,                 // 1-2 precise sentences
   "simpleExplanation": str,          // plain-language, "explain like I'm 10"
   "detailedExplanation": str,        // THOROUGH: multiple paragraphs, mechanisms, how/why it works
@@ -172,6 +177,9 @@ def _shape_topic(
         "studioId": studio_id,
         "title": raw.get("title", "Untitled Topic"),
         "subject": raw.get("subject", ""),
+        "summary": [
+            str(p).strip() for p in (raw.get("summary") or []) if str(p).strip()
+        ][:4],
         "definition": raw.get("definition", ""),
         "simpleExplanation": raw.get("simpleExplanation", ""),
         "detailedExplanation": raw.get("detailedExplanation", ""),
@@ -179,7 +187,8 @@ def _shape_topic(
         "examples": raw.get("examples", []),
         "commonMistakes": raw.get("commonMistakes", []),
         "relatedTopicIds": [],
-        "prerequisites": [],
+        # Titles of earlier lessons this one builds on.
+        "prerequisites": [str(p) for p in (raw.get("prerequisites") or [])],
         "memoryHooks": raw.get("memoryHooks", []),
         "sources": sources or [],
         "flashcards": [_flashcard(f) for f in (raw.get("flashcards") or [])],
@@ -200,6 +209,7 @@ def _stub_topics(chunks: list[str], studio_id: str) -> list[dict]:
         _shape_topic(
             {
                 "title": "Overview",
+                "summary": ["Built from your uploaded material."],
                 "definition": excerpt,
                 "simpleExplanation": "A summary generated offline (no LLM key set).",
                 "detailedExplanation": excerpt,
@@ -247,10 +257,21 @@ async def _generate_outline(
     )
     parsed = _parse_json(raw)
     items = parsed if isinstance(parsed, list) else (parsed or {}).get("lessons", [])
-    out = []
+    out: list[dict] = []
     for it in items:
         if isinstance(it, dict) and it.get("title"):
-            out.append({"title": str(it["title"]), "scope": str(it.get("scope", ""))})
+            # Only lessons that come before this one can be built on.
+            earlier = {o["title"] for o in out}
+            builds_on = [
+                str(t) for t in (it.get("buildsOn") or []) if str(t) in earlier
+            ][:2]
+            out.append(
+                {
+                    "title": str(it["title"]),
+                    "scope": str(it.get("scope", "")),
+                    "buildsOn": builds_on,
+                }
+            )
     return out
 
 
@@ -379,6 +400,7 @@ async def generate_topics(
             if not isinstance(obj, dict):
                 return None
             obj.setdefault("title", item["title"])
+            obj["prerequisites"] = item.get("buildsOn", [])
             topic = _shape_topic(obj, studio_id, _hits_to_sources(hits, filename_map))
             if on_topic is not None:
                 try:

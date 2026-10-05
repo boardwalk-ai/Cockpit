@@ -98,6 +98,22 @@ def test_generate_stub_topics_are_valid_topic_dtos():
     # The stored payload round-trips through the wire DTO.
     dto = TopicDTO.model_validate(payload)
     assert dto.title and dto.flashcards[0].topic_id == payload["id"]
+    assert dto.summary == ["Built from your uploaded material."]
+
+
+def test_topic_summary_is_trimmed_and_optional():
+    from app.dto import TopicDTO
+    from app.services.generate import _shape_topic
+
+    shaped = _shape_topic(
+        {"title": "DNS", "summary": [" Names to numbers. ", "", "a", "b", "c"]},
+        "s1",
+    )
+    assert shaped["summary"] == ["Names to numbers.", "a", "b", "c"]
+    # A topic stored before summaries existed still loads.
+    old = dict(shaped)
+    del old["summary"]
+    assert TopicDTO.model_validate(old).summary == []
 
 
 def test_generate_no_chunks_returns_empty():
@@ -108,3 +124,27 @@ def test_generate_no_chunks_returns_empty():
     assert asyncio.run(
         generate_topics(chunks=[], studio_id="s", api_key="", model="x")
     ) == []
+
+
+def test_outline_keeps_only_earlier_lessons_as_prerequisites(monkeypatch):
+    import asyncio
+
+    from app.services import generate
+
+    async def fake_generate(**_):
+        return (
+            '[{"title": "TCP basics", "scope": "a", "buildsOn": ["Routing"]},'
+            ' {"title": "Sliding window", "scope": "b", "buildsOn": ["TCP basics"]},'
+            ' {"title": "Congestion", "scope": "c",'
+            '  "buildsOn": ["TCP basics", "Sliding window", "Made up"]}]'
+        )
+
+    monkeypatch.setattr(generate.llm, "generate", fake_generate)
+    outline = asyncio.run(
+        generate._generate_outline(material="m", api_key="k", model="x")
+    )
+    assert [o["buildsOn"] for o in outline] == [
+        [],
+        ["TCP basics"],
+        ["TCP basics", "Sliding window"],
+    ]

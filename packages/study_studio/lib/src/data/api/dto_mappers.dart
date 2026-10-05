@@ -86,6 +86,7 @@ Topic topicFromJson(Map<String, dynamic> j) {
     simpleExplanation: j['simpleExplanation'] as String? ?? '',
     detailedExplanation: j['detailedExplanation'] as String? ?? '',
     whyItMatters: j['whyItMatters'] as String? ?? '',
+    summary: _stringList(j['summary']),
     examples: _stringList(j['examples']),
     commonMistakes: _stringList(j['commonMistakes']),
     relatedTopicIds: _stringList(j['relatedTopicIds']),
