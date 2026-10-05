@@ -125,6 +125,7 @@ class SmRing extends StatelessWidget {
     this.stroke = 3.5,
     this.label,
     this.labelSize = 11,
+    this.caption,
   });
 
   final double value;
@@ -134,6 +135,9 @@ class SmRing extends StatelessWidget {
   /// In the middle; defaults to the percentage.
   final String? label;
   final double labelSize;
+
+  /// A small word under the number ("mastered").
+  final String? caption;
 
   @override
   Widget build(BuildContext context) {
@@ -151,14 +155,28 @@ class SmRing extends StatelessWidget {
         child: CustomPaint(
           painter: _RingPainter(v, c.line, c.accent, stroke),
           child: Center(
-            child: Text(
-              label ?? '${(target * 100).round()}%',
-              style: TextStyle(
-                fontFamily: SmFonts.heading,
-                fontSize: labelSize,
-                fontWeight: FontWeight.w600,
-                color: c.text,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label ?? '${(target * 100).round()}%',
+                  style: TextStyle(
+                    fontFamily: SmFonts.heading,
+                    fontSize: labelSize,
+                    fontWeight: FontWeight.w600,
+                    color: c.text,
+                  ),
+                ),
+                if (caption != null)
+                  Text(
+                    caption!,
+                    style: TextStyle(
+                      fontFamily: SmFonts.body,
+                      fontSize: 12,
+                      color: c.hint,
+                    ),
+                  ),
+              ],
             ),
           ),
         ),
