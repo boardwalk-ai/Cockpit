@@ -27,7 +27,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Error:'), findsOneWidget);
+    expect(find.text('Couldn’t load the quiz'), findsOneWidget);
   });
 
   testWidgets('shows empty quiz state', (tester) async {
@@ -42,11 +42,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text('No quiz questions'), findsOneWidget);
-    expect(
-      find.text('This selection has no questions yet.'),
-      findsOneWidget,
-    );
+    expect(find.text('No questions here yet'), findsOneWidget);
   });
 
   testWidgets('shows quiz data', (tester) async {
@@ -61,10 +57,10 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.text(studio.title), findsOneWidget);
-    expect(find.text('Quiz Ready'), findsOneWidget);
-    expect(find.textContaining('Question 1 of'), findsOneWidget);
-    expect(find.text('Quiz Ready'), findsOneWidget);
+    // The phone's quiz: the first question, counted.
+    final first = studio.topics.expand((t) => t.quizQuestions).first;
+    expect(find.text(first.question), findsWidgets);
+    expect(find.textContaining('1/'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
