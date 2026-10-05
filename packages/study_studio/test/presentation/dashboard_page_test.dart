@@ -27,7 +27,7 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Error:'), findsOneWidget);
+    expect(find.text('Couldn’t open this studio'), findsOneWidget);
   });
 
   testWidgets('shows empty studio state', (tester) async {
@@ -43,8 +43,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(emptyStudio.title), findsOneWidget);
-    expect(find.text('Choose How You Want to Learn'), findsOneWidget);
-    expect(find.text('Continue Where You Left Off'), findsNothing);
+    expect(find.text('How do you want\nto learn today?'), findsOneWidget);
+    expect(
+      find.text('Topics appear here as your studio finishes building.'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Continue'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -60,11 +64,12 @@ void main() {
 
     await tester.pumpAndSettle();
 
+    // The phone's studio page: modes, topics, Continue, Ask AI.
     expect(find.text(studio.title), findsOneWidget);
-    expect(find.text('Choose How You Want to Learn'), findsOneWidget);
-    expect(find.text('Welcome back 👋'), findsOneWidget);
-    expect(find.text('Continue Learning'), findsOneWidget);
-    expect(find.text('Ask AI'), findsOneWidget);
+    expect(find.text('Teach me'), findsOneWidget);
+    expect(find.text('TOPICS'), findsOneWidget);
+    expect(find.textContaining('Continue · '), findsOneWidget);
+    expect(find.bySemanticsLabel('Ask AI'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

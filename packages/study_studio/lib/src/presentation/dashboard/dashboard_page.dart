@@ -11,6 +11,7 @@ import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../format.dart';
 import '../widgets/studio_scaffold.dart';
+import 'studio_phone_page.dart';
 
 /// Screen 5 — Inside Your Study Studio.
 ///
@@ -30,6 +31,10 @@ class DashboardPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A phone gets its own studio page (studio_phone_page.dart).
+    if (!isDesktop(context)) {
+      return StudioPhonePage(studioId: studioId, buildId: buildId);
+    }
     final async = ref.watch(studioProvider(studioId));
 
     final content = async.when(
@@ -667,7 +672,7 @@ class _StudioMenu extends ConsumerWidget {
         icon: Icon(Icons.more_horiz, size: 20, color: theme.colorScheme.onSurface),
         onSelected: (v) {
           if (v == 'Delete') {
-            _confirmAndDelete(context, ref);
+            confirmDeleteStudio(context, ref, studio);
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('$v — coming soon')),
@@ -689,7 +694,14 @@ class _StudioMenu extends ConsumerWidget {
     );
   }
 
-  Future<void> _confirmAndDelete(BuildContext context, WidgetRef ref) async {
+}
+
+/// Asks, then deletes [studio] and goes back to the studios.
+Future<void> confirmDeleteStudio(
+  BuildContext context,
+  WidgetRef ref,
+  Studio studio,
+) async {
     final messenger = ScaffoldMessenger.of(context);
     final router = GoRouter.of(context);
     final repo = ref.read(studioRepositoryProvider);
@@ -732,7 +744,6 @@ class _StudioMenu extends ConsumerWidget {
         SnackBar(content: Text('Could not delete studio: $e')),
       );
     }
-  }
 }
 
 // ---------------------------------------------------------------------------
