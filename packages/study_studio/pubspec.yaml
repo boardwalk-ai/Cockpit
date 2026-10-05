@@ -15,6 +15,7 @@ dependencies:
   go_router: ^14.6.2
   http: ^1.2.2
   file_picker: ^8.1.6
+  image_picker: ^1.1.2
   firebase_core: ^3.6.0
   firebase_auth: ^5.3.1
   cockpit_core:

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
 import '../../domain/entities/source.dart';
+import '../mobile/study_create_mobile.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 2 — Create a New Study Studio.
@@ -42,6 +43,9 @@ class _UploadedFile {
 class _UploadPageState extends ConsumerState<UploadPage> {
   final _nameController = TextEditingController();
   final _files = <_UploadedFile>[];
+
+  /// The phone's materials (mobile/study_create_mobile.dart).
+  final _picked = <SmPickedFile>[];
   bool _building = false;
 
   @override
@@ -72,12 +76,41 @@ class _UploadPageState extends ConsumerState<UploadPage> {
     });
   }
 
+  /// The phone's "+": adds what was picked, up to the limit.
+  Future<void> _addPicked() async {
+    final picked = await showSmAddSheet(context);
+    if (!mounted || picked.isEmpty) return;
+    final room = StudyCreateMobile.maxFiles - _picked.length;
+    setState(() => _picked.addAll(picked.take(room)));
+    if (picked.length > room) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'A studio takes up to ${StudyCreateMobile.maxFiles} files. '
+            '${picked.length - room} left out.',
+          ),
+        ),
+      );
+    }
+  }
+
   /// Create the studio, upload the picked files, then go watch the build. Falls
   /// back to the mock build route when there's no API backend (offline dev).
   Future<void> _build() async {
     final upload = ref.read(uploadApiProvider);
-    final title =
-        _nameController.text.trim().isEmpty ? 'New Study Studio' : _nameController.text.trim();
+    final phone = !isDesktop(context);
+    final typed = _nameController.text.trim();
+    final title = typed.isNotEmpty
+        ? typed
+        : phone && _picked.isNotEmpty
+        ? smNameFromFile(_picked.first.name)
+        : 'New Study Studio';
+    final files = phone
+        ? [for (final f in _picked) (name: f.name, bytes: f.bytes)]
+        : [
+            for (final f in _files)
+              if (f.bytes != null) (name: f.name, bytes: f.bytes!),
+          ];
 
     if (upload == null) {
       context.go('/study/build/job1'); // offline/mock: no real backend
@@ -90,12 +123,11 @@ class _UploadPageState extends ConsumerState<UploadPage> {
       // Upload only — ingest + generation progress runs on the studio Home
       // banner. The API build waits for ingest so we don't race an empty store.
       var uploaded = 0;
-      for (final f in _files) {
-        if (f.bytes == null) continue;
+      for (final f in files) {
         await upload.uploadDocument(
           studioId: studio.id,
           filename: f.name,
-          bytes: f.bytes!,
+          bytes: f.bytes,
         );
         uploaded++;
       }
@@ -117,6 +149,17 @@ class _UploadPageState extends ConsumerState<UploadPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!isDesktop(context)) {
+      return StudyCreateMobile(
+        files: _picked,
+        name: _nameController,
+        building: _building,
+        credits: ref.watch(meProvider).valueOrNull?.credits,
+        onAdd: _addPicked,
+        onRemove: (i) => setState(() => _picked.removeAt(i)),
+        onBuild: _build,
+      );
+    }
     final canBuild = _files.isNotEmpty && !_building;
     final desktop = isDesktop(context);
 
