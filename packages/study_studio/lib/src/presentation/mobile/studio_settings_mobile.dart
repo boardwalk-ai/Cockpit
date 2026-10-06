@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../domain/entities/source.dart';
 import '../../domain/entities/studio.dart';
 import 'mobile_header.dart';
 import 'mobile_motion.dart';
@@ -175,7 +176,11 @@ class _StudioSettingsMobileState extends State<StudioSettingsMobile> {
                           cursorColor: c.accent,
                           cursorWidth: 2,
                           cursorRadius: const Radius.circular(2),
-                          style: t.title.copyWith(fontSize: 16),
+                          style: t.title.copyWith(
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                          ),
                           decoration: const InputDecoration(
                             isDense: true,
                             filled: false,
@@ -222,20 +227,40 @@ class _StudioSettingsMobileState extends State<StudioSettingsMobile> {
               ),
               const SizedBox(height: 10),
               appear(
-                Text(
-                  '${s.topicCount} topics · ${s.flashcardCount} cards · '
-                  '${s.quizCount} questions',
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      for (final (k, (n, w)) in [
+                        (s.topicCount, 'topics'),
+                        (s.flashcardCount, 'cards'),
+                        (s.quizCount, 'questions'),
+                      ].indexed) ...[
+                        if (k > 0) const TextSpan(text: '  ·  '),
+                        TextSpan(
+                          text: '$n',
+                          style: TextStyle(
+                            fontFamily: SmFonts.heading,
+                            fontWeight: FontWeight.w800,
+                            color: c.text,
+                          ),
+                        ),
+                        TextSpan(text: ' $w'),
+                      ],
+                    ],
+                  ),
                   textAlign: TextAlign.center,
-                  style: t.small.copyWith(fontSize: 12.5),
+                  style: t.small.copyWith(fontSize: 12.5, color: c.hint),
                 ),
               ),
-              appear(section('FILES')),
+              appear(
+                section('FILES · ${s.sourceFiles.length + _added.length}'),
+              ),
               for (final f in s.sourceFiles)
                 appear(
                   _FileRow(
-                    icon: SmFileTypeIcon(type: f.type, size: 32),
+                    icon: SmPaper(type: f.type),
                     name: f.name,
-                    note: f.processed ? 'In the studio' : 'Still being read',
+                    note: f.processed ? 'Read' : 'Still being read',
                   ),
                 ),
               for (final (k, f) in _added.indexed)
@@ -308,15 +333,44 @@ class _StudioSettingsMobileState extends State<StudioSettingsMobile> {
                                 ),
                                 child: FittedBox(
                                   fit: BoxFit.scaleDown,
-                                  child: Text(
-                                    'Update studio · ${_added.length} new '
-                                    'file${_added.length == 1 ? '' : 's'}',
-                                    style: const TextStyle(
-                                      fontFamily: SmFonts.heading,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.white,
-                                    ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.22,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            99,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          '${_added.length}',
+                                          style: const TextStyle(
+                                            fontFamily: SmFonts.heading,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Update studio',
+                                        semanticsLabel: 'Update studio',
+                                        style: TextStyle(
+                                          fontFamily: SmFonts.heading,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -334,18 +388,18 @@ class _StudioSettingsMobileState extends State<StudioSettingsMobile> {
               appear(section('EXPORT')),
               appear(
                 _ExportRow(
-                  icon: Icons.description_outlined,
+                  tag: 'PDF',
                   title: 'Study notes',
-                  note: 'PDF · every topic, key ideas, cards',
+                  note: 'Every topic, key ideas, cards',
                   busy: _exporting == 'notes',
                   onTap: () => _export('notes', widget.onExportNotes),
                 ),
               ),
               appear(
                 _ExportRow(
-                  icon: Icons.style_outlined,
-                  title: 'Flashcards for Anki',
-                  note: '${s.flashcardCount} cards · tab-separated text',
+                  tag: 'ANKI',
+                  title: 'Flashcards',
+                  note: '${s.flashcardCount} cards, tagged by topic',
                   busy: _exporting == 'cards',
                   onTap: s.flashcardCount == 0
                       ? null
@@ -363,9 +417,10 @@ class _StudioSettingsMobileState extends State<StudioSettingsMobile> {
                       padding: const EdgeInsets.all(10),
                       child: Text(
                         'Delete studio',
-                        style: t.body.copyWith(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                        style: TextStyle(
+                          fontFamily: SmFonts.heading,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
                           color: c.accentSoft,
                         ),
                       ),
@@ -448,31 +503,49 @@ class _NewFileRow extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: c.accent, width: 1.4),
-              ),
-              child: Icon(Icons.add_rounded, size: 18, color: c.accentSoft),
-            ),
+            SmPaper(type: file.type, fresh: true),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    file.name,
-                    style: t.body.copyWith(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: c.accentSoft,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          file.name,
+                          style: t.body.copyWith(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1.5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.accent,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: const Text(
+                          'NEW',
+                          style: TextStyle(
+                            fontFamily: SmFonts.heading,
+                            fontSize: 8,
+                            letterSpacing: 0.8,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   Text(
-                    'New · ${kb < 1024 ? '${kb.round()} KB' : '${(kb / 1024).toStringAsFixed(1)} MB'}'
-                    ' · not in the studio yet',
+                    '${kb < 1024 ? '${kb.round()} KB' : '${(kb / 1024).toStringAsFixed(1)} MB'}'
+                    ' · waiting to be added',
                     style: t.small.copyWith(fontSize: 11.5),
                   ),
                 ],
@@ -497,14 +570,14 @@ class _NewFileRow extends StatelessWidget {
 
 class _ExportRow extends StatelessWidget {
   const _ExportRow({
-    required this.icon,
+    required this.tag,
     required this.title,
     required this.note,
     required this.busy,
     required this.onTap,
   });
 
-  final IconData icon;
+  final String tag;
   final String title;
   final String note;
   final bool busy;
@@ -527,8 +600,6 @@ class _ExportRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              Icon(icon, size: 20, color: c.muted),
-              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -538,6 +609,24 @@ class _ExportRow extends StatelessWidget {
                   ],
                 ),
               ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: c.line),
+                ),
+                child: Text(
+                  tag,
+                  style: TextStyle(
+                    fontFamily: SmFonts.heading,
+                    fontSize: 9,
+                    letterSpacing: 1,
+                    fontWeight: FontWeight.w800,
+                    color: c.muted,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 200),
                 child: busy
@@ -551,9 +640,9 @@ class _ExportRow extends StatelessWidget {
                         ),
                       )
                     : Icon(
-                        Icons.ios_share_rounded,
+                        Icons.north_east_rounded,
                         key: const ValueKey('share'),
-                        size: 19,
+                        size: 17,
                         color: c.hint,
                       ),
               ),
@@ -563,4 +652,112 @@ class _ExportRow extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A file as a sheet of paper with a folded corner and its kind in small
+/// caps (PDF, DOC…); dashed in the accent when it's [fresh].
+class SmPaper extends StatelessWidget {
+  const SmPaper({super.key, required this.type, this.fresh = false});
+
+  final SourceFileType type;
+  final bool fresh;
+
+  static (String, Color) look(SourceFileType t) => switch (t) {
+    SourceFileType.pdf => ('PDF', const Color(0xFFF0997B)),
+    SourceFileType.docx => ('DOC', const Color(0xFF85B7EB)),
+    SourceFileType.pptx => ('PPT', const Color(0xFFF5A623)),
+    SourceFileType.txt => ('TXT', const Color(0xFFB4B2A9)),
+    SourceFileType.image => ('IMG', const Color(0xFF5DCAA5)),
+    SourceFileType.audio => ('AUD', const Color(0xFFED93B1)),
+    SourceFileType.video => ('VID', const Color(0xFFAFA9EC)),
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final (label, color) = look(type);
+    return SizedBox(
+      width: 30,
+      height: 36,
+      child: CustomPaint(
+        painter: _PaperPainter(
+          fill: fresh ? c.accent.withValues(alpha: 0.08) : c.raised,
+          edge: fresh ? c.accent : c.line,
+          fold: fresh ? c.accent.withValues(alpha: 0.35) : c.line,
+          dashed: fresh,
+        ),
+        child: Align(
+          alignment: const Alignment(0, 0.7),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontFamily: SmFonts.heading,
+              fontSize: 7.5,
+              letterSpacing: 0.4,
+              fontWeight: FontWeight.w800,
+              color: fresh ? c.accentSoft : color,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PaperPainter extends CustomPainter {
+  _PaperPainter({
+    required this.fill,
+    required this.edge,
+    required this.fold,
+    required this.dashed,
+  });
+
+  final Color fill;
+  final Color edge;
+  final Color fold;
+  final bool dashed;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+    final f = w * 0.32;
+    const r = 4.0;
+    final page = Path()
+      ..moveTo(r, 0)
+      ..lineTo(w - f, 0)
+      ..lineTo(w, f)
+      ..lineTo(w, h - r)
+      ..quadraticBezierTo(w, h, w - r, h)
+      ..lineTo(r, h)
+      ..quadraticBezierTo(0, h, 0, h - r)
+      ..lineTo(0, r)
+      ..quadraticBezierTo(0, 0, r, 0)
+      ..close();
+    canvas.drawPath(page, Paint()..color = fill);
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = edge;
+    if (dashed) {
+      for (final m in page.computeMetrics()) {
+        for (var d = 0.0; d < m.length; d += 6) {
+          canvas.drawPath(m.extractPath(d, d + 3.5), stroke);
+        }
+      }
+    } else {
+      canvas.drawPath(page, stroke);
+    }
+    final corner = Path()
+      ..moveTo(w - f, 0)
+      ..lineTo(w - f, f - 2)
+      ..quadraticBezierTo(w - f, f, w - f + 2, f)
+      ..lineTo(w, f)
+      ..close();
+    canvas.drawPath(corner, Paint()..color = fold);
+  }
+
+  @override
+  bool shouldRepaint(_PaperPainter old) =>
+      old.fill != fill || old.edge != edge || old.fold != fold;
 }

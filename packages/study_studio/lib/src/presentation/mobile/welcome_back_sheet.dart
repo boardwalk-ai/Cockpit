@@ -13,6 +13,7 @@ class WelcomeBack {
     required this.away,
     required this.due,
     this.fading,
+    this.recall = 0,
     this.examIn,
   });
 
@@ -20,8 +21,9 @@ class WelcomeBack {
   final int away;
   final int due;
 
-  /// The topic slipping most, if any.
+  /// The topic slipping most, if any, and how much of it is left (0–1).
   final Topic? fading;
+  final double recall;
 
   /// Days to the exam, with an exam plan.
   final int? examIn;
@@ -49,6 +51,7 @@ class WelcomeBack {
       away: away,
       due: due,
       fading: slipping?.topic,
+      recall: slipping?.recall ?? 0,
       examIn: exam != null && exam >= 0 ? exam : null,
     );
   }
@@ -72,32 +75,41 @@ Future<void> showWelcomeBack(
     builder: (sheet) {
       var i = 0;
       Widget appear(Widget child) => SmAppear(index: i++, child: child);
-      Widget fact(IconData icon, Color color, InlineSpan text) => appear(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
+      Widget fact(Widget lead, Widget text, {bool last = false}) => appear(
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: c.line),
+              bottom: last ? BorderSide(color: c.line) : BorderSide.none,
+            ),
+          ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: c.line),
-                ),
-                child: Icon(icon, size: 17, color: color),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text.rich(text, style: t.body.copyWith(fontSize: 14)),
-              ),
+              SizedBox(width: 52, child: lead),
+              Expanded(child: text),
             ],
           ),
         ),
       );
-      TextSpan bold(String s) => TextSpan(
-        text: s,
-        style: const TextStyle(fontWeight: FontWeight.w700),
+      Widget numeral(int n, Color color) => Text(
+        '$n',
+        style: TextStyle(
+          fontFamily: SmFonts.heading,
+          fontSize: 26,
+          height: 1,
+          letterSpacing: -0.9,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
       );
+      Widget words(String s) => Text(s, style: t.body.copyWith(fontSize: 14));
+      final facts = [
+        if (wb.due > 0) 'due',
+        if (wb.fading != null) 'fading',
+        if (wb.examIn != null) 'exam',
+      ];
       final minutes = (wb.due / 2).ceil().clamp(5, 15);
       return SafeArea(
         child: Container(
@@ -123,11 +135,18 @@ Future<void> showWelcomeBack(
                   ),
                 ),
               ),
+              appear(_DaysAway(days: wb.away)),
+              const SizedBox(height: 8),
               appear(
                 Text(
                   '${wb.away} days away',
                   textAlign: TextAlign.center,
-                  style: t.small.copyWith(fontSize: 12.5),
+                  style: TextStyle(
+                    fontFamily: SmFonts.heading,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: c.hint,
+                  ),
                 ),
               ),
               const SizedBox(height: 2),
@@ -135,42 +154,47 @@ Future<void> showWelcomeBack(
                 Text(
                   'Welcome back',
                   textAlign: TextAlign.center,
-                  style: t.greeting.copyWith(fontSize: 23),
+                  style: t.greeting.copyWith(
+                    fontSize: 25,
+                    letterSpacing: -0.8,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 16),
               if (wb.due > 0)
                 fact(
-                  Icons.style_rounded,
-                  c.text,
-                  TextSpan(
-                    children: [
-                      bold('${wb.due} card${wb.due == 1 ? '' : 's'}'),
-                      const TextSpan(text: ' came due'),
-                    ],
-                  ),
+                  numeral(wb.due, c.text),
+                  words('card${wb.due == 1 ? '' : 's'} came due'),
+                  last: facts.last == 'due',
                 ),
               if (wb.fading != null)
                 fact(
-                  Icons.trending_down_rounded,
-                  c.gold,
-                  TextSpan(
-                    children: [
-                      bold(wb.fading!.title),
-                      const TextSpan(text: ' is fading'),
-                    ],
+                  _Memory(value: wb.recall),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: wb.fading!.title,
+                          style: TextStyle(
+                            fontFamily: SmFonts.reading,
+                            fontStyle: FontStyle.italic,
+                            fontSize: 16,
+                            color: c.text,
+                          ),
+                        ),
+                        const TextSpan(text: ' is fading'),
+                      ],
+                    ),
+                    style: t.body.copyWith(fontSize: 14),
                   ),
+                  last: facts.last == 'fading',
                 ),
               if (wb.examIn != null)
                 fact(
-                  Icons.flag_rounded,
-                  c.accentSoft,
-                  TextSpan(
-                    children: [
-                      const TextSpan(text: 'Exam in '),
-                      bold('${wb.examIn} day${wb.examIn == 1 ? '' : 's'}'),
-                    ],
-                  ),
+                  numeral(wb.examIn!, c.accentSoft),
+                  words('day${wb.examIn == 1 ? '' : 's'} to your exam'),
+                  last: true,
                 ),
               const SizedBox(height: 8),
               appear(
@@ -193,7 +217,7 @@ Future<void> showWelcomeBack(
                       style: const TextStyle(
                         fontFamily: SmFonts.heading,
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                         color: Colors.white,
                       ),
                     ),
@@ -221,4 +245,87 @@ Future<void> showWelcomeBack(
       );
     },
   );
+}
+
+/// The days away as dots: the last visit filled, the missed days empty,
+/// today ringed. A long break shows the last week of it.
+class _DaysAway extends StatelessWidget {
+  const _DaysAway({required this.days});
+
+  final int days;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final gap = days.clamp(1, 7) - 1;
+    Widget dot({required bool filled, bool ring = false, int delay = 0}) =>
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: smReduceMotion(context)
+              ? Duration.zero
+              : Duration(milliseconds: 300 + delay * 70),
+          curve: Curves.easeOutBack,
+          builder: (context, v, child) =>
+              Transform.scale(scale: v, child: child),
+          child: Container(
+            width: ring ? 15 : 8,
+            height: ring ? 15 : 8,
+            margin: const EdgeInsets.symmetric(horizontal: 3),
+            padding: const EdgeInsets.all(2.5),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: filled && !ring ? c.accent : Colors.transparent,
+              border: ring
+                  ? Border.all(color: c.accentSoft, width: 1.5)
+                  : filled
+                  ? null
+                  : Border.all(color: c.hint, width: 1.3),
+            ),
+            child: ring
+                ? Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: c.accent,
+                    ),
+                  )
+                : null,
+          ),
+        );
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        dot(filled: true),
+        for (var i = 0; i < gap; i++) dot(filled: false, delay: i + 1),
+        dot(filled: true, ring: true, delay: gap + 1),
+      ],
+    );
+  }
+}
+
+/// Five little bars, filled to how much is still remembered.
+class _Memory extends StatelessWidget {
+  const _Memory({required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final filled = (value * 5).round().clamp(0, 5);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < 5; i++)
+          Container(
+            width: 7,
+            height: 4,
+            margin: const EdgeInsets.only(right: 2),
+            decoration: BoxDecoration(
+              color: i < filled ? c.gold : c.line,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+      ],
+    );
+  }
 }

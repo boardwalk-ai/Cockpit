@@ -146,12 +146,12 @@ void main() {
     await tester.tap(find.text('Add files'));
     await tester.pumpAndSettle();
     expect(find.text('Lecture 6.pdf'), findsOne);
-    await tester.tap(find.text('Update studio · 1 new file'));
+    await tester.tap(find.text('Update studio'));
     expect(updated.single.single.name, 'Lecture 6.pdf');
 
     await tester.tap(find.text('Study notes'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Flashcards for Anki'));
+    await tester.tap(find.text('Flashcards'));
     await tester.pumpAndSettle();
     expect(exported, ['notes', 'cards']);
 
@@ -181,9 +181,10 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
-    expect(find.text('Your studio is ready'), findsOne);
-    expect(find.text('Built from 1 file in 48 s'), findsOne);
+    // The words keep turning round the stamp: no settling.
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('Your studio\nis ready'), findsOne);
+    expect(find.text('1 file · built in 48 s'), findsOne);
     expect(find.text('2'), findsWidgets); // topics and flashcards
     expect(find.text('Congestion control'), findsOne);
     await tester.tap(find.text('Start the first lesson'));
@@ -191,5 +192,6 @@ void main() {
     await tester.tap(find.text('Look around first'));
     expect(looked, isTrue);
     expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
   });
 }
