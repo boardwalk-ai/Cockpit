@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,6 +8,9 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../../domain/entities/scenario.dart';
 import '../../domain/entities/studio.dart';
+import '../mobile/mobile_header.dart';
+import '../mobile/mobile_style.dart';
+import '../mobile/scenario_mobile.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -44,6 +49,7 @@ class _ScenarioModePageState extends ConsumerState<ScenarioModePage> {
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(studioProvider(widget.studioId));
+    if (!isDesktop(context)) return _phone(context, async);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -89,6 +95,72 @@ class _ScenarioModePageState extends ConsumerState<ScenarioModePage> {
           },
         ),
       ),
+    );
+  }
+
+  /// The phone's case (mobile/scenario_mobile.dart).
+  Widget _phone(BuildContext context, AsyncValue<Studio> async) {
+    final c = SmColors.of(context);
+    final base = '/study/${widget.studioId}';
+    Widget plain(Widget child) => Scaffold(
+      backgroundColor: c.background,
+      body: SmHeaderPage(
+        header: SmHeader(title: 'Scenarios', onBack: () => context.go(base)),
+        child: SafeArea(child: Center(child: child)),
+      ),
+    );
+    final note = SmText.of(context).small.copyWith(fontSize: 13);
+    return async.when(
+      skipLoadingOnRefresh: true,
+      skipLoadingOnReload: true,
+      loading: () =>
+          plain(CircularProgressIndicator(color: c.accent, strokeWidth: 2.5)),
+      error: (_, _) => plain(Text('Couldn’t load the scenarios', style: note)),
+      data: (studio) {
+        final scenarios = studio.scenarios;
+        if (scenarios.isEmpty) {
+          return plain(Text('No scenarios yet', style: note));
+        }
+        final i = _index.clamp(0, scenarios.length - 1);
+        final scenario = scenarios[i];
+        String? topicNamed(String name) {
+          for (final t in studio.topics) {
+            if (t.title.toLowerCase() == name.toLowerCase()) return t.id;
+          }
+          return null;
+        }
+
+        return ScenarioMobile(
+          // A new scenario starts over, at the top.
+          key: ValueKey('$i-${scenario.id}'),
+          scenario: scenario,
+          number: i + 1,
+          total: scenarios.length,
+          onBack: () => context.go(base),
+          onAnother: () => _goTo(i + 1, scenarios.length),
+          onLesson: (name) {
+            final id = topicNamed(name);
+            context.go(id == null ? '$base/topics' : '$base/topics/$id');
+          },
+          onDecided: (correct) {
+            // Counts toward the mastery of the topics it applies.
+            for (final name in scenario.relatedTopics) {
+              final id = topicNamed(name);
+              if (id == null) continue;
+              unawaited(
+                ref
+                    .read(studioRepositoryProvider)
+                    .recordQuizResult(
+                      studioId: studio.id,
+                      topicId: id,
+                      correct: correct,
+                    )
+                    .catchError((Object _) {}),
+              );
+            }
+          },
+        );
+      },
     );
   }
 
