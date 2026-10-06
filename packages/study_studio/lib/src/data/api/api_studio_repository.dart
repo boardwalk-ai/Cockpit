@@ -1,3 +1,4 @@
+import '../../domain/activity.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../../domain/repositories/studio_repository.dart';
@@ -109,6 +110,18 @@ class ApiStudioRepository implements StudioRepository {
       '/studios/$studioId/flashcards/${Uri.encodeComponent(cardId)}/review',
       query: {'topic_id': topicId, 'grade': grade},
     );
+  }
+
+  @override
+  Future<List<DayActivity>> activity(String studioId, {int days = 14}) async {
+    final events = await _sse.get(
+      '/studios/$studioId/activity',
+      query: {'days': days, 'tz': DateTime.now().timeZoneOffset.inMinutes},
+    );
+    final data = events.where((e) => e.event == 'data').firstOrNull?.data;
+    final list = data?['value'];
+    if (list is! List) return const [];
+    return [for (final j in list) ?DayActivity.fromJson(j)];
   }
 
   @override

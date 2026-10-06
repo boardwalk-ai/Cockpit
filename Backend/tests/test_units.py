@@ -304,3 +304,22 @@ def test_ask_messages_carry_history_and_topic():
     assert '"NAT"' in msgs[0]["content"]
     assert msgs[-1]["content"].endswith("Question: why?")
     assert "[1] x" in msgs[-1]["content"]
+
+
+def test_activity_buckets_by_local_day():
+    from datetime import UTC, datetime
+
+    from app.services.activity import CARD, QUIZ, Event, bucket
+
+    now = datetime(2026, 10, 7, 20, 0, tzinfo=UTC)  # 02:30 on the 8th in Yangon
+    events = [
+        Event(datetime(2026, 10, 7, 19, 0, tzinfo=UTC), CARD, True),  # 8th local
+        Event(datetime(2026, 10, 7, 10, 0, tzinfo=UTC), QUIZ, True),  # 7th
+        Event(datetime(2026, 10, 7, 11, 0, tzinfo=UTC), QUIZ, False),  # 7th
+        Event(datetime(2026, 9, 1, 11, 0, tzinfo=UTC), CARD, True),  # too old
+    ]
+    rows = bucket(events, days=3, tz_minutes=390, now=now)
+    assert [r["date"] for r in rows] == ["2026-10-06", "2026-10-07", "2026-10-08"]
+    assert rows[1] == {"date": "2026-10-07", "cards": 0, "quiz": 2, "quizRight": 1}
+    assert rows[2]["cards"] == 1
+    assert rows[0] == {"date": "2026-10-06", "cards": 0, "quiz": 0, "quizRight": 0}

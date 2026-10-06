@@ -1,3 +1,4 @@
+import '../../domain/activity.dart';
 import '../../domain/card_schedule.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
@@ -7,6 +8,35 @@ import '../mock/mock_data.dart';
 /// In-memory [StudioRepository] seeded from mock data. Mutates topic mastery so
 /// progress visibly responds to quizzes and flashcard reviews during the MVP.
 class InMemoryStudioRepository implements StudioRepository {
+  final _events = <(String studio, DateTime at, bool card, bool correct)>[];
+
+  void _log(String studioId, {required bool card, required bool correct}) =>
+      _events.add((studioId, DateTime.now(), card, correct));
+
+  @override
+  Future<List<DayActivity>> activity(String studioId, {int days = 14}) async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return [
+      for (var i = days - 1; i >= 0; i--)
+        () {
+          final d = today.subtract(Duration(days: i));
+          final on = [
+            for (final e in _events)
+              if (e.$1 == studioId &&
+                  DateTime(e.$2.year, e.$2.month, e.$2.day) == d)
+                e,
+          ];
+          return DayActivity(
+            date: d,
+            cards: on.where((e) => e.$3).length,
+            quiz: on.where((e) => !e.$3).length,
+            quizRight: on.where((e) => !e.$3 && e.$4).length,
+          );
+        }(),
+    ];
+  }
+
   InMemoryStudioRepository() {
     for (final s in buildMockStudios()) {
       _studios[s.id] = s;
@@ -59,6 +89,7 @@ class InMemoryStudioRepository implements StudioRepository {
     required String topicId,
     required bool correct,
   }) async {
+    _log(studioId, card: false, correct: correct);
     _adjustMastery(studioId, topicId, correct ? 0.08 : -0.05);
   }
 
@@ -85,6 +116,7 @@ class InMemoryStudioRepository implements StudioRepository {
     required String cardId,
     required int grade,
   }) async {
+    _log(studioId, card: true, correct: grade >= 2);
     final studio = _studios[studioId];
     if (studio == null) return;
     final now = DateTime.now();

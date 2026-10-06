@@ -1,11 +1,16 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
+import '../../domain/activity.dart';
 import '../../domain/card_schedule.dart';
+import '../../domain/entities/flashcard.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import 'mobile_header.dart';
 import 'mobile_motion.dart';
 import 'mobile_style.dart';
+import 'sm_calendar.dart' show smWeekdays;
 
 /// What the next study step on a topic is.
 enum ReportStep { cards, quiz, lesson }
@@ -29,6 +34,24 @@ class PathStop {
 
   /// Cards on this topic due now.
   final int due;
+}
+
+/// A topic's memory: how much would be recalled now, when it was last
+/// reviewed, and how many cards to go over.
+class FadingTopic {
+  const FadingTopic({
+    required this.topic,
+    required this.recall,
+    required this.lastSeen,
+    required this.toReview,
+  });
+
+  final Topic topic;
+  final double recall;
+  final DateTime lastSeen;
+  final int toReview;
+
+  bool get slipping => recall < 0.85;
 }
 
 /// The numbers behind the report, all from the studio as it is now.
@@ -110,6 +133,52 @@ class MasteryReport {
     return (full * share / 5).ceil() * 5;
   }
 
+  /// How likely a reviewed card is recalled now: 90% on its due day,
+  /// fading the same way after it. Null for a card never reviewed.
+  static double? recall(Flashcard c, DateTime now) {
+    final due = c.dueDate;
+    if (c.reps == 0 || due == null) return null;
+    final interval = math.max(c.intervalDays, 0.5);
+    final last = due.subtract(
+      Duration(minutes: (c.intervalDays * Duration.minutesPerDay).round()),
+    );
+    final days =
+        math.max(0, now.difference(last).inMinutes) / Duration.minutesPerDay;
+    return math.pow(0.9, days / interval).toDouble();
+  }
+
+  /// Topics with reviewed cards, the most forgotten first.
+  List<FadingTopic> get fading {
+    final out = <FadingTopic>[];
+    for (final t in studio.topics) {
+      final seen = [
+        for (final c in t.flashcards)
+          if (recall(c, now) case final r?) (c, r),
+      ];
+      if (seen.isEmpty) continue;
+      final avg = seen.fold(0.0, (n, e) => n + e.$2) / seen.length;
+      final last = seen
+          .map(
+            (e) => e.$1.dueDate!.subtract(
+              Duration(
+                minutes: (e.$1.intervalDays * Duration.minutesPerDay).round(),
+              ),
+            ),
+          )
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+      final due = dueOn(t);
+      out.add(
+        FadingTopic(
+          topic: t,
+          recall: avg,
+          lastSeen: last,
+          toReview: due > 0 ? due : seen.length,
+        ),
+      );
+    }
+    return out..sort((a, b) => a.recall.compareTo(b.recall));
+  }
+
   /// "Ready", "Getting there", "Building".
   String get readiness => mastery >= goal
       ? 'Exam ready'
@@ -130,6 +199,9 @@ class MasteryReportMobile extends StatelessWidget {
     required this.onStep,
     required this.onCards,
     this.onPlan,
+    this.onReview,
+    this.activity,
+    this.studyDays,
     this.now,
   });
 
@@ -143,6 +215,15 @@ class MasteryReportMobile extends StatelessWidget {
 
   /// Opens the study plan (from "Your path").
   final VoidCallback? onPlan;
+
+  /// Reviews a fading topic's cards.
+  final void Function(Topic topic)? onReview;
+
+  /// The last two weeks (null while loading).
+  final List<DayActivity>? activity;
+
+  /// The study plan's weekdays, if there is a plan (others show as rest).
+  final Set<int>? studyDays;
   final DateTime? now;
 
   @override
@@ -221,6 +302,26 @@ class MasteryReportMobile extends StatelessWidget {
                               now: report.now,
                               onStep: onStep,
                             ),
+                    ),
+                  ],
+                  appear(section('THIS WEEK')),
+                  appear(
+                    _ThisWeek(
+                      week: activity == null
+                          ? null
+                          : WeekActivity(activity!, report.now),
+                      today: report.now,
+                      studyDays: studyDays,
+                    ),
+                  ),
+                  if (report.fading.isNotEmpty) ...[
+                    appear(section('FADING')),
+                    appear(
+                      _Fading(
+                        topics: report.fading.take(3).toList(),
+                        now: report.now,
+                        onReview: onReview ?? onTopic,
+                      ),
                     ),
                   ],
                   if (studio.flashcardCount > 0) ...[
@@ -873,6 +974,377 @@ class _Cta extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Monday to Sunday: a filled dot on each day studied (with how much),
+/// a ring on today, dashes on the plan's days off. Tap a day for it.
+class _ThisWeek extends StatefulWidget {
+  const _ThisWeek({
+    required this.week,
+    required this.today,
+    required this.studyDays,
+  });
+
+  final WeekActivity? week;
+  final DateTime today;
+  final Set<int>? studyDays;
+
+  @override
+  State<_ThisWeek> createState() => _ThisWeekState();
+}
+
+class _ThisWeekState extends State<_ThisWeek> {
+  int? _picked;
+
+  String _caption(WeekActivity w) {
+    final p = _picked;
+    if (p != null) {
+      final d = w.week[p];
+      final name = smWeekdays[d.date.weekday - 1];
+      if (d.date.isAfter(w.today)) return '$name: still ahead';
+      if (!d.active) return '$name: nothing studied';
+      final parts = [
+        if (d.cards > 0) '${d.cards} card${d.cards == 1 ? '' : 's'}',
+        if (d.quiz > 0) '${d.quizRight} of ${d.quiz} quiz right',
+      ];
+      return '$name: ${parts.join(' · ')}';
+    }
+    if (w.total == 0) return 'Nothing yet this week. Today’s a good start.';
+    final diff = w.total - w.lastTotal;
+    if (w.lastTotal == 0) return 'Your first reviews since last week.';
+    if (diff == 0) return 'The same as this time last week.';
+    return diff > 0
+        ? '$diff more than this time last week'
+        : '${-diff} fewer than this time last week';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final t = SmText.of(context);
+    final w = widget.week;
+    final todayIndex = widget.today.weekday - 1;
+    Widget pill(String text) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: c.line),
+      ),
+      child: Text(text, style: t.body.copyWith(fontSize: 12.5)),
+    );
+    return Column(
+      children: [
+        Row(
+          children: [
+            for (var i = 0; i < 7; i++)
+              Expanded(
+                child: _DayDot(
+                  index: i,
+                  day: w?.week[i],
+                  today: i == todayIndex,
+                  future: i > todayIndex,
+                  rest:
+                      widget.studyDays != null &&
+                      !widget.studyDays!.contains(i + 1),
+                  picked: _picked == i,
+                  most: w == null
+                      ? 1
+                      : w.week.fold<int>(1, (m, d) => math.max(m, d.total)),
+                  onTap: w == null
+                      ? null
+                      : () => setState(() => _picked = _picked == i ? null : i),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (w != null) ...[
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              pill('${w.cards} card${w.cards == 1 ? '' : 's'}'),
+              if (w.accuracy != null)
+                pill('${(w.accuracy! * 100).round()}% quiz right'),
+              pill('${w.activeDays} day${w.activeDays == 1 ? '' : 's'}'),
+            ],
+          ),
+          const SizedBox(height: 10),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: Text(
+              _caption(w),
+              key: ValueKey(_picked),
+              textAlign: TextAlign.center,
+              style: t.small.copyWith(
+                fontSize: 12.5,
+                color: _picked == null ? c.muted : c.text,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _DayDot extends StatelessWidget {
+  const _DayDot({
+    required this.index,
+    required this.day,
+    required this.today,
+    required this.future,
+    required this.rest,
+    required this.picked,
+    required this.most,
+    required this.onTap,
+  });
+
+  final int index;
+  final DayActivity? day;
+  final bool today;
+  final bool future;
+  final bool rest;
+  final bool picked;
+  final int most;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final t = SmText.of(context);
+    final d = day;
+    final on = d != null && d.active;
+    final name = smWeekdays[index];
+    return SmPressable(
+      semanticLabel: d == null
+          ? name
+          : '$name, ${d.total} reviewed${today ? ', today' : ''}',
+      scale: 0.9,
+      onTap: onTap,
+      child: Column(
+        children: [
+          Text(
+            name.substring(0, 1),
+            style: t.small.copyWith(
+              fontSize: 11,
+              fontWeight: today ? FontWeight.w800 : FontWeight.w600,
+              color: today ? c.accentSoft : c.hint,
+            ),
+          ),
+          const SizedBox(height: 6),
+          // An outer ring for today (accent) or the picked day.
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.all(2.5),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: today
+                    ? c.accentSoft
+                    : picked
+                    ? c.text.withValues(alpha: 0.5)
+                    : Colors.transparent,
+                width: 1.5,
+              ),
+            ),
+            // Fills in, one day after another.
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: on ? 1 : 0),
+              duration: smReduceMotion(context)
+                  ? Duration.zero
+                  : Duration(milliseconds: 380 + index * 70),
+              curve: Curves.easeOutBack,
+              builder: (context, v, _) => AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color.lerp(
+                    Colors.transparent,
+                    c.accent,
+                    v.clamp(0.0, 1.0),
+                  ),
+                  border: on
+                      ? null
+                      : Border.all(
+                          color: future || rest
+                              ? c.line.withValues(alpha: 0.6)
+                              : c.line,
+                          width: 1.5,
+                        ),
+                ),
+                alignment: Alignment.center,
+                child: on
+                    ? Transform.scale(
+                        scale: v.clamp(0.0, 1.2),
+                        child: FittedBox(
+                          child: Padding(
+                            padding: const EdgeInsets.all(5),
+                            child: Text(
+                              '${d.total}',
+                              style: const TextStyle(
+                                fontFamily: SmFonts.heading,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : rest && !future && !today
+                    ? Icon(Icons.remove_rounded, size: 14, color: c.line)
+                    : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Learned topics slipping away: a five-step memory bar, when they were
+/// last seen, and a Review pill.
+class _Fading extends StatelessWidget {
+  const _Fading({
+    required this.topics,
+    required this.now,
+    required this.onReview,
+  });
+
+  final List<FadingTopic> topics;
+  final DateTime now;
+  final void Function(Topic topic) onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final t = SmText.of(context);
+    final anySlipping = topics.any((f) => f.slipping);
+    String seen(DateTime d) {
+      final days = now.difference(d).inHours ~/ 24;
+      return switch (days) {
+        <= 0 => 'reviewed today',
+        1 => 'last seen yesterday',
+        _ => 'last seen $days days ago',
+      };
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          anySlipping
+              ? 'Learned, but slipping away'
+              : 'Everything’s holding. Nice.',
+          style: t.small.copyWith(fontSize: 12.5),
+        ),
+        const SizedBox(height: 8),
+        for (final f in topics)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: c.line)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        f.topic.title,
+                        style: t.title.copyWith(fontSize: 14),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _Memory(value: f.recall, slipping: f.slipping),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              f.slipping ? seen(f.lastSeen) : 'holding well',
+                              style: t.small.copyWith(fontSize: 11.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SmPressable(
+                  semanticLabel: 'Review ${f.topic.title}',
+                  haptic: SmHaptics.thud,
+                  onTap: () => onReview(f.topic),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(99),
+                      border: Border.all(color: f.slipping ? c.accent : c.line),
+                    ),
+                    child: Text(
+                      'Review ${f.toReview}',
+                      style: t.body.copyWith(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: f.slipping ? c.accentSoft : c.text,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Five little bars, filled to how much is still remembered.
+class _Memory extends StatelessWidget {
+  const _Memory({required this.value, required this.slipping});
+
+  final double value;
+  final bool slipping;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = SmColors.of(context);
+    final filled = (value * 5).round().clamp(0, 5);
+    final color = slipping ? c.gold : _green;
+    return Semantics(
+      label: '${(value * 100).round()} percent remembered',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < 5; i++)
+            TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: i < filled ? 1 : 0),
+              duration: smReduceMotion(context)
+                  ? Duration.zero
+                  : Duration(milliseconds: 300 + i * 90),
+              builder: (context, v, _) => Container(
+                width: 11,
+                height: 4,
+                margin: const EdgeInsets.only(right: 2),
+                decoration: BoxDecoration(
+                  color: Color.lerp(c.line, color, v),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

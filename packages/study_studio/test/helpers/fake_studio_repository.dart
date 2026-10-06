@@ -1,3 +1,4 @@
+import 'package:study_studio/src/domain/activity.dart';
 import 'package:study_studio/src/domain/entities/studio.dart';
 import 'package:study_studio/src/domain/entities/topic.dart';
 import 'package:study_studio/src/domain/repositories/studio_repository.dart';
@@ -50,10 +51,7 @@ class FakeStudioRepository implements StudioRepository {
   }
 
   @override
-  Future<Studio> createStudio({
-    required String title,
-    String? subject,
-  }) {
+  Future<Studio> createStudio({required String title, String? subject}) {
     throw UnimplementedError(
       'createStudio is not required by the current widget tests.',
     );
@@ -91,8 +89,9 @@ class FakeStudioRepository implements StudioRepository {
   }) async {}
 
   @override
-  Future<void> markReviewed(
-    String studioId,
-    String topicId,
-  ) async {}
+  Future<List<DayActivity>> activity(String studioId, {int days = 14}) async =>
+      const [];
+
+  @override
+  Future<void> markReviewed(String studioId, String topicId) async {}
 }

@@ -10,6 +10,7 @@ import '../data/api/upload_api.dart';
 import '../data/auth/auth_service.dart';
 import '../data/auth/firebase_auth_service.dart';
 import '../data/repositories/in_memory_studio_repository.dart';
+import '../domain/activity.dart';
 import '../domain/entities/me.dart';
 import '../domain/entities/studio.dart';
 import '../domain/entities/topic.dart';
@@ -97,5 +98,13 @@ typedef TopicKey = ({String studioId, String topicId});
 /// One Study Object by id (Topic Detail, Teach Me, etc.).
 final topicProvider = FutureProvider.family<Topic, TopicKey>((ref, key) {
   ref.watch(authStateProvider); // refetch on sign in/out
-  return ref.watch(studioRepositoryProvider).getTopic(key.studioId, key.topicId);
+  return ref
+      .watch(studioRepositoryProvider)
+      .getTopic(key.studioId, key.topicId);
 });
+
+/// The studio's last two weeks of study, for the mastery report's week.
+final studioActivityProvider = FutureProvider.autoDispose
+    .family<List<DayActivity>, String>(
+      (ref, studioId) => ref.watch(studioRepositoryProvider).activity(studioId),
+    );

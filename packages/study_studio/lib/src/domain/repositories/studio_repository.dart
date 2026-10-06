@@ -1,3 +1,4 @@
+import '../activity.dart';
 import '../entities/studio.dart';
 import '../entities/topic.dart';
 
@@ -50,4 +51,8 @@ abstract interface class StudioRepository {
     required String cardId,
     required int grade,
   });
+
+  /// The last [days] local days of study (cards, quiz answers), oldest
+  /// first.
+  Future<List<DayActivity>> activity(String studioId, {int days = 14});
 }

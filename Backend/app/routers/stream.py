@@ -31,7 +31,7 @@ from ..models.cockpit import (
     StudioBuild,
 )
 from ..seed import seed_studios
-from ..services import generate, llm, progress, rag, schedule, vectorstore
+from ..services import activity, generate, llm, progress, rag, schedule, vectorstore
 from ..services.objectstore import get_object_store
 from ..sse import done, error, event
 
@@ -679,6 +679,10 @@ async def quiz_result(
                     cockpit, user_id=user_id, studio_id=sid,
                     topic_id=topic_id, correct=correct,
                 )
+                await activity.log(
+                    cockpit, user_id=user_id, studio_id=sid,
+                    topic_id=topic_id, kind=activity.QUIZ, correct=correct,
+                )
     except Exception:  # noqa: BLE001 — never fail the client's ack
         pass
     return _ack()
@@ -698,6 +702,11 @@ async def flashcard_review(
                 await progress.record_flashcard(
                     cockpit, user_id=user_id, studio_id=sid,
                     topic_id=topic_id, quality=quality,
+                )
+                await activity.log(
+                    cockpit, user_id=user_id, studio_id=sid,
+                    topic_id=topic_id, kind=activity.CARD,
+                    correct=quality >= 0.5,
                 )
     except Exception:  # noqa: BLE001
         pass
@@ -727,11 +736,43 @@ async def flashcard_schedule_review(
                     cockpit, user_id=user_id, studio_id=sid,
                     topic_id=topic_id, quality=grade / 3,
                 )
+                await activity.log(
+                    cockpit, user_id=user_id, studio_id=sid,
+                    topic_id=topic_id, kind=activity.CARD, correct=grade >= 2,
+                )
     except Exception:  # noqa: BLE001 — never fail the client's ack
         fields = {}
 
     async def gen() -> AsyncIterator[dict]:
         yield event("data", fields)
+        yield done()
+
+    return EventSourceResponse(gen())
+
+
+@router.get("/studios/{studio_id}/activity")
+async def studio_activity(
+    studio_id: str,
+    days: int = Query(14, ge=1, le=activity.MAX_DAYS),
+    tz: int = Query(0, ge=-14 * 60, le=14 * 60),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+) -> EventSourceResponse:
+    """Cards, quiz answers and right answers per local day ([tz]: the
+    user's minutes east of UTC), oldest first."""
+    rows: list[dict] = []
+    try:
+        sid = await _owned_studio_uuid(studio_id, user_id)
+        if sid is not None:
+            async with CockpitSession() as cockpit:
+                rows = await activity.recent(
+                    cockpit, user_id=user_id, studio_id=sid,
+                    days=days, tz_minutes=tz,
+                )
+    except Exception:  # noqa: BLE001 — an empty week, not an error
+        rows = []
+
+    async def gen() -> AsyncIterator[dict]:
+        yield event("data", rows)
         yield done()
 
     return EventSourceResponse(gen())

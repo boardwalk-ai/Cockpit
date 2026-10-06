@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/mock/mock_data.dart';
+import '../mastery_report/mastery_report_phone.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 16 — Study Analytics.
@@ -33,6 +34,10 @@ class _StudyAnalyticsPageState extends State<StudyAnalyticsPage> {
 
   @override
   Widget build(BuildContext context) {
+    // On a phone, the week and what's fading live in the mastery report.
+    if (!isDesktop(context)) {
+      return MasteryReportPhone(studioId: widget.studioId);
+    }
     final data = studyAnalyticsMockData;
 
     // Build each card block once, then arrange for phone (single column) or

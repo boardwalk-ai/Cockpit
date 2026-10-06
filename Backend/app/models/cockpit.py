@@ -193,6 +193,28 @@ class FlashcardSchedule(CockpitBase):
     )
 
 
+class StudyEvent(CockpitBase):
+    """One card review or quiz answer, for the week view (services/activity)."""
+
+    __tablename__ = "study_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=_uuid)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    studio_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("studios.id", ondelete="CASCADE")
+    )
+    topic_id: Mapped[str] = mapped_column(String(64))
+    kind: Mapped[str] = mapped_column(String(16))  # card | quiz
+    correct: Mapped[bool] = mapped_column(default=False)
+    at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("ix_study_events_user_studio_at", "user_id", "studio_id", "at"),
+    )
+
+
 class GeneratedScenario(CockpitBase):
     """An application scenario (Scenario Mode) generated from the studio's chunks.
 
