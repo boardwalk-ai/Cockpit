@@ -121,4 +121,34 @@ void main() {
     expect(tester.takeException(), isNull);
     handle.dispose();
   });
+
+  testWidgets('long titles wrap inside their pills', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    viewport(tester, phone);
+    final handle = tester.ensureSemantics();
+    const long = 'The Resistance: NUG and People’s Defence Force operations';
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: KnowledgeMapMobile(
+          studioId: 's1',
+          topics: [
+            topic('a', 'The Evolution of the Conflict', 0.67),
+            topic('b', long, 0.2, buildsOn: ['The Evolution of the Conflict']),
+          ],
+          onBack: () {},
+          onLesson: (_) {},
+          onQuiz: (_) {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    tester.semantics.tap(
+      find.semantics.byLabel(RegExp('^The Evolution of the Conflict')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text(long), findsWidgets);
+    expect(tester.takeException(), isNull);
+    handle.dispose();
+  });
 }

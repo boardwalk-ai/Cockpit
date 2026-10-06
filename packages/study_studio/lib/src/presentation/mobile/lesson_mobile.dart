@@ -838,7 +838,7 @@ class _Sources extends StatelessWidget {
                     ),
                     decoration: BoxDecoration(
                       color: c.raised,
-                      borderRadius: BorderRadius.circular(99),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -849,11 +849,13 @@ class _Sources extends StatelessWidget {
                           color: c.muted,
                         ),
                         const SizedBox(width: 5),
-                        Text(
-                          s.page == null
-                              ? s.fileName
-                              : '${s.fileName} · p.${s.page}',
-                          style: t.small.copyWith(fontSize: 12),
+                        Flexible(
+                          child: Text(
+                            s.page == null
+                                ? s.fileName
+                                : '${s.fileName} · p.${s.page}',
+                            style: t.small.copyWith(fontSize: 12),
+                          ),
                         ),
                       ],
                     ),

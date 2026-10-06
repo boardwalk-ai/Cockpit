@@ -980,7 +980,9 @@ class _TopicSheet extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(99),
+                        // Round enough to read as a pill on one line, and
+                        // still neat when a long title wraps.
+                        borderRadius: BorderRadius.circular(16),
                         border: Border.all(color: c.line, width: 1.5),
                       ),
                       child: Row(
@@ -988,11 +990,13 @@ class _TopicSheet extends StatelessWidget {
                         children: [
                           Icon(icon, size: 13, color: masteryColor(other, c)),
                           const SizedBox(width: 5),
-                          Text(
-                            other.title,
-                            style: t.small.copyWith(
-                              fontSize: 12,
-                              color: c.text,
+                          Flexible(
+                            child: Text(
+                              other.title,
+                              style: t.small.copyWith(
+                                fontSize: 12,
+                                color: c.text,
+                              ),
                             ),
                           ),
                         ],

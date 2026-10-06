@@ -473,7 +473,7 @@ class _Chip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
         color: c.raised,
-        borderRadius: BorderRadius.circular(99),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -483,8 +483,6 @@ class _Chip extends StatelessWidget {
           Flexible(
             child: Text(
               label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: t.small.copyWith(fontSize: 12.5, color: c.text),
             ),
           ),
