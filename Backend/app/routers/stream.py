@@ -9,6 +9,7 @@ endpoints acknowledge over SSE for a uniform client.
 from __future__ import annotations
 
 import asyncio
+import json
 import uuid
 from collections.abc import AsyncIterator
 
@@ -516,13 +517,54 @@ async def get_topic(studio_id: str, topic_id: str) -> EventSourceResponse:
     return EventSourceResponse(gen())
 
 
+_HISTORY_TURNS = 3
+_HISTORY_CHARS = 1200
+
+
+def parse_history(raw: str | None) -> list[tuple[str, str]]:
+    """Earlier Ask AI turns from the client: a JSON list of {q, a}, the last
+    few kept and each side trimmed. Anything malformed is ignored."""
+    if not raw:
+        return []
+    try:
+        items = json.loads(raw)
+    except ValueError:
+        return []
+    if not isinstance(items, list):
+        return []
+    turns: list[tuple[str, str]] = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        q = str(it.get("q") or "").strip()[:_HISTORY_CHARS]
+        a = str(it.get("a") or "").strip()[:_HISTORY_CHARS]
+        if q and a:
+            turns.append((q, a))
+    return turns[-_HISTORY_TURNS:]
+
+
+def search_text(q: str, history: list[tuple[str, str]], topic: str | None) -> str:
+    """What to retrieve with: a short follow-up ("why?") borrows the last
+    question, and a chosen topic leads the query."""
+    parts = []
+    if topic and topic.strip():
+        parts.append(topic.strip())
+    if history and len(q.split()) < 8:
+        parts.append(history[-1][0])
+    parts.append(q)
+    return " ".join(parts)
+
+
 @router.get("/ask")
 async def ask(
     studio_id: str = Query(...),
     q: str = Query(..., min_length=1),
+    history: str | None = Query(None),
+    topic: str | None = Query(None, max_length=300),
     user_id: uuid.UUID = Depends(get_current_user_id),
 ) -> EventSourceResponse:
     settings = get_settings()
+    turns = parse_history(history)
 
     async def gen() -> AsyncIterator[dict]:
         try:
@@ -540,25 +582,27 @@ async def ask(
                     None,
                     user_id=user_id,
                     studio_id=sid,
-                    query_text=q,
+                    query_text=search_text(q, turns, topic),
                     top_k=settings.rag_top_k,
                 )
             except Exception:  # noqa: BLE001 — retrieval optional in seed mode
                 hits = []
 
-            context = llm.build_context_block([h.content for h in hits])
-            if SharedSession is not None:
-                async with SharedSession() as shared:
-                    api_key, model = await llm.resolve_credentials(shared)
-            else:
-                api_key, model = await llm.resolve_credentials(None)
-
-            async for delta in llm.generate_stream(
-                api_key=api_key, model=model, question=q, context=context
-            ):
-                yield event("delta", {"text": delta})
-
+            # Sources first (with their file names), so they show while the
+            # answer streams in.
             if hits:
+                names: dict[str, str] = {}
+                try:
+                    async with CockpitSession() as cockpit:
+                        rows = await cockpit.execute(
+                            select(Document.id, Document.filename).where(
+                                Document.user_id == user_id,
+                                Document.id.in_({h.document_id for h in hits}),
+                            )
+                        )
+                        names = {str(i): n for i, n in rows}
+                except Exception:  # noqa: BLE001 — names are a nicety
+                    names = {}
                 yield event(
                     "citations",
                     [
@@ -568,10 +612,28 @@ async def ask(
                             ordinal=h.ordinal,
                             score=round(h.score, 4),
                             snippet=h.content[:280],
+                            file_name=names.get(str(h.document_id)),
                         ).model_dump(by_alias=True)
                         for h in hits[: settings.rag_context_k]
                     ],
                 )
+
+            context = llm.build_context_block([h.content for h in hits])
+            if SharedSession is not None:
+                async with SharedSession() as shared:
+                    api_key, model = await llm.resolve_credentials(shared)
+            else:
+                api_key, model = await llm.resolve_credentials(None)
+
+            async for delta in llm.generate_stream(
+                api_key=api_key,
+                model=model,
+                question=q,
+                context=context,
+                history=turns,
+                focus=topic.strip() if topic and topic.strip() else None,
+            ):
+                yield event("delta", {"text": delta})
             yield event("meta", {"model": model})
             yield done()
         except Exception as exc:  # noqa: BLE001

@@ -114,8 +114,43 @@ async def generate(
     return data["choices"][0]["message"]["content"]
 
 
+ASK_STYLE = (
+    " You are talking to a student on a phone: answer in short plain "
+    "paragraphs (about 150 words unless they ask for more), no headings or "
+    "tables, and mark the one or two key terms with **double asterisks**."
+)
+
+
+def ask_messages(
+    *,
+    question: str,
+    context: str,
+    history: list[tuple[str, str]] | None = None,
+    focus: str | None = None,
+) -> list[dict]:
+    """The chat for an Ask AI turn: earlier turns (so follow-ups make sense),
+    then this question with its retrieved context."""
+    system = SYSTEM_PROMPT + ASK_STYLE
+    if focus:
+        system += f' The student is asking about the topic "{focus}".'
+    messages: list[dict] = [{"role": "system", "content": system}]
+    for q, a in history or []:
+        messages.append({"role": "user", "content": q})
+        messages.append({"role": "assistant", "content": a})
+    messages.append(
+        {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"}
+    )
+    return messages
+
+
 async def generate_stream(
-    *, api_key: str, model: str, question: str, context: str
+    *,
+    api_key: str,
+    model: str,
+    question: str,
+    context: str,
+    history: list[tuple[str, str]] | None = None,
+    focus: str | None = None,
 ) -> AsyncIterator[str]:
     """Yield answer text deltas as they arrive (OpenRouter SSE streaming).
 
@@ -135,10 +170,9 @@ async def generate_stream(
 
     payload = {
         "model": model,
-        "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {question}"},
-        ],
+        "messages": ask_messages(
+            question=question, context=context, history=history, focus=focus
+        ),
         "temperature": 0.2,
         "stream": True,
     }

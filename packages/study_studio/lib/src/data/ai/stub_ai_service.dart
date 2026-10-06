@@ -1,3 +1,4 @@
+import '../../domain/ask.dart';
 import '../../domain/entities/topic.dart';
 import 'ai_service.dart';
 
@@ -6,6 +7,29 @@ import 'ai_service.dart';
 /// before any provider is connected.
 class StubAiService implements AiService {
   const StubAiService();
+
+  @override
+  Stream<AskEvent> ask({
+    required String studioId,
+    required String question,
+    Topic? topic,
+    List<AskTurn> history = const [],
+  }) async* {
+    final answer = topic == null
+        ? 'Offline, I can only answer from a topic. Pick one above and ask '
+              'again.'
+        : await teach(topic: topic, message: question);
+    if (topic != null) {
+      yield AskSources([
+        for (final (i, s) in topic.sources.take(2).indexed)
+          AskSource(number: i + 1, fileName: s.fileName, snippet: s.snippet),
+      ]);
+    }
+    for (final word in answer.split(' ')) {
+      await Future<void>.delayed(const Duration(milliseconds: 12));
+      yield AskText('$word ');
+    }
+  }
 
   @override
   Future<String> teach({required Topic topic, required String message}) async {

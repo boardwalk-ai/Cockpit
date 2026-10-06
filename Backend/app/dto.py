@@ -194,3 +194,4 @@ class AskCitationDTO(_Base):
     ordinal: int
     score: float
     snippet: str
+    file_name: str | None = None

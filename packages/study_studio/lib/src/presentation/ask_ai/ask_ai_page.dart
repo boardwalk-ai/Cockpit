@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
+import 'ask_ai_phone_page.dart';
 
 /// Screen 14 — Ask AI.
 ///
@@ -45,6 +46,8 @@ class _AskAiPageState extends ConsumerState<AskAiPage> {
 
   @override
   Widget build(BuildContext context) {
+    // A phone gets the real chat (mobile/ask_ai_mobile.dart).
+    if (!isDesktop(context)) return AskAiPhonePage(studioId: widget.studioId);
     final studioTitle =
         ref.watch(studioProvider(widget.studioId)).valueOrNull?.title ??
         'Study Studio';

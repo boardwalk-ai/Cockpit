@@ -25,11 +25,11 @@ class SseClient {
     String? baseUrl,
     String? userId,
     Future<String?> Function()? tokenProvider,
-  })  : _client = client ?? http.Client(),
-        _baseUrl = baseUrl ?? StudioConfig.apiBaseUrl,
-        _userId = userId ?? StudioConfig.devUserId,
-        // ignore: prefer_initializing_formals — public name differs from field
-        _tokenProvider = tokenProvider;
+  }) : _client = client ?? http.Client(),
+       _baseUrl = baseUrl ?? StudioConfig.apiBaseUrl,
+       _userId = userId ?? StudioConfig.devUserId,
+       // ignore: prefer_initializing_formals — public name differs from field
+       _tokenProvider = tokenProvider;
 
   final http.Client _client;
   final String _baseUrl;
@@ -62,7 +62,10 @@ class SseClient {
   }
 
   Future<List<SseEvent>> get(String path, {Map<String, dynamic>? query}) async {
-    final resp = await _client.get(_uri(path, query), headers: await _headers());
+    final resp = await _client.get(
+      _uri(path, query),
+      headers: await _headers(),
+    );
     return _parse(resp);
   }
 
@@ -81,10 +84,40 @@ class SseClient {
     return _parse(resp);
   }
 
-  Future<List<SseEvent>> delete(String path, {Map<String, dynamic>? query}) async {
-    final resp =
-        await _client.delete(_uri(path, query), headers: await _headers());
+  Future<List<SseEvent>> delete(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final resp = await _client.delete(
+      _uri(path, query),
+      headers: await _headers(),
+    );
     return _parse(resp);
+  }
+
+  /// The events of a GET as they arrive (token-by-token answers). Throws
+  /// [SseException] on an HTTP error or an `error` event.
+  Stream<SseEvent> stream(String path, {Map<String, dynamic>? query}) async* {
+    final request = http.Request('GET', _uri(path, query))
+      ..headers.addAll(await _headers());
+    final resp = await _client.send(request);
+    if (resp.statusCode >= 400) {
+      throw SseException('HTTP ${resp.statusCode} for ${request.url}');
+    }
+    final reader = SseReader();
+    await for (final line
+        in resp.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
+      final e = reader.add(line);
+      if (e == null) continue;
+      if (e.event == 'error') {
+        throw SseException('${e.data['message'] ?? 'stream error'}');
+      }
+      yield e;
+    }
+    final last = reader.add('');
+    if (last != null && last.event != 'error') yield last;
   }
 
   /// Base URL + dev user id, exposed for the multipart upload client.
@@ -96,38 +129,13 @@ class SseClient {
       throw SseException('HTTP ${resp.statusCode} for ${resp.request?.url}');
     }
     final events = <SseEvent>[];
-    String? name;
-    final dataLines = <String>[];
-
-    void flush() {
-      if (dataLines.isEmpty) return;
-      final raw = dataLines.join('\n');
-      dataLines.clear();
-      final ev = name ?? 'message';
-      name = null;
-      Map<String, dynamic> parsed;
-      try {
-        final decoded = jsonDecode(raw);
-        parsed = decoded is Map<String, dynamic>
-            ? decoded
-            : <String, dynamic>{'value': decoded};
-      } catch (_) {
-        parsed = <String, dynamic>{'raw': raw};
-      }
-      events.add(SseEvent(ev, parsed));
-    }
-
+    final reader = SseReader();
     for (final line in const LineSplitter().convert(resp.body)) {
-      if (line.isEmpty) {
-        flush();
-      } else if (line.startsWith('event:')) {
-        name = line.substring(6).trim();
-      } else if (line.startsWith('data:')) {
-        dataLines.add(line.substring(5).trim());
-      }
-      // ':' comment / keep-alive lines are ignored.
+      final e = reader.add(line);
+      if (e != null) events.add(e);
     }
-    flush();
+    final last = reader.add('');
+    if (last != null) events.add(last);
 
     final err = events.where((e) => e.event == 'error');
     if (err.isNotEmpty) {
@@ -137,6 +145,42 @@ class SseClient {
   }
 
   void close() => _client.close();
+}
+
+/// Builds events from SSE lines, one line at a time.
+class SseReader {
+  String? _name;
+  final _data = <String>[];
+
+  /// The event a blank line completes, else null.
+  SseEvent? add(String line) {
+    if (line.isEmpty) return _flush();
+    if (line.startsWith('event:')) {
+      _name = line.substring(6).trim();
+    } else if (line.startsWith('data:')) {
+      _data.add(line.substring(5).trim());
+    }
+    // ':' comment / keep-alive lines are ignored.
+    return null;
+  }
+
+  SseEvent? _flush() {
+    if (_data.isEmpty) return null;
+    final raw = _data.join('\n');
+    _data.clear();
+    final ev = _name ?? 'message';
+    _name = null;
+    Map<String, dynamic> parsed;
+    try {
+      final decoded = jsonDecode(raw);
+      parsed = decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{'value': decoded};
+    } catch (_) {
+      parsed = <String, dynamic>{'raw': raw};
+    }
+    return SseEvent(ev, parsed);
+  }
 }
 
 class SseException implements Exception {

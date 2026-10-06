@@ -270,3 +270,37 @@ def test_concept_maps_keep_real_names_and_links():
     assert wire["conceptLinks"][0]["from"].endswith("_c0")
     assert wire["conceptLinks"][2]["toTopic"] == "Routing"
     assert "_otherTitles" not in payload
+
+
+def test_ask_history_is_trimmed_and_safe():
+    import json as _json
+
+    from app.routers.stream import parse_history, search_text
+
+    raw = _json.dumps(
+        [{"q": f"q{i}", "a": f"a{i}"} for i in range(5)]
+        + [{"q": "no answer"}, "junk", {"q": "x" * 5000, "a": "y"}]
+    )
+    turns = parse_history(raw)
+    assert [q for q, _ in turns] == ["q3", "q4", "x" * 1200]
+    assert parse_history("not json") == []
+    assert parse_history('{"q": 1}') == []
+    assert parse_history(None) == []
+
+    # A short follow-up borrows the last question; a topic leads.
+    assert search_text("why?", [("What is NAT?", "…")], "NAT") == "NAT What is NAT? why?"
+    long_q = "how does a router choose the next hop for a packet today"
+    assert search_text(long_q, [("What is NAT?", "…")], None) == long_q
+
+
+def test_ask_messages_carry_history_and_topic():
+    from app.services.llm import ask_messages
+
+    msgs = ask_messages(
+        question="why?", context="[1] x", history=[("What is NAT?", "It maps.")],
+        focus="NAT",
+    )
+    assert [m["role"] for m in msgs] == ["system", "user", "assistant", "user"]
+    assert '"NAT"' in msgs[0]["content"]
+    assert msgs[-1]["content"].endswith("Question: why?")
+    assert "[1] x" in msgs[-1]["content"]
