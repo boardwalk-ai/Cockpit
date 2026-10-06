@@ -13,7 +13,7 @@ const _green = Color(0xFF30A46C);
 
 /// The four ratings: label, colour, haptic.
 const _grades = [
-  ('Again', Color(0xFFFF5258)),
+  ('Again', Color(0xFFDE1F2D)),
   ('Hard', Color(0xFFF5A623)),
   ('Good', _green),
   ('Easy', Color(0xFF378ADD)),

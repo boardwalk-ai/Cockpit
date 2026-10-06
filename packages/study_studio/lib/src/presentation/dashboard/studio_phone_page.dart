@@ -248,7 +248,7 @@ List<StudyMode> phoneModes(BuildContext context, Studio studio) {
   return [
     StudyMode(
       icon: Icons.school_rounded,
-      color: const Color(0xFFFF343C),
+      color: const Color(0xFFC40C1A),
       title: 'Teach me',
       blurb: 'AI explains, you ask follow-ups',
       count: '${studio.topicCount} topics',

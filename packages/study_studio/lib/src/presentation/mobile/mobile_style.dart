@@ -51,8 +51,8 @@ class SmColors {
     text: Color(0xFFE6E6E8),
     muted: Color(0xFFA0A2A5),
     hint: Color(0xFF7C7E81),
-    accent: Color(0xFFFF343C),
-    accentSoft: Color(0xFFFF5258),
+    accent: Color(0xFFC40C1A),
+    accentSoft: Color(0xFFDE1F2D),
     gold: Color(0xFFFFC53D),
   );
 
@@ -63,8 +63,8 @@ class SmColors {
     text: Color(0xFF1B1C1C),
     muted: Color(0xFF5F5E5A),
     hint: Color(0xFF8A8984),
-    accent: Color(0xFFE11D2E),
-    accentSoft: Color(0xFFE11D2E),
+    accent: Color(0xFFC40C1A),
+    accentSoft: Color(0xFFC40C1A),
     gold: Color(0xFFBA7517),
   );
 

@@ -187,13 +187,13 @@ class _WhatYouGet extends StatelessWidget {
   static const _all = [
     (Icons.account_tree_outlined, 'Topics', Color(0xFF378ADD)),
     (Icons.style_outlined, 'Flashcards', Color(0xFFF0997B)),
-    (Icons.quiz_outlined, 'Quizzes', Color(0xFFFF5258)),
+    (Icons.quiz_outlined, 'Quizzes', Color(0xFFDE1F2D)),
     (Icons.forum_outlined, 'AI tutor', Color(0xFF8B83E6)),
     (Icons.bookmark_border_rounded, 'Definitions', Color(0xFF30A46C)),
     (Icons.view_in_ar_outlined, 'Scenarios', Color(0xFF30A46C)),
     (Icons.hub_outlined, 'Knowledge graph', Color(0xFF8B83E6)),
     (Icons.psychology_outlined, 'Memory hooks', Color(0xFFF5A623)),
-    (Icons.gps_fixed_rounded, 'Weak topics', Color(0xFFFF5258)),
+    (Icons.gps_fixed_rounded, 'Weak topics', Color(0xFFDE1F2D)),
     (Icons.insights_rounded, 'Visual explanations', Color(0xFF378ADD)),
   ];
 
@@ -563,7 +563,7 @@ class _DashedBorder extends CustomPainter {
 (IconData, Color) _look(SourceFileType type) => switch (type) {
   SourceFileType.pdf => (
     Icons.picture_as_pdf_outlined,
-    const Color(0xFFFF5258),
+    const Color(0xFFDE1F2D),
   ),
   SourceFileType.docx => (Icons.description_outlined, const Color(0xFF378ADD)),
   SourceFileType.pptx => (Icons.slideshow_outlined, const Color(0xFFF0997B)),
