@@ -58,11 +58,28 @@ _DETAIL_SYSTEM = (
 )
 
 
-def _detail_hint(title: str, scope: str) -> str:
+_CONCEPTS_SPEC = """
+  "concepts": [                      // 4-8 key ideas of THIS lesson
+    {"name": str, "meaning": str, "example": str}, ...
+  ],                                 // name: 1-4 words; meaning: one plain sentence; example: one short concrete case
+  "links": [                         // 4-10 relationships the material actually states
+    {"from": str, "label": str, "to": str}, ...
+  ],                                 // from/to: a concept name above, or an exact title from OTHER LESSONS;
+                                     // label: a 1-3 word verb phrase read "from label to", e.g. "causes", "is part of", "halves", "contrasts with"
+""".strip()
+
+
+def _others_line(others: list[str] | None) -> str:
+    if not others:
+        return ""
+    return "OTHER LESSONS in this course: " + "; ".join(others) + "\n"
+
+
+def _detail_hint(title: str, scope: str, others: list[str] | None = None) -> str:
     return f"""
 Write a rich, complete lesson on "{title}".
 Focus: {scope}
-
+{_others_line(others)}
 Return ONLY a JSON object:
 {{
   "title": "{title}",
@@ -84,7 +101,8 @@ Return ONLY a JSON object:
       "explanation": str
     }}, ...
   ],
-  "difficulty": 1-5, "importance": 1-5
+  "difficulty": 1-5, "importance": 1-5,
+{_CONCEPTS_SPEC}
 }}
 Vary the quiz question types to suit THIS subject, don't use only multipleChoice:
 - conceptual / reasoning topics favor multipleChoice and trueFalse
@@ -97,7 +115,7 @@ Base everything ONLY on the provided material.
 # How much material to send to the outline pass (chars ~= tokens*4).
 _CONTEXT_CHAR_BUDGET = 120_000
 _OUTLINE_MAX_TOKENS = 3_000   # outline is small
-_DETAIL_MAX_TOKENS = 4_000    # per-lesson rich content
+_DETAIL_MAX_TOKENS = 5_000    # per-lesson rich content (+ concept map)
 _DETAIL_CONCURRENCY = 8       # parallel lesson calls
 _DETAIL_TOP_K = 8            # chunks retrieved per lesson
 
@@ -196,6 +214,7 @@ def _shape_topic(
         "relatesTo": [str(p) for p in (raw.get("relatesTo") or [])],
         "memoryHooks": raw.get("memoryHooks", []),
         "sources": sources or [],
+        **shape_concepts(raw, topic_id),
         "flashcards": [_flashcard(f) for f in (raw.get("flashcards") or [])],
         "quizQuestions": [_quiz(q) for q in (raw.get("quizQuestions") or [])],
         "difficulty": int(raw.get("difficulty", 3) or 3),
@@ -403,7 +422,11 @@ async def generate_topics(
                     api_key=api_key,
                     model=model,
                     system=_DETAIL_SYSTEM,
-                    question=_detail_hint(item["title"], item["scope"]),
+                    question=_detail_hint(
+                        item["title"],
+                        item["scope"],
+                        [o["title"] for o in outline if o["title"] != item["title"]],
+                    ),
                     context=context,
                     max_tokens=_DETAIL_MAX_TOKENS,
                 )
@@ -414,6 +437,7 @@ async def generate_topics(
                 return None
             obj.setdefault("title", item["title"])
             obj["prerequisites"] = item.get("buildsOn", [])
+            obj["_otherTitles"] = [o["title"] for o in outline if o["title"] != item["title"]]
             obj["relatesTo"] = item.get("relatesTo", [])
             topic = _shape_topic(obj, studio_id, _hits_to_sources(hits, filename_map))
             if on_topic is not None:
@@ -660,3 +684,98 @@ async def generate_connections(
         max_tokens=1_500,
     )
     return _clean_connections(_parse_json(raw), titles)
+
+
+# --- Concept maps: the key ideas of a lesson and how they connect ------------
+def shape_concepts(raw: dict, topic_id: str) -> dict:
+    """{"concepts": [...], "conceptLinks": [...]} from an LLM reply.
+
+    Concepts get ids; links keep only names that exist (or another lesson's
+    title, as "toTopic"); duplicates and self-links go."""
+    concepts: list[dict] = []
+    by_name: dict[str, str] = {}
+    for i, c in enumerate(raw.get("concepts") or []):
+        if not isinstance(c, dict):
+            continue
+        name = str(c.get("name", "")).strip()
+        key = name.lower()
+        if not name or key in by_name or len(name) > 60:
+            continue
+        cid = f"{topic_id}_c{i}"
+        by_name[key] = cid
+        concepts.append({
+            "id": cid,
+            "name": name,
+            "meaning": str(c.get("meaning", "")).strip(),
+            "example": str(c.get("example", "")).strip(),
+        })
+        if len(concepts) >= 8:
+            break
+    others = {
+        str(t).strip().lower(): str(t).strip()
+        for t in (raw.get("_otherTitles") or [])
+    }
+    links: list[dict] = []
+    seen: set[tuple] = set()
+    for l in raw.get("links") or []:
+        if not isinstance(l, dict):
+            continue
+        a = by_name.get(str(l.get("from", "")).strip().lower())
+        label = " ".join(str(l.get("label", "")).split()[:4]).strip()
+        to_name = str(l.get("to", "")).strip().lower()
+        if not a or not label:
+            continue
+        b = by_name.get(to_name)
+        if b and b != a and (a, b) not in seen:
+            seen.add((a, b))
+            links.append({"from": a, "label": label, "to": b})
+        elif not b and to_name in others and (a, to_name) not in seen:
+            seen.add((a, to_name))
+            links.append({"from": a, "label": label, "toTopic": others[to_name]})
+        if len(links) >= 12:
+            break
+    return {"concepts": concepts, "conceptLinks": links}
+
+
+_CONCEPT_SYSTEM = (
+    "You are a tutor drawing a concept map of ONE lesson. Use ONLY the lesson "
+    "text given — never invent. Output a single JSON object only."
+)
+
+
+async def generate_concepts(
+    *,
+    topic: dict,
+    others: list[str],
+    api_key: str,
+    model: str,
+) -> dict:
+    """A concept map for a lesson built before they were made, from the
+    lesson's own text (one call)."""
+    text = "\n\n".join(
+        str(topic.get(k, "")).strip()
+        for k in ("definition", "simpleExplanation", "detailedExplanation", "whyItMatters")
+        if str(topic.get(k, "")).strip()
+    )
+    examples = "\n".join(f"- {e}" for e in topic.get("examples") or [])
+    if examples:
+        text += "\n\nExamples:\n" + examples
+    raw = await llm.generate(
+        api_key=api_key,
+        model=model,
+        system=_CONCEPT_SYSTEM,
+        question=(
+            f'Lesson: "{topic.get("title", "")}"\n'
+            + _others_line(others)
+            + "Return ONLY a JSON object:\n{\n"
+            + _CONCEPTS_SPEC
+            + "\n}"
+        ),
+        context=text[:12_000],
+        max_tokens=1_800,
+    )
+    obj = _parse_json(raw)
+    if not isinstance(obj, dict):
+        return {"concepts": [], "conceptLinks": []}
+    obj["_otherTitles"] = others
+    return shape_concepts(obj, str(topic.get("id", "t")))

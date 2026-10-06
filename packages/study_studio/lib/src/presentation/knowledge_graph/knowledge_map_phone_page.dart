@@ -11,7 +11,7 @@ import '../mobile/knowledge_map_mobile.dart';
 import '../mobile/mobile_header.dart';
 import '../mobile/mobile_style.dart';
 
-/// The phone's Visualize: loads the studio, and for one built before its
+/// Visualize (phone and desktop): loads the studio, and for one built before its
 /// topics were linked, asks the server once to link them.
 class KnowledgeMapPhonePage extends ConsumerStatefulWidget {
   const KnowledgeMapPhonePage({super.key, required this.studioId});
@@ -83,6 +83,25 @@ class _KnowledgeMapPhonePageState extends ConsumerState<KnowledgeMapPhonePage> {
               onBack: () => context.go(base),
               onLesson: (t) => context.go('$base/teach/${t.id}'),
               onQuiz: (t) => context.go('$base/quiz?topicId=${t.id}'),
+              onNeedConcepts: (t) async {
+                final made = await ref
+                    .read(studioRepositoryProvider)
+                    .mapConcepts(widget.studioId, t.id);
+                if (made) {
+                  ref.invalidate(studioProvider(widget.studioId));
+                  await ref.read(studioProvider(widget.studioId).future);
+                }
+              },
+              onAnswer: (t, correct) => unawaited(
+                ref
+                    .read(studioRepositoryProvider)
+                    .recordQuizResult(
+                      studioId: widget.studioId,
+                      topicId: t.id,
+                      correct: correct,
+                    )
+                    .catchError((Object _) {}),
+              ),
             );
           },
         );

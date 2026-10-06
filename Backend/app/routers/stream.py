@@ -736,6 +736,61 @@ async def studio_connections(
     return EventSourceResponse(gen())
 
 
+@router.post("/studios/{studio_id}/topics/{topic_id}/concepts")
+async def topic_concepts(
+    studio_id: str,
+    topic_id: str,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+) -> EventSourceResponse:
+    """A lesson's concept map. Lessons built before maps were made get one
+    once, from the lesson's own text (one call); it is then kept."""
+
+    async def gen() -> AsyncIterator[dict]:
+        sid = await _owned_studio_uuid(studio_id, user_id)
+        if sid is None:
+            yield error("Studio not found")
+            return
+        made = False
+        async with CockpitSession() as cockpit:
+            rows = list(
+                (
+                    await cockpit.execute(
+                        select(GeneratedTopic)
+                        .where(GeneratedTopic.studio_id == sid)
+                        .order_by(GeneratedTopic.ordinal)
+                    )
+                ).scalars()
+            )
+            row = next((r for r in rows if r.payload.get("id") == topic_id), None)
+            if row is None:
+                yield error("Topic not found")
+                return
+            if not row.payload.get("concepts"):
+                others = [
+                    str(r.payload.get("title", "")) for r in rows if r is not row
+                ]
+                try:
+                    if SharedSession is not None:
+                        async with SharedSession() as shared:
+                            api_key, model = await llm.resolve_credentials(shared)
+                    else:
+                        api_key, model = await llm.resolve_credentials(None)
+                    shaped = await generate.generate_concepts(
+                        topic=row.payload, others=others,
+                        api_key=api_key, model=model,
+                    )
+                except Exception:  # noqa: BLE001 — the map says it has none
+                    shaped = {"concepts": [], "conceptLinks": []}
+                if shaped["concepts"]:
+                    row.payload = {**row.payload, **shaped}
+                    await cockpit.commit()
+                    made = True
+        yield event("data", {"made": made})
+        yield done()
+
+    return EventSourceResponse(gen())
+
+
 @router.post("/studios/{studio_id}/topics/{topic_id}/mark-reviewed")
 async def mark_reviewed(
     studio_id: str,

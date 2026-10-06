@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/entities/topic.dart';
 import '../../domain/knowledge_map.dart';
+import 'concept_map_view.dart';
 import 'mobile_header.dart';
 import 'mobile_motion.dart';
 import 'mobile_style.dart';
@@ -39,6 +41,8 @@ class KnowledgeMapMobile extends StatefulWidget {
     required this.onLesson,
     required this.onQuiz,
     this.linking = false,
+    this.onNeedConcepts,
+    this.onAnswer,
   });
 
   final String studioId;
@@ -49,6 +53,12 @@ class KnowledgeMapMobile extends StatefulWidget {
 
   /// The connections are still being worked out (an older studio).
   final bool linking;
+
+  /// A topic with no concept map yet was opened: make one (older studios).
+  final Future<void> Function(Topic topic)? onNeedConcepts;
+
+  /// A blank in "Complete the map" was filled: right or not.
+  final void Function(Topic topic, bool correct)? onAnswer;
 
   String get placesKey => 'study.map.$studioId';
 
@@ -68,6 +78,38 @@ class _KnowledgeMapMobileState extends State<KnowledgeMapMobile>
   Size _view = Size.zero;
 
   String? _selected;
+
+  /// The topic opened into its concepts, if any.
+  String? _inside;
+  final _making = <String>{};
+  final _tried = <String>{};
+
+  Future<void> _explore(Topic t) async {
+    SmHaptics.thud();
+    setState(() => _inside = t.id);
+    final need = widget.onNeedConcepts;
+    if (t.concepts.isNotEmpty || need == null || !_tried.add(t.id)) return;
+    setState(() => _making.add(t.id));
+    try {
+      await need(t);
+    } on Object {
+      // The view says there is no map yet.
+    }
+    if (mounted) setState(() => _making.remove(t.id));
+  }
+
+  void _leave() {
+    SmHaptics.tap();
+    setState(() => _inside = null);
+  }
+
+  Topic? _byTitle(String title) {
+    final key = title.trim().toLowerCase();
+    for (final t in widget.topics) {
+      if (t.title.trim().toLowerCase() == key) return t;
+    }
+    return null;
+  }
 
   // A gesture: dragging a topic, or panning / zooming the canvas.
   String? _dragging;
@@ -220,6 +262,10 @@ class _KnowledgeMapMobileState extends State<KnowledgeMapMobile>
             Navigator.of(sheet).pop();
             widget.onQuiz(t);
           },
+          onExplore: () {
+            Navigator.of(sheet).pop();
+            unawaited(_explore(t));
+          },
         ),
       ).whenComplete(() {
         if (mounted && _selected == t.id) setState(() => _selected = null);
@@ -263,179 +309,258 @@ class _KnowledgeMapMobileState extends State<KnowledgeMapMobile>
     final bottom = MediaQuery.paddingOf(context).bottom;
     final weak = _map.weakFoundation;
     final links = _map.edges.length;
+    final inside = _inside == null
+        ? null
+        : widget.topics.where((x) => x.id == _inside).firstOrNull;
 
-    return Scaffold(
-      backgroundColor: c.background,
-      body: SmHeaderPage(
-        header: SmHeader(
-          title: 'How it connects',
-          onBack: widget.onBack,
-          trailing: SmPressable(
-            semanticLabel: 'Tidy up',
-            haptic: () {},
-            scale: 0.9,
-            onTap: _tidyUp,
-            child: SizedBox(
-              width: 38,
-              height: 38,
-              child: Icon(Icons.auto_fix_high_rounded, size: 19, color: c.text),
-            ),
-          ),
-        ),
-        child: LayoutBuilder(
-          builder: (context, box) {
-            _view = box.biggest;
-            if (!_fitted && _view.width > 0) {
-              _fitted = true;
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (mounted) _fit();
-              });
-            }
-            return Stack(
-              children: [
-                Positioned.fill(
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTapUp: (d) {
-                      final hit = _topicAt(d.localPosition);
-                      if (hit != null) {
-                        _open(hit);
-                      } else if (_selected != null) {
-                        setState(() => _selected = null);
-                      }
-                    },
-                    onScaleStart: (d) {
-                      _lastFocal = d.localFocalPoint;
-                      _startScale = _scale;
-                      _dragged = false;
-                      final hit = d.pointerCount == 1
-                          ? _topicAt(d.localFocalPoint)
-                          : null;
-                      _dragging = hit?.id;
-                      if (hit != null) SmHaptics.select();
-                    },
-                    onScaleUpdate: (d) {
-                      final delta = d.localFocalPoint - _lastFocal;
-                      _lastFocal = d.localFocalPoint;
-                      final dragging = _dragging;
-                      if (dragging != null && d.pointerCount == 1) {
-                        _dragged = true;
-                        setState(() {
-                          _places[dragging] =
-                              _places[dragging]! + delta / _scale;
-                        });
-                        return;
-                      }
-                      final next = (_startScale * d.scale).clamp(0.35, 2.5);
-                      setState(() {
-                        final focus = d.localFocalPoint;
-                        _pan = focus - (focus - delta - _pan) * (next / _scale);
-                        _scale = next;
-                      });
-                    },
-                    onScaleEnd: (_) {
-                      if (_dragging != null && _dragged) {
-                        SmHaptics.tap();
-                        unawaited(_savePlaces());
-                      }
-                      _dragging = null;
-                    },
-                    child: CustomPaint(
-                      painter: _MapPainter(
-                        map: _map,
-                        places: _places,
-                        pan: _pan,
-                        scale: _scale,
-                        selected: _selected,
-                        colors: c,
-                        dark: Theme.of(context).brightness == Brightness.dark,
+    return PopScope(
+      canPop: inside == null,
+      onPopInvokedWithResult: (popped, _) {
+        if (!popped && inside != null) _leave();
+      },
+      child: Scaffold(
+        backgroundColor: c.background,
+        body: SmHeaderPage(
+          header: SmHeader(
+            title: inside?.title ?? 'How it connects',
+            onBack: inside == null ? widget.onBack : _leave,
+            trailing: inside != null
+                ? null
+                : SmPressable(
+                    semanticLabel: 'Tidy up',
+                    haptic: () {},
+                    scale: 0.9,
+                    onTap: _tidyUp,
+                    child: SizedBox(
+                      width: 38,
+                      height: 38,
+                      child: Icon(
+                        Icons.auto_fix_high_rounded,
+                        size: 19,
+                        color: c.text,
                       ),
-                      child: const SizedBox.expand(),
                     ),
                   ),
-                ),
-                // Accessibility: the topics as a list behind the canvas.
-                Positioned(
-                  left: 0,
-                  top: 0,
-                  width: 1,
-                  height: 1,
-                  child: Semantics(
-                    container: true,
-                    child: Column(
-                      children: [
-                        for (final topic in _map.topics)
-                          Semantics(
-                            button: true,
-                            label:
-                                '${topic.title}, '
-                                '${(topic.mastery * 100).round()}% mastered',
-                            onTap: () => _open(topic),
-                            child: const SizedBox(width: 1, height: 0.01),
-                          ),
+          ),
+          // Opening a topic zooms into its concepts; back zooms out.
+          child: AnimatedSwitcher(
+            duration: smReduceMotion(context)
+                ? Duration.zero
+                : const Duration(milliseconds: 380),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, a) => FadeTransition(
+              opacity: a,
+              child: ScaleTransition(
+                scale: Tween(begin: 0.88, end: 1.0).animate(a),
+                child: child,
+              ),
+            ),
+            child: inside != null
+                ? KeyedSubtree(
+                    key: ValueKey('concepts-${inside.id}'),
+                    child: ConceptMapView(
+                      studioId: widget.studioId,
+                      topic: inside,
+                      top: top,
+                      loading: _making.contains(inside.id),
+                      labelPool: [
+                        for (final x in widget.topics)
+                          for (final l in x.conceptLinks) l.label,
                       ],
+                      onLesson: () => widget.onLesson(inside),
+                      onAnswer: (right) => widget.onAnswer?.call(inside, right),
+                      onOpenTopic: (title) {
+                        final other = _byTitle(title);
+                        if (other != null) unawaited(_explore(other));
+                      },
                     ),
-                  ),
-                ),
-                Positioned(
-                  left: 14,
-                  right: 14,
-                  top: top,
-                  child: SmAppear(
-                    index: 0,
-                    child: _Insight(
-                      linking: widget.linking,
-                      weak: weak,
-                      busiest: weak == null ? _map.mostConnected : null,
-                      topics: _map.topics.length,
-                      links: links,
-                      onTap: (topic) {
-                        _centreOn(topic);
-                        _open(topic);
+                  )
+                : KeyedSubtree(
+                    key: const ValueKey('overview'),
+                    child: LayoutBuilder(
+                      builder: (context, box) {
+                        _view = box.biggest;
+                        if (!_fitted && _view.width > 0) {
+                          _fitted = true;
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (mounted) _fit();
+                          });
+                        }
+                        return Stack(
+                          children: [
+                            Positioned.fill(
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTapUp: (d) {
+                                  final hit = _topicAt(d.localPosition);
+                                  if (hit != null) {
+                                    _open(hit);
+                                  } else if (_selected != null) {
+                                    setState(() => _selected = null);
+                                  }
+                                },
+                                onScaleStart: (d) {
+                                  _lastFocal = d.localFocalPoint;
+                                  _startScale = _scale;
+                                  _dragged = false;
+                                  final hit = d.pointerCount == 1
+                                      ? _topicAt(d.localFocalPoint)
+                                      : null;
+                                  _dragging = hit?.id;
+                                  if (hit != null) SmHaptics.select();
+                                },
+                                onScaleUpdate: (d) {
+                                  final delta = d.localFocalPoint - _lastFocal;
+                                  _lastFocal = d.localFocalPoint;
+                                  final dragging = _dragging;
+                                  if (dragging != null && d.pointerCount == 1) {
+                                    _dragged = true;
+                                    setState(() {
+                                      _places[dragging] =
+                                          _places[dragging]! + delta / _scale;
+                                    });
+                                    return;
+                                  }
+                                  final next = (_startScale * d.scale).clamp(
+                                    0.35,
+                                    2.5,
+                                  );
+                                  setState(() {
+                                    final focus = d.localFocalPoint;
+                                    _pan =
+                                        focus -
+                                        (focus - delta - _pan) *
+                                            (next / _scale);
+                                    _scale = next;
+                                  });
+                                },
+                                onScaleEnd: (_) {
+                                  if (_dragging != null && _dragged) {
+                                    SmHaptics.tap();
+                                    unawaited(_savePlaces());
+                                  }
+                                  _dragging = null;
+                                },
+                                child: CustomPaint(
+                                  painter: _MapPainter(
+                                    map: _map,
+                                    places: _places,
+                                    pan: _pan,
+                                    scale: _scale,
+                                    selected: _selected,
+                                    colors: c,
+                                    dark:
+                                        Theme.of(context).brightness ==
+                                        Brightness.dark,
+                                  ),
+                                  child: const SizedBox.expand(),
+                                ),
+                              ),
+                            ),
+                            // The mouse wheel zooms (desktop); touches pass through.
+                            Positioned.fill(
+                              child: Listener(
+                                behavior: HitTestBehavior.translucent,
+                                onPointerSignal: (e) {
+                                  if (e is! PointerScrollEvent) return;
+                                  final by = e.scrollDelta.dy < 0
+                                      ? 1.1
+                                      : 1 / 1.1;
+                                  _zoom(by, e.localPosition);
+                                },
+                              ),
+                            ),
+                            // Accessibility: the topics as a list behind the canvas.
+                            Positioned(
+                              left: 0,
+                              top: 0,
+                              width: 1,
+                              height: 1,
+                              child: Semantics(
+                                container: true,
+                                child: Column(
+                                  children: [
+                                    for (final topic in _map.topics)
+                                      Semantics(
+                                        button: true,
+                                        label:
+                                            '${topic.title}, '
+                                            '${(topic.mastery * 100).round()}% mastered',
+                                        onTap: () => _open(topic),
+                                        child: const SizedBox(
+                                          width: 1,
+                                          height: 0.01,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              left: 14,
+                              right: 14,
+                              top: top,
+                              child: SmAppear(
+                                index: 0,
+                                child: _Insight(
+                                  linking: widget.linking,
+                                  weak: weak,
+                                  busiest: weak == null
+                                      ? _map.mostConnected
+                                      : null,
+                                  topics: _map.topics.length,
+                                  links: links,
+                                  onTap: (topic) {
+                                    _centreOn(topic);
+                                    _open(topic);
+                                  },
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              left: 14,
+                              bottom: 16 + bottom,
+                              child: Text(
+                                '${(_scale * 100).round()}%',
+                                style: t.small.copyWith(
+                                  fontFamily: SmFonts.heading,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 11,
+                                  color: c.hint,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: 12,
+                              bottom: 14 + bottom,
+                              child: _Zoom(
+                                onIn: () {
+                                  SmHaptics.tap();
+                                  _zoom(1.2);
+                                },
+                                onOut: () {
+                                  SmHaptics.tap();
+                                  _zoom(1 / 1.2);
+                                },
+                                onFit: () {
+                                  SmHaptics.tap();
+                                  _fit();
+                                },
+                              ),
+                            ),
+                            Positioned(
+                              left: 54,
+                              right: 64,
+                              bottom: 18 + bottom,
+                              child: const _Legend(),
+                            ),
+                          ],
+                        );
                       },
                     ),
                   ),
-                ),
-                Positioned(
-                  left: 14,
-                  bottom: 16 + bottom,
-                  child: Text(
-                    '${(_scale * 100).round()}%',
-                    style: t.small.copyWith(
-                      fontFamily: SmFonts.heading,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 11,
-                      color: c.hint,
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 12,
-                  bottom: 14 + bottom,
-                  child: _Zoom(
-                    onIn: () {
-                      SmHaptics.tap();
-                      _zoom(1.2);
-                    },
-                    onOut: () {
-                      SmHaptics.tap();
-                      _zoom(1 / 1.2);
-                    },
-                    onFit: () {
-                      SmHaptics.tap();
-                      _fit();
-                    },
-                  ),
-                ),
-                Positioned(
-                  left: 54,
-                  right: 64,
-                  bottom: 18 + bottom,
-                  child: const _Legend(),
-                ),
-              ],
-            );
-          },
+          ),
         ),
       ),
     );
@@ -812,10 +937,12 @@ class _TopicSheet extends StatelessWidget {
     required this.onOpen,
     required this.onLesson,
     required this.onQuiz,
+    required this.onExplore,
   });
 
   final Topic topic;
   final KnowledgeMap map;
+  final VoidCallback onExplore;
   final void Function(Topic other) onOpen;
   final VoidCallback onLesson;
   final VoidCallback onQuiz;
@@ -970,6 +1097,35 @@ class _TopicSheet extends StatelessWidget {
               group('LEADS TO', Icons.south_rounded, map.leadsTo(topic.id)),
               group('RELATED', Icons.swap_horiz_rounded, map.related(topic.id)),
               const SizedBox(height: 16),
+              SmPressable(
+                semanticLabel: 'Explore concepts',
+                haptic: () {},
+                onTap: onExplore,
+                child: Container(
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: c.text,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.hub_rounded, color: c.background, size: 18),
+                      const SizedBox(width: 7),
+                      Text(
+                        'Explore concepts',
+                        style: TextStyle(
+                          fontFamily: SmFonts.heading,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: c.background,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(

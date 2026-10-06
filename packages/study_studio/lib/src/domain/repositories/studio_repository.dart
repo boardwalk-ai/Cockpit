@@ -38,6 +38,10 @@ abstract interface class StudioRepository {
   /// recorded. True when topics were given links (reload the studio).
   Future<bool> linkTopics(String studioId);
 
+  /// Makes [topicId]'s concept map if it has none yet (older studios). True
+  /// when one was made (reload the studio).
+  Future<bool> mapConcepts(String studioId, String topicId);
+
   /// Grades a flashcard 0 (Again) to 3 (Easy): schedules when it comes back
   /// and moves its topic's mastery.
   Future<void> reviewFlashcard({

@@ -83,6 +83,15 @@ class ApiStudioRepository implements StudioRepository {
   }
 
   @override
+  Future<bool> mapConcepts(String studioId, String topicId) async {
+    final events = await _sse.post(
+      '/studios/$studioId/topics/${Uri.encodeComponent(topicId)}/concepts',
+    );
+    final data = events.where((e) => e.event == 'data').firstOrNull;
+    return data?.data['made'] == true;
+  }
+
+  @override
   Future<bool> linkTopics(String studioId) async {
     final events = await _sse.post('/studios/$studioId/connections');
     final data = events.where((e) => e.event == 'data').firstOrNull;

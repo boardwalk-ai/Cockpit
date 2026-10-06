@@ -1,3 +1,4 @@
+import '../../domain/entities/concept.dart';
 import '../../domain/entities/flashcard.dart';
 import '../../domain/entities/me.dart';
 import '../../domain/entities/quiz_question.dart';
@@ -87,6 +88,26 @@ Topic topicFromJson(Map<String, dynamic> j) {
     detailedExplanation: j['detailedExplanation'] as String? ?? '',
     whyItMatters: j['whyItMatters'] as String? ?? '',
     summary: _stringList(j['summary']),
+    concepts: [
+      for (final c in j['concepts'] as List? ?? const [])
+        if (c is Map && c['id'] is String && c['name'] is String)
+          Concept(
+            id: c['id'] as String,
+            name: c['name'] as String,
+            meaning: c['meaning'] as String? ?? '',
+            example: c['example'] as String? ?? '',
+          ),
+    ],
+    conceptLinks: [
+      for (final l in j['conceptLinks'] as List? ?? const [])
+        if (l is Map && l['from'] is String && l['label'] is String)
+          ConceptLink(
+            from: l['from'] as String,
+            label: l['label'] as String,
+            to: l['to'] as String?,
+            toTopic: l['toTopic'] as String?,
+          ),
+    ],
     examples: _stringList(j['examples']),
     commonMistakes: _stringList(j['commonMistakes']),
     relatedTopicIds: _stringList(j['relatedTopicIds']),

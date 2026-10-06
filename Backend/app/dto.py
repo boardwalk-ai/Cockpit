@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 
@@ -95,6 +95,24 @@ class SourceFileDTO(_Base):
     processed: bool = True
 
 
+class ConceptDTO(_Base):
+    """A key idea of a lesson, for its concept map."""
+
+    id: str
+    name: str
+    meaning: str = ""
+    example: str = ""
+
+
+class ConceptLinkDTO(_Base):
+    """How two ideas connect: "from" label "to", or into another lesson."""
+
+    from_: str = Field(alias="from")
+    label: str
+    to: str | None = None
+    to_topic: str | None = None
+
+
 class TopicDTO(_Base):
     id: str
     studio_id: str
@@ -102,6 +120,9 @@ class TopicDTO(_Base):
     subject: str
     # 3 key points for the topic's overview; empty on studios built before it.
     summary: list[str] = []
+    # The lesson's concept map; empty until made (older studios: on demand).
+    concepts: list[ConceptDTO] = []
+    concept_links: list[ConceptLinkDTO] = []
     definition: str
     simple_explanation: str
     detailed_explanation: str

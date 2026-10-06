@@ -229,3 +229,44 @@ def test_related_ids_go_both_ways():
         "b": ["a"],
         "c": ["a"],
     }
+
+
+def test_concept_maps_keep_real_names_and_links():
+    from app.dto import TopicDTO
+    from app.services.generate import _shape_topic, shape_concepts
+
+    raw = {
+        "title": "Congestion control",
+        "concepts": [
+            {"name": "Packet loss", "meaning": "A dropped packet.", "example": "x"},
+            {"name": "Duplicate ACK", "meaning": "A repeated ack."},
+            {"name": "packet loss", "meaning": "dup"},
+            {"name": "Congestion window"},
+        ],
+        "links": [
+            {"from": "Packet loss", "label": "triggers", "to": "Duplicate ACK"},
+            {"from": "duplicate ack", "label": "halves", "to": "Congestion window"},
+            {"from": "Packet loss", "label": "triggers", "to": "Duplicate ACK"},
+            {"from": "Packet loss", "label": "is caused by", "to": "Routing"},
+            {"from": "Ghost", "label": "x", "to": "Packet loss"},
+            {"from": "Packet loss", "label": "", "to": "Duplicate ACK"},
+        ],
+        "_otherTitles": ["Routing"],
+    }
+    out = shape_concepts(raw, "t1")
+    assert [c["name"] for c in out["concepts"]] == [
+        "Packet loss", "Duplicate ACK", "Congestion window",
+    ]
+    ids = {c["name"]: c["id"] for c in out["concepts"]}
+    assert out["conceptLinks"] == [
+        {"from": ids["Packet loss"], "label": "triggers", "to": ids["Duplicate ACK"]},
+        {"from": ids["Duplicate ACK"], "label": "halves", "to": ids["Congestion window"]},
+        {"from": ids["Packet loss"], "label": "is caused by", "toTopic": "Routing"},
+    ]
+    # Through the whole topic and the wire DTO, camelCase and "from" intact.
+    payload = _shape_topic(raw, "s1")
+    dto = TopicDTO.model_validate(payload)
+    wire = dto.model_dump(by_alias=True)
+    assert wire["conceptLinks"][0]["from"].endswith("_c0")
+    assert wire["conceptLinks"][2]["toTopic"] == "Routing"
+    assert "_otherTitles" not in payload

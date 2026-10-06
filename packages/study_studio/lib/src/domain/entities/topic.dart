@@ -1,3 +1,4 @@
+import 'concept.dart';
 import 'flashcard.dart';
 import 'quiz_question.dart';
 import 'source.dart';
@@ -15,6 +16,8 @@ class Topic {
     required this.detailedExplanation,
     required this.whyItMatters,
     this.summary = const [],
+    this.concepts = const [],
+    this.conceptLinks = const [],
     this.examples = const [],
     this.commonMistakes = const [],
     this.relatedTopicIds = const [],
@@ -41,6 +44,10 @@ class Topic {
 
   /// Three key points for the topic's overview (empty on older studios).
   final List<String> summary;
+
+  /// The lesson's concept map (empty until made).
+  final List<Concept> concepts;
+  final List<ConceptLink> conceptLinks;
 
   final List<String> examples;
   final List<String> commonMistakes;
@@ -72,6 +79,8 @@ class Topic {
       detailedExplanation: detailedExplanation,
       whyItMatters: whyItMatters,
       summary: summary,
+      concepts: concepts,
+      conceptLinks: conceptLinks,
       examples: examples,
       commonMistakes: commonMistakes,
       relatedTopicIds: relatedTopicIds,

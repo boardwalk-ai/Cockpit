@@ -76,6 +76,9 @@ class InMemoryStudioRepository implements StudioRepository {
   Future<bool> linkTopics(String studioId) async => false;
 
   @override
+  Future<bool> mapConcepts(String studioId, String topicId) async => false;
+
+  @override
   Future<void> reviewFlashcard({
     required String studioId,
     required String topicId,
