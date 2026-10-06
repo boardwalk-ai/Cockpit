@@ -43,6 +43,7 @@ class MasteryReportPhone extends ConsumerWidget {
             onBack: () => context.go(base),
             onTopic: (t) => context.go('$base/topics/${t.id}'),
             onCards: () => context.go('$base/flashcards'),
+            onPlan: () => context.go('$base/study-plan'),
             onStep: (s) => context.go(switch (s.step) {
               ReportStep.cards => '$base/flashcards?topicId=${s.topic.id}',
               ReportStep.quiz => '$base/quiz?topicId=${s.topic.id}',

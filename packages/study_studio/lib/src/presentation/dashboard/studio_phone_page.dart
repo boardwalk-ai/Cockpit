@@ -297,6 +297,14 @@ List<StudyMode> phoneModes(BuildContext context, Studio studio) {
       onTap: () => context.go('$base/knowledge-graph'),
     ),
     StudyMode(
+      icon: Icons.calendar_month_rounded,
+      color: const Color(0xFF378ADD),
+      title: 'Study plan',
+      blurb: 'A little every day, for an exam or not',
+      count: '${studio.topicCount} topics',
+      onTap: () => context.go('$base/study-plan'),
+    ),
+    StudyMode(
       icon: Icons.insights_rounded,
       color: const Color(0xFFF5A623),
       title: 'Mastery report',

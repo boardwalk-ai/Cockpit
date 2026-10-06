@@ -7,6 +7,7 @@ import '../../application/providers.dart';
 import '../../domain/entities/studio.dart';
 import '../../domain/entities/topic.dart';
 import '../widgets/studio_scaffold.dart';
+import 'study_plan_phone_page.dart';
 
 class StudyPlanPage extends ConsumerWidget {
   const StudyPlanPage({super.key, required this.studioId});
@@ -15,6 +16,8 @@ class StudyPlanPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A phone gets its own plan (mobile/study_plan_mobile.dart).
+    if (!isDesktop(context)) return StudyPlanPhonePage(studioId: studioId);
     final async = ref.watch(studioProvider(studioId));
 
     return StudioShell(

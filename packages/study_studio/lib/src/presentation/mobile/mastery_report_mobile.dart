@@ -129,6 +129,7 @@ class MasteryReportMobile extends StatelessWidget {
     required this.onTopic,
     required this.onStep,
     required this.onCards,
+    this.onPlan,
     this.now,
   });
 
@@ -139,6 +140,9 @@ class MasteryReportMobile extends StatelessWidget {
 
   /// All due cards (no topic) when there's no path left.
   final VoidCallback onCards;
+
+  /// Opens the study plan (from "Your path").
+  final VoidCallback? onPlan;
   final DateTime? now;
 
   @override
@@ -181,7 +185,32 @@ class MasteryReportMobile extends StatelessWidget {
                 children: [
                   appear(_Hero(report: report)),
                   if (studio.topics.isNotEmpty) ...[
-                    appear(section('YOUR PATH TO 80%')),
+                    appear(
+                      Row(
+                        children: [
+                          Expanded(child: section('YOUR PATH TO 80%')),
+                          if (onPlan != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 16),
+                              child: SmPressable(
+                                semanticLabel: 'Full plan',
+                                onTap: onPlan,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(6),
+                                  child: Text(
+                                    'Full plan ›',
+                                    style: t.small.copyWith(
+                                      fontSize: 12.5,
+                                      color: c.accentSoft,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                     appear(
                       path.isEmpty
                           ? _AllClear(onCards: due > 0 ? onCards : null)
