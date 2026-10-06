@@ -210,8 +210,8 @@ class _StudioPhonePageState extends ConsumerState<StudioPhonePage> {
                 ),
                 row(
                   Icons.insights_rounded,
-                  'Progress',
-                  () => context.go('/study/${studio.id}/progress'),
+                  'Mastery report',
+                  () => context.go('/study/${studio.id}/mastery-report'),
                 ),
                 row(Icons.edit_outlined, 'Rename', () => soon('Renaming')),
                 row(
@@ -295,6 +295,14 @@ List<StudyMode> phoneModes(BuildContext context, Studio studio) {
       blurb: 'How the topics connect',
       count: '${studio.topicCount} topics',
       onTap: () => context.go('$base/knowledge-graph'),
+    ),
+    StudyMode(
+      icon: Icons.insights_rounded,
+      color: const Color(0xFFF5A623),
+      title: 'Mastery report',
+      blurb: 'Where you stand, what’s next',
+      count: '${(studio.overallMastery * 100).round()}% mastered',
+      onTap: () => context.go('$base/mastery-report'),
     ),
   ];
 }

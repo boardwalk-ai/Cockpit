@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../mastery_report/mastery_report_phone.dart';
+import '../widgets/studio_scaffold.dart';
 
 class ProgressPage extends ConsumerWidget {
   const ProgressPage({super.key, required this.studioId});
@@ -11,6 +13,8 @@ class ProgressPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // On a phone, progress is the mastery report.
+    if (!isDesktop(context)) return MasteryReportPhone(studioId: studioId);
     final async = ref.watch(studioProvider(studioId));
     final theme = Theme.of(context);
 

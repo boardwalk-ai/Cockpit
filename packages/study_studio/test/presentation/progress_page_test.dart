@@ -4,6 +4,7 @@ import 'package:study_studio/src/data/mock/mock_data.dart';
 import 'package:study_studio/src/presentation/progress/progress_page.dart';
 
 import '../helpers/test_app.dart';
+import 'home_page_test.dart' show desktop, viewport;
 
 void main() {
   testWidgets('shows loading indicator', (tester) async {
@@ -19,6 +20,7 @@ void main() {
   });
 
   testWidgets('shows error state', (tester) async {
+    viewport(tester, desktop);
     await pumpTestApp(
       tester,
       child: const ProgressPage(studioId: 'bio'),
@@ -31,6 +33,7 @@ void main() {
   });
 
   testWidgets('shows empty progress state', (tester) async {
+    viewport(tester, desktop);
     final original = buildMockStudiosStashed().first;
     final emptyStudio = original.copyWith(topics: const []);
 
@@ -50,6 +53,7 @@ void main() {
   });
 
   testWidgets('shows mastery report data', (tester) async {
+    viewport(tester, desktop);
     final studios = buildMockStudiosStashed();
     final studio = studios.first;
 

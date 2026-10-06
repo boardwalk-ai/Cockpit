@@ -52,11 +52,11 @@ void main() {
       await tester.pumpWidget(app(const MasteryReportPage(studioId: 'bio')));
       await tester.pumpAndSettle();
 
-      expect(find.text('AI Mastery Report'), findsOneWidget);
-      expect(find.text('Biology Midterm Studio'), findsOneWidget);
-      expect(find.text('Exam Readiness'), findsOneWidget);
-      // The weak-topic focus chip is a real topic (DNA Replication, mastery
-      // 0.35) from the studio, proving the report reads live data, not a mock.
+      // A phone gets its own report: the ring and the path to 80%.
+      expect(find.text('Mastery'), findsOneWidget);
+      expect(find.text('YOUR PATH TO 80%'), findsOneWidget);
+      // A path step is a real weak topic (DNA Replication, mastery 0.35)
+      // from the studio, proving the report reads live data, not a mock.
       expect(find.text('DNA Replication'), findsWidgets);
       expect(tester.takeException(), isNull);
     });

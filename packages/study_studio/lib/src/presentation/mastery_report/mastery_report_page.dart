@@ -10,6 +10,7 @@ import '../../domain/entities/topic.dart';
 import '../format.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
+import 'mastery_report_phone.dart';
 
 /// Screen 8 — AI Mastery Report.
 ///
@@ -23,6 +24,8 @@ class MasteryReportPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A phone gets its own report (mobile/mastery_report_mobile.dart).
+    if (!isDesktop(context)) return MasteryReportPhone(studioId: studioId);
     final async = ref.watch(studioProvider(studioId));
 
     return Scaffold(
