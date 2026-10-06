@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../application/providers.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
+import 'studio_settings_phone_page.dart';
 
 class ManageStudyStudioPage extends ConsumerStatefulWidget {
   const ManageStudyStudioPage({required this.studioId, super.key});
@@ -31,6 +32,10 @@ class _ManageStudyStudioPageState extends ConsumerState<ManageStudyStudioPage> {
 
   @override
   Widget build(BuildContext context) {
+    // A phone gets the studio's real settings (mobile/studio_settings_mobile).
+    if (!isDesktop(context)) {
+      return StudioSettingsPhonePage(studioId: widget.studioId);
+    }
     final studioTitle =
         ref.watch(studioProvider(widget.studioId)).valueOrNull?.title ??
         'Study Studio';

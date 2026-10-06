@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../building/build_preview.dart';
 import '../widgets/studio_scaffold.dart';
+import 'ready_phone_page.dart';
 
 /// Screen 4 — Your Study Studio Is Ready.
 ///
@@ -20,6 +21,8 @@ class ReadyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final desktop = isDesktop(context);
+    // A phone gets the ready moment with the real studio.
+    if (!desktop) return ReadyPhonePage(studioId: studioId);
     return Scaffold(
       body: SafeArea(
         child: Center(

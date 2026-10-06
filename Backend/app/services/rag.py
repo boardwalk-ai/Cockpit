@@ -378,8 +378,13 @@ async def run_studio_build(*, build_id: uuid.UUID) -> None:
                 api_key, primary = await llm.resolve_credentials(shared)
                 model = await llm.get_setting(shared, "secondary_model", primary)
 
-        # Fresh slate, then live-fill as each lesson lands.
+        # Fresh slate, then live-fill as each lesson lands. A rebuild keeps
+        # the old ids of lessons (and cards) that come back, so progress
+        # stays with them.
         async with CockpitSession() as s:
+            keep = generate.keep_map(
+                await generate.current_payloads(s, studio_id=studio_id)
+            )
             await generate.clear_topics(s, studio_id=studio_id)
         await _set(status="generating", stage="Building studio…")
 
@@ -394,6 +399,7 @@ async def run_studio_build(*, build_id: uuid.UUID) -> None:
             title = str(topic.get("title") or "lesson").strip() or "lesson"
             if len(title) > 72:
                 title = title[:69] + "…"
+            topic = generate.carry_ids(topic, keep)
             async with CockpitSession() as s:
                 await generate.add_topic(
                     s, studio_id=studio_id, user_id=user_id,

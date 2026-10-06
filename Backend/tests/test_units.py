@@ -323,3 +323,33 @@ def test_activity_buckets_by_local_day():
     assert rows[1] == {"date": "2026-10-07", "cards": 0, "quiz": 2, "quizRight": 1}
     assert rows[2]["cards"] == 1
     assert rows[0] == {"date": "2026-10-06", "cards": 0, "quiz": 0, "quizRight": 0}
+
+
+def test_rebuild_keeps_ids_of_returning_topics_and_cards():
+    from app.services.generate import carry_ids, keep_map
+
+    old = [
+        {
+            "id": "gen_old",
+            "title": "Congestion  Control",
+            "flashcards": [{"id": "fc_a", "front": "What halves?"}],
+        },
+        {"id": "gen_gone", "title": "Old topic", "flashcards": []},
+    ]
+    keep = keep_map(old)
+    new = {
+        "id": "gen_new",
+        "title": "congestion control",
+        "flashcards": [
+            {"id": "fc_x", "topicId": "gen_new", "front": "what halves?"},
+            {"id": "fc_y", "topicId": "gen_new", "front": "Brand new"},
+        ],
+        "quizQuestions": [{"id": "q1", "topicId": "gen_new"}],
+    }
+    out = carry_ids(new, keep)
+    assert out["id"] == "gen_old"
+    assert [c["id"] for c in out["flashcards"]] == ["fc_a", "fc_y"]
+    assert {c["topicId"] for c in out["flashcards"]} == {"gen_old"}
+    assert out["quizQuestions"][0]["topicId"] == "gen_old"
+    other = carry_ids({"id": "gen_z", "title": "Fresh"}, keep)
+    assert other["id"] == "gen_z"

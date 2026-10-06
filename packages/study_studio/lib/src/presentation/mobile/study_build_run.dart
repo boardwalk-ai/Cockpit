@@ -2,7 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../../data/api/upload_api.dart' show BuildSnapshot;
+import '../../data/api/upload_api.dart' show BuildSnapshot, UploadApi;
+import '../../domain/repositories/studio_repository.dart';
 import 'mobile_style.dart';
 import 'study_create_mobile.dart';
 
@@ -50,14 +51,20 @@ class StudyBuildRun extends ChangeNotifier {
     required this.title,
     required List<SmPickedFile> files,
     this.poll = const Duration(seconds: 2),
-  }) : files = [for (final f in files) BuildFile(f)];
+    this.studioId,
+  }) : files = [for (final f in files) BuildFile(f)],
+       updating = studioId != null;
 
   final StudyBuildBackend backend;
   final String title;
   final List<BuildFile> files;
   final Duration poll;
 
+  /// Set from the start when files are added to a studio that exists.
   String? studioId;
+
+  /// Adding to an existing studio (not making a new one).
+  final bool updating;
   String? buildId;
   BuildSnapshot? snapshot;
 
@@ -288,4 +295,32 @@ class StudyBuildRun extends ChangeNotifier {
     _disposed = true;
     super.dispose();
   }
+}
+
+/// The build's way to the Study API.
+class ApiStudyBuildBackend implements StudyBuildBackend {
+  ApiStudyBuildBackend(this._studios, this._upload);
+
+  final StudioRepository _studios;
+  final UploadApi _upload;
+
+  @override
+  Future<String> createStudio(String title) async =>
+      (await _studios.createStudio(title: title)).id;
+
+  @override
+  Future<String> upload(String studioId, String name, Uint8List bytes) =>
+      _upload.uploadDocument(studioId: studioId, filename: name, bytes: bytes);
+
+  @override
+  Future<void> ingested(String studioId, String jobId) =>
+      _upload.watchBuild(studioId: studioId, jobId: jobId);
+
+  @override
+  Future<String> startBuild(String studioId) =>
+      _upload.startBuild(studioId: studioId);
+
+  @override
+  Future<BuildSnapshot> snapshot(String studioId, String buildId) =>
+      _upload.buildSnapshot(studioId: studioId, buildId: buildId);
 }

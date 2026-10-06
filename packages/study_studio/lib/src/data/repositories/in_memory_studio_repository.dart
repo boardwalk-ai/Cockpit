@@ -14,6 +14,14 @@ class InMemoryStudioRepository implements StudioRepository {
       _events.add((studioId, DateTime.now(), card, correct));
 
   @override
+  Future<bool> renameStudio(String studioId, String title) async {
+    final studio = _studios[studioId];
+    if (studio == null || title.trim().isEmpty) return false;
+    _studios[studioId] = studio.copyWith(title: title.trim());
+    return true;
+  }
+
+  @override
   Future<List<DayActivity>> activity(String studioId, {int days = 14}) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

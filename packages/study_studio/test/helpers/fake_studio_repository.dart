@@ -89,6 +89,9 @@ class FakeStudioRepository implements StudioRepository {
   }) async {}
 
   @override
+  Future<bool> renameStudio(String studioId, String title) async => true;
+
+  @override
   Future<List<DayActivity>> activity(String studioId, {int days = 14}) async =>
       const [];
 

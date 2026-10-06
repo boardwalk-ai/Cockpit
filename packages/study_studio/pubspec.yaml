@@ -26,6 +26,8 @@ dependencies:
   cockpit_module:
     path: ../cockpit_module
   google_sign_in: ^7.2.0
+  pdf: ^3.11.1
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:

@@ -9,11 +9,13 @@ import '../../application/providers.dart';
 import '../../application/study_voice.dart';
 import '../../data/api/upload_api.dart';
 import '../../domain/entities/studio.dart';
+import '../../domain/study_plan.dart';
 import '../lightning_recall/lightning_recall_page.dart' show recallItems;
 import '../mobile/lightning_mobile.dart';
 import '../mobile/mobile_header.dart';
 import '../mobile/mobile_style.dart';
 import '../mobile/studio_main_mobile.dart';
+import '../mobile/welcome_back_sheet.dart';
 import 'dashboard_page.dart' show confirmDeleteStudio;
 
 /// The phone's studio: loads it, follows a running build, and hands the
@@ -78,6 +80,43 @@ class _StudioPhonePageState extends ConsumerState<StudioPhonePage> {
     }
   }
 
+  var _greeted = false;
+
+  /// After a few days away: what came due and what's fading, once, and
+  /// not over a build. The open is recorded either way.
+  Future<void> _welcome(Studio studio) async {
+    if (_greeted) return;
+    _greeted = true;
+    final key = 'study.lastOpen.${studio.id}';
+    final now = DateTime.now();
+    DateTime? last;
+    PlanSettings? plan;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      last = DateTime.tryParse(prefs.getString(key) ?? '');
+      plan = PlanSettings.decode(prefs.getString('study.plan.${studio.id}'));
+      await prefs.setString(key, now.toIso8601String());
+    } on Object {
+      return;
+    }
+    if (!mounted || widget.buildId != null) return;
+    final wb = WelcomeBack.of(studio, lastOpen: last, now: now, plan: plan);
+    if (wb == null) return;
+    // Let the page arrive before the sheet rises.
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+    final base = '/study/${studio.id}';
+    await showWelcomeBack(
+      context,
+      wb,
+      onWarmUp: () => context.go(
+        wb.due > 0 || wb.fading == null
+            ? '$base/flashcards'
+            : '$base/flashcards?topicId=${wb.fading!.id}',
+      ),
+    );
+  }
+
   /// The studio whose first Lightning recall question is already being
   /// voiced, so the session opens with it ready.
   String? _warmed;
@@ -128,6 +167,7 @@ class _StudioPhonePageState extends ConsumerState<StudioPhonePage> {
       ),
       data: (studio) {
         unawaited(_warmRecall(studio));
+        unawaited(_welcome(studio));
         return StudioMainMobile(
           studio: studio,
           modes: phoneModes(context, studio),
@@ -146,9 +186,6 @@ class _StudioPhonePageState extends ConsumerState<StudioPhonePage> {
     final c = SmColors.of(context);
     final t = SmText.of(context);
     final dark = Theme.of(context).brightness == Brightness.dark;
-    void soon(String what) => ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text('$what is coming soon')));
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -213,16 +250,10 @@ class _StudioPhonePageState extends ConsumerState<StudioPhonePage> {
                   'Mastery report',
                   () => context.go('/study/${studio.id}/mastery-report'),
                 ),
-                row(Icons.edit_outlined, 'Rename', () => soon('Renaming')),
                 row(
-                  Icons.ios_share_rounded,
-                  'Export notes',
-                  () => soon('Exporting notes'),
-                ),
-                row(
-                  Icons.refresh_rounded,
-                  'Rebuild studio',
-                  () => soon('Rebuilding'),
+                  Icons.tune_rounded,
+                  'Studio settings',
+                  () => context.go('/study/${studio.id}/manage'),
                 ),
                 row(
                   Icons.delete_outline_rounded,

@@ -113,6 +113,16 @@ class ApiStudioRepository implements StudioRepository {
   }
 
   @override
+  Future<bool> renameStudio(String studioId, String title) async {
+    final events = await _sse.post(
+      '/studios/$studioId/rename',
+      query: {'title': title},
+    );
+    final data = events.where((e) => e.event == 'data').firstOrNull?.data;
+    return data?['renamed'] == true;
+  }
+
+  @override
   Future<List<DayActivity>> activity(String studioId, {int days = 14}) async {
     final events = await _sse.get(
       '/studios/$studioId/activity',

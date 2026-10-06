@@ -45,10 +45,15 @@ class Studio {
     return total / topics.length;
   }
 
-  Studio copyWith({List<Topic>? topics, DateTime? lastStudied, DateTime? updatedAt}) {
+  Studio copyWith({
+    String? title,
+    List<Topic>? topics,
+    DateTime? lastStudied,
+    DateTime? updatedAt,
+  }) {
     return Studio(
       id: id,
-      title: title,
+      title: title ?? this.title,
       subject: subject,
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

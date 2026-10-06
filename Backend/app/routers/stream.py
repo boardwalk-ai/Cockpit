@@ -750,6 +750,34 @@ async def flashcard_schedule_review(
     return EventSourceResponse(gen())
 
 
+@router.post("/studios/{studio_id}/rename")
+async def rename_studio(
+    studio_id: str,
+    title: str = Query(..., min_length=1, max_length=200),
+    user_id: uuid.UUID = Depends(get_current_user_id),
+) -> EventSourceResponse:
+    """Give a studio a new name (trimmed; blank is refused by the query)."""
+    name = " ".join(title.split())[:200]
+    renamed = False
+    try:
+        sid = await _owned_studio_uuid(studio_id, user_id)
+        if sid is not None and name:
+            async with CockpitSession() as cockpit:
+                row = await cockpit.get(Studio, sid)
+                if row is not None:
+                    row.title = name
+                    await cockpit.commit()
+                    renamed = True
+    except Exception:  # noqa: BLE001 — reported as not renamed
+        renamed = False
+
+    async def gen() -> AsyncIterator[dict]:
+        yield event("data", {"renamed": renamed, "title": name})
+        yield done()
+
+    return EventSourceResponse(gen())
+
+
 @router.get("/studios/{studio_id}/activity")
 async def studio_activity(
     studio_id: str,

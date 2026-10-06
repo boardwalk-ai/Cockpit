@@ -52,6 +52,9 @@ abstract interface class StudioRepository {
     required int grade,
   });
 
+  /// Gives the studio a new name; true when it took.
+  Future<bool> renameStudio(String studioId, String title);
+
   /// The last [days] local days of study (cards, quiz answers), oldest
   /// first.
   Future<List<DayActivity>> activity(String studioId, {int days = 14});

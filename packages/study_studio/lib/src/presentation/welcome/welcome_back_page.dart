@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/mock/mock_data.dart';
+import '../home/study_home_page.dart';
 import '../widgets/studio_scaffold.dart';
 
 /// Screen 17 — Welcome Back.
@@ -17,6 +18,9 @@ class WelcomeBackPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // On a phone, welcome back is a sheet on the studio itself
+    // (mobile/welcome_back_sheet.dart); this demo page goes home.
+    if (!isDesktop(context)) return const StudyHomePage();
     final data = welcomeMockData;
     return StudioShell(
       selectedIndex: 1,

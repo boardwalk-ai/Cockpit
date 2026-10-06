@@ -16,7 +16,7 @@ import json
 import uuid
 from collections.abc import Awaitable, Callable
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.cockpit import GeneratedScenario, GeneratedTopic
@@ -471,6 +471,58 @@ async def persist_topics(
         )
     await cockpit.commit()
     return len(topics)
+
+
+def _norm(text: object) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def keep_map(payloads: list[dict]) -> dict[str, dict]:
+    """From a studio's current topics: title → its id and its cards' ids by
+    front, so a rebuild can give matching lessons and cards their old ids
+    (and the user keeps their mastery and card schedules)."""
+    out: dict[str, dict] = {}
+    for p in payloads:
+        title = _norm(p.get("title"))
+        tid = p.get("id")
+        if not title or not tid or title in out:
+            continue
+        cards = {
+            _norm(c.get("front")): c.get("id")
+            for c in (p.get("flashcards") or [])
+            if isinstance(c, dict) and c.get("id") and _norm(c.get("front"))
+        }
+        out[title] = {"id": tid, "cards": cards}
+    return out
+
+
+def carry_ids(payload: dict, keep: dict[str, dict]) -> dict:
+    """Give a freshly built topic its old id (and its cards theirs) when a
+    topic of the same title existed before the rebuild."""
+    old = keep.get(_norm(payload.get("title")))
+    if not old:
+        return payload
+    tid = old["id"]
+    payload["id"] = tid
+    for key in ("flashcards", "quizQuestions"):
+        for item in payload.get(key) or []:
+            if isinstance(item, dict):
+                item["topicId"] = tid
+    for c in payload.get("flashcards") or []:
+        if isinstance(c, dict):
+            cid = old["cards"].get(_norm(c.get("front")))
+            if cid:
+                c["id"] = cid
+    return payload
+
+
+async def current_payloads(
+    cockpit: AsyncSession, *, studio_id: uuid.UUID
+) -> list[dict]:
+    rows = await cockpit.execute(
+        select(GeneratedTopic.payload).where(GeneratedTopic.studio_id == studio_id)
+    )
+    return [p for (p,) in rows if isinstance(p, dict)]
 
 
 async def clear_topics(cockpit: AsyncSession, *, studio_id: uuid.UUID) -> None:

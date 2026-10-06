@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:study_studio/src/presentation/analytics/study_analytics_page.dart';
+import 'package:study_studio/src/presentation/home/study_home_page.dart';
 import 'package:study_studio/src/presentation/mastery_report/mastery_report_phone.dart';
 import 'package:study_studio/src/presentation/welcome/welcome_back_page.dart';
 
@@ -53,17 +54,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('Screen 17 renders welcome overview at a phone viewport', (
-    tester,
-  ) async {
+  testWidgets('Screen 17 on a phone goes home', (tester) async {
     await setPhoneViewport(tester);
     await tester.pumpWidget(app(const WelcomeBackPage()));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.text("Today's Briefing"), findsOneWidget);
-    expect(find.text('Your Study Studio at a Glance'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    // Welcome back is a sheet on the studio itself on a phone.
+    expect(find.byType(StudyHomePage), findsOneWidget);
+    expect(find.text('Welcome Back'), findsNothing);
   });
 
   testWidgets('Screen 17 renders every card on desktop', (tester) async {
