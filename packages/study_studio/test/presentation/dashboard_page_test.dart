@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:study_studio/src/data/mock/mock_data.dart';
 import 'package:study_studio/src/presentation/dashboard/dashboard_page.dart';
+import 'package:study_studio/src/presentation/lightning_recall/lightning_recall_page.dart';
 
 import '../helpers/test_app.dart';
+import 'lightning_mobile_test.dart' show FakeVoice;
 
 void main() {
   testWidgets('shows loading indicator', (tester) async {
@@ -71,5 +74,22 @@ void main() {
     expect(find.textContaining('Continue · '), findsOneWidget);
     expect(find.bySemanticsLabel('Ask AI'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('voices the first Lightning recall question ahead', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final studios = buildMockStudiosStashed();
+    final studio = studios.first;
+    final voice = FakeVoice();
+    await pumpTestApp(
+      tester,
+      child: DashboardPage(studioId: studio.id),
+      studios: studios,
+      voice: voice,
+    );
+    await tester.pumpAndSettle();
+    expect(voice.warmed, [recallItems(studio).first.question]);
   });
 }

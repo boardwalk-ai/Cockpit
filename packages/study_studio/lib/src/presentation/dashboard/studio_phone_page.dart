@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../application/providers.dart';
+import '../../application/study_voice.dart';
 import '../../data/api/upload_api.dart';
 import '../../domain/entities/studio.dart';
+import '../lightning_recall/lightning_recall_page.dart' show recallItems;
+import '../mobile/lightning_mobile.dart';
 import '../mobile/mobile_header.dart';
 import '../mobile/mobile_style.dart';
 import '../mobile/studio_main_mobile.dart';
@@ -74,6 +78,25 @@ class _StudioPhonePageState extends ConsumerState<StudioPhonePage> {
     }
   }
 
+  /// The studio whose first Lightning recall question is already being
+  /// voiced, so the session opens with it ready.
+  String? _warmed;
+
+  Future<void> _warmRecall(Studio studio) async {
+    final voice = ref.read(studyVoiceProvider);
+    final first = recallItems(studio).firstOrNull;
+    // A studio still building may have no questions yet: try again later.
+    if (voice == null || first == null || _warmed == studio.id) return;
+    _warmed = studio.id;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(LightningMobile.mutedKey) ?? false) return;
+    } on Object {
+      // Not muted, as far as we know.
+    }
+    voice.warm(first.question);
+  }
+
   @override
   void dispose() {
     _poll?.cancel();
@@ -103,16 +126,19 @@ class _StudioPhonePageState extends ConsumerState<StudioPhonePage> {
           style: SmText.of(context).small.copyWith(fontSize: 13),
         ),
       ),
-      data: (studio) => StudioMainMobile(
-        studio: studio,
-        modes: phoneModes(context, studio),
-        build: _buildGone ? null : _build,
-        onMenu: () => _menu(context, studio),
-        onRefresh: () async {
-          ref.invalidate(studioProvider(widget.studioId));
-          await ref.read(studioProvider(widget.studioId).future);
-        },
-      ),
+      data: (studio) {
+        unawaited(_warmRecall(studio));
+        return StudioMainMobile(
+          studio: studio,
+          modes: phoneModes(context, studio),
+          build: _buildGone ? null : _build,
+          onMenu: () => _menu(context, studio),
+          onRefresh: () async {
+            ref.invalidate(studioProvider(widget.studioId));
+            await ref.read(studioProvider(widget.studioId).future);
+          },
+        );
+      },
     );
   }
 
