@@ -9,6 +9,7 @@ import 'package:study_studio/study_studio.dart';
 
 import 'modules/module_auth.dart';
 import 'modules/module_push.dart';
+import 'modules/study_voice_adapter.dart';
 import 'voice/pocket_voice_engine.dart';
 
 /// The Octopilot app: the shell (main chat Home, a Library per mode,
@@ -48,6 +49,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
   final _theme = ValueNotifier<ThemeMode>(ThemeMode.system);
   final _voice = ValueNotifier<String>(octopilotVoices.first.id);
   final _voiceEngine = PocketVoiceEngine();
+  late final _studyVoice = EngineStudyVoice(_voiceEngine, _voice);
   StreamSubscription<bool>? _signIns;
 
   late final ShellServices _services = ShellServices(
@@ -195,8 +197,12 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     ..showSnackBar(const SnackBar(content: Text('Coming soon.')));
 
   @override
-  Widget build(BuildContext context) => OctopilotShellApp(
-    services: _services,
-    moduleRoutes: [..._ghostWriter.routes(), ..._studyStudio.routes()],
+  Widget build(BuildContext context) => ProviderScope(
+    // Study Studio answers out loud and reads questions with the same voice.
+    overrides: [studyVoiceProvider.overrideWithValue(_studyVoice)],
+    child: OctopilotShellApp(
+      services: _services,
+      moduleRoutes: [..._ghostWriter.routes(), ..._studyStudio.routes()],
+    ),
   );
 }

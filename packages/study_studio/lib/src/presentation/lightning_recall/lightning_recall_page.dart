@@ -6,7 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../../application/study_voice.dart';
+import '../../domain/entities/quiz_question.dart';
 import '../../domain/entities/studio.dart';
+import '../../domain/entities/topic.dart';
+import '../mobile/lightning_mobile.dart';
+import '../mobile/mobile_header.dart';
+import '../mobile/mobile_style.dart';
 import '../widgets/studio_palette.dart';
 import '../widgets/studio_scaffold.dart';
 
@@ -29,6 +35,8 @@ class LightningRecallPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(studioProvider(studioId));
+    // A phone gets its own session (mobile/lightning_mobile.dart).
+    if (!isDesktop(context)) return _phone(context, ref, async);
 
     return Scaffold(
       body: SafeArea(
@@ -41,6 +49,80 @@ class LightningRecallPage extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// The phone's Lightning recall: short answers first (easy to say), then
+/// the rest asked without their choices.
+Widget _phone(BuildContext context, WidgetRef ref, AsyncValue<Studio> async) {
+  final c = SmColors.of(context);
+  final studioId = async.valueOrNull?.id;
+  final base = '/study/${studioId ?? ''}';
+  void close() => context.go(base);
+  Widget plain(Widget child) => Scaffold(
+    backgroundColor: c.background,
+    body: SmHeaderPage(
+      header: SmHeader(title: 'Lightning recall', onBack: close),
+      child: SafeArea(child: Center(child: child)),
+    ),
+  );
+  final note = SmText.of(context).small.copyWith(fontSize: 13);
+  return async.when(
+    skipLoadingOnRefresh: true,
+    skipLoadingOnReload: true,
+    loading: () =>
+        plain(CircularProgressIndicator(color: c.accent, strokeWidth: 2.5)),
+    error: (_, _) => plain(Text('Couldn’t load the questions', style: note)),
+    data: (studio) {
+      final items = recallItems(studio);
+      if (items.isEmpty) {
+        return plain(Text('No recall questions yet', style: note));
+      }
+      return LightningMobile(
+        items: items,
+        voice: ref.watch(studyVoiceProvider),
+        topicTitles: {for (final t in studio.topics) t.id: t.title},
+        onClose: () => context.go('/study/${studio.id}'),
+        onReview: (id) => context.go('/study/${studio.id}/topics/$id'),
+        onAnswer: (item, correct) => unawaited(
+          ref
+              .read(studioRepositoryProvider)
+              .recordQuizResult(
+                studioId: studio.id,
+                topicId: item.topicId,
+                correct: correct,
+              )
+              .catchError((Object _) {}),
+        ),
+      );
+    },
+  );
+}
+
+/// The studio's questions for rapid recall: answers of up to four words
+/// (easy to say) first; if there are too few, the rest follow.
+List<RecallItem> recallItems(Studio studio) {
+  RecallItem item(Topic t, QuizQuestion q) => RecallItem(
+    topicId: t.id,
+    question: q.question,
+    answer: q.answer,
+    hint: q.relatedConcept ?? 'Topic: ${t.title}',
+    explanation: q.explanation,
+  );
+  bool short(QuizQuestion q) =>
+      q.answer.trim().isNotEmpty &&
+      q.answer.trim().split(RegExp(r'\s+')).length <= 4;
+  final all = [
+    for (final t in studio.topics)
+      for (final q in t.quizQuestions)
+        if (q.answer.trim().isNotEmpty) (t, q),
+  ];
+  final quick = [for (final (t, q) in all) if (short(q)) item(t, q)];
+  if (quick.length >= 5) return quick;
+  return [
+    ...quick,
+    for (final (t, q) in all)
+      if (!short(q)) item(t, q),
+  ];
 }
 
 /// Holds the live session state once the studio has loaded.

@@ -89,9 +89,10 @@ void main() {
       await setPhoneViewport(tester);
       await pumpRecall(tester);
 
-      expect(find.text('Lightning Recall'), findsWidgets);
-      expect(find.text('Biology Midterm Studio'), findsOneWidget);
-      expect(find.text('QUESTION'), findsOneWidget);
+      // The phone's session: the first question and its clock.
+      expect(find.text('Lightning recall'), findsOneWidget);
+      expect(find.textContaining('Question 1 of'), findsOneWidget);
+      expect(find.text('Type the answer'), findsOneWidget); // no voice here
       expect(tester.takeException(), isNull);
 
       await tester.pumpWidget(const SizedBox()); // dispose → cancel timer
