@@ -39,10 +39,13 @@ or section. Let the material decide the count (don't merge unrelated concepts,
 don't cap it): a short note may be 2-3, a chapter 6-12, a full textbook 20+.
 Cover the WHOLE material, ordered the way it should be studied.
 
-Return ONLY JSON: an array of {"title": str, "scope": str, "buildsOn": [str]}
-where scope is a one-line note on exactly what that lesson should cover, and
+Return ONLY JSON: an array of
+{"title": str, "scope": str, "buildsOn": [str], "relatesTo": [str]}
+where scope is a one-line note on exactly what that lesson should cover,
 buildsOn lists the titles of EARLIER lessons in this array that it directly
-relies on (0-2, often none). No prose outside JSON.
+relies on (0-2, often none), and relatesTo lists the titles of OTHER lessons in
+this array it is closely connected to without depending on them (0-3).
+Use the exact titles. No prose outside JSON.
 Titles are short names, not sentences: 2-5 words, no colon, no numbering
 (e.g. "TCP congestion control", not "Understanding how TCP controls congestion").
 """.strip()
@@ -187,8 +190,10 @@ def _shape_topic(
         "examples": raw.get("examples", []),
         "commonMistakes": raw.get("commonMistakes", []),
         "relatedTopicIds": [],
-        # Titles of earlier lessons this one builds on.
+        # Titles of earlier lessons this one builds on, and of others it is
+        # connected to (the studio maps these onto topic ids at load).
         "prerequisites": [str(p) for p in (raw.get("prerequisites") or [])],
+        "relatesTo": [str(p) for p in (raw.get("relatesTo") or [])],
         "memoryHooks": raw.get("memoryHooks", []),
         "sources": sources or [],
         "flashcards": [_flashcard(f) for f in (raw.get("flashcards") or [])],
@@ -270,8 +275,16 @@ async def _generate_outline(
                     "title": str(it["title"]),
                     "scope": str(it.get("scope", "")),
                     "buildsOn": builds_on,
+                    "relatesTo": [str(t) for t in (it.get("relatesTo") or [])],
                 }
             )
+    # Related: any other lesson in the outline, once all titles are known.
+    titles = {o["title"] for o in out}
+    for o in out:
+        o["relatesTo"] = [
+            t for t in dict.fromkeys(o["relatesTo"])
+            if t in titles and t != o["title"] and t not in o["buildsOn"]
+        ][:3]
     return out
 
 
@@ -401,6 +414,7 @@ async def generate_topics(
                 return None
             obj.setdefault("title", item["title"])
             obj["prerequisites"] = item.get("buildsOn", [])
+            obj["relatesTo"] = item.get("relatesTo", [])
             topic = _shape_topic(obj, studio_id, _hits_to_sources(hits, filename_map))
             if on_topic is not None:
                 try:
@@ -581,3 +595,68 @@ async def persist_scenarios(
         )
     await cockpit.commit()
     return len(scenarios)
+
+
+# --- Connections for studios built before the outline had them -------------
+_CONNECT_SYSTEM = (
+    "You are a curriculum designer. Given a course's lesson titles in study "
+    "order, say how they connect. Output JSON only: no markdown, no commentary."
+)
+
+
+def _connect_hint(titles: list[str]) -> str:
+    listed = "\n".join(f"- {t}" for t in titles)
+    return f"""
+Lessons, in the order they are studied:
+{listed}
+
+Return ONLY a JSON object mapping EVERY title above to
+{{"buildsOn": [str], "relatesTo": [str]}}:
+buildsOn = titles of EARLIER lessons it directly relies on (0-2, often none);
+relatesTo = titles of OTHER lessons it is closely connected to without
+depending on them (0-3). Use the exact titles.
+""".strip()
+
+
+def _clean_connections(raw, titles: list[str]) -> dict[str, dict]:
+    """Keep only real titles: buildsOn from earlier lessons, relatesTo from
+    any other lesson."""
+    out: dict[str, dict] = {}
+    if not isinstance(raw, dict):
+        return out
+    order = {t: i for i, t in enumerate(titles)}
+    for title, links in raw.items():
+        if title not in order or not isinstance(links, dict):
+            continue
+        before = [
+            str(t) for t in (links.get("buildsOn") or [])
+            if str(t) in order and order[str(t)] < order[title]
+        ]
+        builds_on = list(dict.fromkeys(before))[:2]
+        relates = [
+            str(t) for t in (links.get("relatesTo") or [])
+            if str(t) in order and str(t) != title and str(t) not in builds_on
+        ]
+        out[title] = {
+            "buildsOn": builds_on,
+            "relatesTo": list(dict.fromkeys(relates))[:3],
+        }
+    return out
+
+
+async def generate_connections(
+    *, titles: list[str], api_key: str, model: str
+) -> dict[str, dict]:
+    """title -> {"buildsOn": [...], "relatesTo": [...]}, from the titles only
+    (one small call)."""
+    if len(titles) < 2:
+        return {}
+    raw = await llm.generate(
+        api_key=api_key,
+        model=model,
+        system=_CONNECT_SYSTEM,
+        question=_connect_hint(titles),
+        context="",
+        max_tokens=1_500,
+    )
+    return _clean_connections(_parse_json(raw), titles)

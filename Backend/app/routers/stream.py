@@ -30,7 +30,7 @@ from ..models.cockpit import (
     StudioBuild,
 )
 from ..seed import seed_studios
-from ..services import llm, progress, rag, schedule, vectorstore
+from ..services import generate, llm, progress, rag, schedule, vectorstore
 from ..services.objectstore import get_object_store
 from ..sse import done, error, event
 
@@ -102,10 +102,13 @@ async def _load_topics(
                 )
             except Exception:  # noqa: BLE001 — schedule overlay is best-effort
                 cards = {}
+        payloads = [r.payload for r in rows.scalars()]
+        related = _related_ids(payloads)
         out: list[TopicDTO] = []
-        for r in rows.scalars():
-            payload = r.payload
+        for payload in payloads:
             tid = payload.get("id")
+            if related.get(tid):
+                payload = {**payload, "relatedTopicIds": related[tid]}
             if tid in mastery:
                 payload = {**payload, "mastery": mastery[tid]}
             if cards and payload.get("flashcards"):
@@ -120,6 +123,28 @@ async def _load_topics(
         return out
     except Exception:  # noqa: BLE001
         return []
+
+
+def _related_ids(payloads: list[dict]) -> dict[str, list[str]]:
+    """topic id -> ids of the topics it is related to, both ways, from the
+    titles each payload names in "relatesTo"."""
+    by_title = {
+        str(p.get("title", "")).strip().lower(): p.get("id") for p in payloads
+    }
+    out: dict[str, list[str]] = {}
+
+    def link(a, b) -> None:
+        if a and b and a != b:
+            out.setdefault(a, [])
+            if b not in out[a]:
+                out[a].append(b)
+
+    for p in payloads:
+        for title in p.get("relatesTo") or []:
+            other = by_title.get(str(title).strip().lower())
+            link(p.get("id"), other)
+            link(other, p.get("id"))
+    return out
 
 
 async def _load_scenarios(
@@ -645,6 +670,67 @@ async def flashcard_schedule_review(
 
     async def gen() -> AsyncIterator[dict]:
         yield event("data", fields)
+        yield done()
+
+    return EventSourceResponse(gen())
+
+
+@router.post("/studios/{studio_id}/connections")
+async def studio_connections(
+    studio_id: str,
+    user_id: uuid.UUID = Depends(get_current_user_id),
+) -> EventSourceResponse:
+    """How the topics connect, for the knowledge map. Studios built before
+    the outline recorded it get it once, from their titles (one small call);
+    the topics then carry it like new ones."""
+
+    async def gen() -> AsyncIterator[dict]:
+        sid = await _owned_studio_uuid(studio_id, user_id)
+        if sid is None:
+            yield error("Studio not found")
+            return
+        added = 0
+        async with CockpitSession() as cockpit:
+            rows = list(
+                (
+                    await cockpit.execute(
+                        select(GeneratedTopic)
+                        .where(GeneratedTopic.studio_id == sid)
+                        .order_by(GeneratedTopic.ordinal)
+                    )
+                ).scalars()
+            )
+            known = any(
+                r.payload.get("prerequisites") or r.payload.get("relatesTo")
+                for r in rows
+            )
+            if rows and not known:
+                titles = [str(r.payload.get("title", "")) for r in rows]
+                try:
+                    if SharedSession is not None:
+                        async with SharedSession() as shared:
+                            api_key, model = await llm.resolve_credentials(shared)
+                    else:
+                        api_key, model = await llm.resolve_credentials(None)
+                    links = await generate.generate_connections(
+                        titles=titles, api_key=api_key, model=model
+                    )
+                except Exception:  # noqa: BLE001 — the map falls back to order
+                    links = {}
+                for r in rows:
+                    got = links.get(str(r.payload.get("title", "")))
+                    if not got:
+                        continue
+                    # A new dict, so the JSONB column sees the change.
+                    r.payload = {
+                        **r.payload,
+                        "prerequisites": got["buildsOn"],
+                        "relatesTo": got["relatesTo"],
+                    }
+                    added += 1
+                if added:
+                    await cockpit.commit()
+        yield event("data", {"updated": added, "alreadyKnown": known})
         yield done()
 
     return EventSourceResponse(gen())

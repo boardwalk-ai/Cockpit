@@ -34,6 +34,10 @@ abstract interface class StudioRepository {
 
   Future<void> markReviewed(String studioId, String topicId);
 
+  /// Works out how the topics connect, for a studio built before that was
+  /// recorded. True when topics were given links (reload the studio).
+  Future<bool> linkTopics(String studioId);
+
   /// Grades a flashcard 0 (Again) to 3 (Easy): schedules when it comes back
   /// and moves its topic's mastery.
   Future<void> reviewFlashcard({

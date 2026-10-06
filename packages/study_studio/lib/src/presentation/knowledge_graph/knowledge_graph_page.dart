@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
 import '../widgets/studio_scaffold.dart';
+import 'knowledge_map_phone_page.dart';
 
 class KnowledgeGraphPage extends ConsumerStatefulWidget {
   const KnowledgeGraphPage({super.key, required this.studioId});
@@ -40,6 +41,10 @@ class _KnowledgeGraphPageState extends ConsumerState<KnowledgeGraphPage> {
 
   @override
   Widget build(BuildContext context) {
+    // A phone gets the real map (knowledge_map_phone_page.dart).
+    if (!isDesktop(context)) {
+      return KnowledgeMapPhonePage(studioId: widget.studioId);
+    }
     final studioTitle =
         ref.watch(studioProvider(widget.studioId)).valueOrNull?.title ??
         'Study Studio';

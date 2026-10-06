@@ -180,3 +180,52 @@ def test_schedule_follows_the_table():
         assert state.ease == pytest.approx(after[2]), (before, grade)
         assert state.lapses == after[3], (before, grade)
         assert wait == timedelta(**{unit: n}), (before, grade)
+
+
+def test_outline_keeps_related_titles_that_exist(monkeypatch):
+    import asyncio
+
+    from app.services import generate
+
+    async def fake_generate(**_):
+        return (
+            '[{"title": "A", "scope": "", "relatesTo": ["C", "Nope", "A"]},'
+            ' {"title": "B", "scope": "", "buildsOn": ["A"], "relatesTo": ["A"]},'
+            ' {"title": "C", "scope": "", "relatesTo": ["A", "A"]}]'
+        )
+
+    monkeypatch.setattr(generate.llm, "generate", fake_generate)
+    out = asyncio.run(generate._generate_outline(material="m", api_key="k", model="x"))
+    assert [o["relatesTo"] for o in out] == [["C"], [], ["A"]]
+
+
+def test_connections_for_old_studios_are_cleaned():
+    from app.services.generate import _clean_connections
+
+    titles = ["A", "B", "C"]
+    raw = {
+        "A": {"buildsOn": ["B"], "relatesTo": ["C", "Z"]},
+        "B": {"buildsOn": ["A", "A"], "relatesTo": ["A", "C"]},
+        "C": {"buildsOn": ["A", "B", "C"], "relatesTo": []},
+        "Q": {"buildsOn": ["A"]},
+    }
+    assert _clean_connections(raw, titles) == {
+        "A": {"buildsOn": [], "relatesTo": ["C"]},
+        "B": {"buildsOn": ["A"], "relatesTo": ["C"]},
+        "C": {"buildsOn": ["A", "B"], "relatesTo": []},
+    }
+
+
+def test_related_ids_go_both_ways():
+    from app.routers.stream import _related_ids
+
+    payloads = [
+        {"id": "a", "title": "DNS", "relatesTo": ["TCP basics"]},
+        {"id": "b", "title": "TCP basics"},
+        {"id": "c", "title": "Routing", "relatesTo": ["dns", "Missing"]},
+    ]
+    assert _related_ids(payloads) == {
+        "a": ["b", "c"],
+        "b": ["a"],
+        "c": ["a"],
+    }

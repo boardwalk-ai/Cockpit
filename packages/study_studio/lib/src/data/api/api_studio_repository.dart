@@ -83,6 +83,13 @@ class ApiStudioRepository implements StudioRepository {
   }
 
   @override
+  Future<bool> linkTopics(String studioId) async {
+    final events = await _sse.post('/studios/$studioId/connections');
+    final data = events.where((e) => e.event == 'data').firstOrNull;
+    return ((data?.data['updated'] as num?) ?? 0) > 0;
+  }
+
+  @override
   Future<void> reviewFlashcard({
     required String studioId,
     required String topicId,
