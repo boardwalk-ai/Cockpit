@@ -97,8 +97,7 @@ async def generate(
         ],
         "temperature": temperature,
     }
-    if max_tokens is not None:
-        payload["max_tokens"] = max_tokens
+    payload["max_tokens"] = max_tokens or DEFAULT_MAX_TOKENS
     async with httpx.AsyncClient(timeout=180) as client:
         resp = await client.post(
             f"{settings.openrouter_base_url}/chat/completions",
@@ -113,6 +112,12 @@ async def generate(
         data = resp.json()
     return data["choices"][0]["message"]["content"]
 
+
+# Every call caps its answer. Without a cap OpenRouter reserves the model's
+# whole output allowance (tens of thousands of tokens) against the account's
+# credit and refuses the call (402) when the balance is lower than that.
+ASK_MAX_TOKENS = 1200
+DEFAULT_MAX_TOKENS = 2000
 
 ASK_STYLE = (
     " You are talking to a student on a phone: answer in short plain "
@@ -174,6 +179,7 @@ async def generate_stream(
             question=question, context=context, history=history, focus=focus
         ),
         "temperature": 0.2,
+        "max_tokens": ASK_MAX_TOKENS,
         "stream": True,
     }
     async with httpx.AsyncClient(timeout=None) as client:
