@@ -2,16 +2,19 @@
 //! cockpit-api) and the Go worker/gateway. It speaks the same HTTP + SSE
 //! contract, so the app needs no change at the cutover.
 //!
-//! So far: R1 reads (health, readiness, `/me`, studios) and R2 progress
-//! writes (quiz, cards, "Got it", rename, activity) — idempotent with the
-//! app's `event_id`. Against the cockpit + vector databases in octo-pg.
+//! So far: R1 reads (health, readiness, `/me`, studios), R2 progress writes
+//! (quiz, cards, "Got it", rename, activity — idempotent with the app's
+//! `event_id`), R3 ingestion, R4 search + Ask AI, R5 studio builds (and
+//! create / delete studio). Against the cockpit + vector databases in octo-pg.
 
 pub mod ask;
+pub mod build;
 pub mod chunk;
 pub mod config;
 pub mod documents;
 pub mod dto;
 pub mod extract;
+pub mod gen;
 pub mod identity;
 pub mod ingest;
 pub mod llm;
@@ -52,6 +55,8 @@ pub struct AppState {
     pub store: Option<storage::Store>,
     /// Wakes an ingest worker when a job is queued.
     pub jobs: Arc<Notify>,
+    /// Wakes a build worker when a build is queued.
+    pub builds: Arc<Notify>,
     /// Ask AI questions per user per 10 minutes.
     pub ask_limit: Arc<ask::RateLimit>,
 }
@@ -81,6 +86,7 @@ impl AppState {
             user_ids: UserIdCache::default(),
             store: storage::Store::new(&config_store).ok(),
             jobs: Arc::new(Notify::new()),
+            builds: Arc::new(Notify::new()),
             ask_limit: Arc::new(ask::RateLimit::default()),
             http,
         })
@@ -124,8 +130,12 @@ pub fn app(state: AppState) -> Router {
         .route("/ready", get(ready))
         .route("/me", get(studios::me))
         .route("/ask", get(ask::ask))
-        .route("/studios", get(studios::list))
-        .route("/studios/:studio_id", get(studios::get))
+        .route("/studios", get(studios::list).post(studios::create))
+        .route("/studios/:studio_id", get(studios::get).delete(studios::delete))
+        .route("/studios/:studio_id/build", post(build::start))
+        .route("/studios/:studio_id/build-status/:build_id", get(build::status))
+        .route("/studios/:studio_id/connections", post(build::connections))
+        .route("/studios/:studio_id/topics/:topic_id/concepts", post(build::concepts))
         .route("/studios/:studio_id/rename", post(progress::rename))
         .route("/studios/:studio_id/activity", get(progress::activity))
         .route("/studios/:studio_id/topics/:topic_id/quiz-result", post(progress::quiz_result))

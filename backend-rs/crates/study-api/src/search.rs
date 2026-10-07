@@ -23,11 +23,16 @@ pub struct Hit {
 
 /// The query's vector, or None if the embedder doesn't answer in 3 s.
 pub async fn embed_query(state: &AppState, q: &str) -> Option<Vec<f32>> {
+    embed_query_within(state, q, Duration::from_secs(3)).await
+}
+
+/// The same with a longer wait (a build can afford one; a question can't).
+pub async fn embed_query_within(state: &AppState, q: &str, wait: Duration) -> Option<Vec<f32>> {
     let url = format!("{}/embed", state.config.embed_service_url.trim_end_matches('/'));
     let r = state
         .http
         .post(url)
-        .timeout(Duration::from_secs(3))
+        .timeout(wait)
         .json(&serde_json::json!({ "texts": [q] }))
         .send()
         .await

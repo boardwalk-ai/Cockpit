@@ -191,7 +191,10 @@ pub async fn ask(
                 while let Some(piece) = s.next().await {
                     match piece {
                         Ok(Piece::Text(t)) => yield Ok(sse::event("delta", &json!({ "text": t }))),
-                        Ok(Piece::Usage(u)) => llm::record(&state.cockpit, user, Some(studio), "ask", &model, &u).await,
+                        Ok(Piece::Usage(u)) => {
+                            let meter = llm::Meter { user, studio: Some(studio), build: None, feature: "ask" };
+                            llm::record(&state.cockpit, meter, &model, &u).await
+                        }
                         Err(e) => {
                             tracing::warn!("ask stream: {e}");
                             yield Ok(sse::error("The answer was cut off."));

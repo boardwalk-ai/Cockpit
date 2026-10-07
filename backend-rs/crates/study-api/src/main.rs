@@ -15,13 +15,18 @@ async fn main() {
     }
     let (bind, port) = (config.bind.clone(), config.port);
     let state = AppState::connect(config).await.expect("connect databases");
-    if state.config.migrate || state.config.ingest_worker {
+    if state.config.migrate || state.config.ingest_worker || state.config.build_worker {
         study_api::ingest::ensure_schema(&state).await.expect("chunks schema");
         study_api::llm::ensure_schema(&state.cockpit).await.expect("llm_usage schema");
+        study_api::build::ensure_schema(&state).await.expect("studio_builds schema");
     }
     if state.config.ingest_worker {
         study_api::ingest::spawn(&state);
         tracing::info!("ingest workers: {}", state.config.ingest_workers);
+    }
+    if state.config.build_worker {
+        study_api::build::spawn(&state);
+        tracing::info!("build workers: {}", state.config.build_workers);
     }
     let listener = TcpListener::bind((bind.as_str(), port)).await.expect("bind");
     tracing::info!("study-api listening on http://{bind}:{port}");

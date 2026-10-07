@@ -9,7 +9,7 @@ User/studio scoping is fine: every data endpoint needs a Firebase token (the
 filters by `user_id`, and RAG retrieval filters `user_id + studio_id` in SQL.
 What's left is idempotency and AI-cost abuse. Suggested first: A1, A5, A6.
 
-- [ ] **A1. One build at a time per studio** — `POST /studios/{id}/build` starts a
+- [ ] **A1. One build at a time per studio** _(server side done in Rust R5: a second start returns the running build's id; tested with two starts → same id)_ — `POST /studios/{id}/build` starts a
   new build on every call, so a double tap, a retry or Update studio during a
   running build races two builds (topics mixed/duplicated, double AI cost).
   Fix: if a build for the studio is queued/running, return its `buildId`
@@ -119,7 +119,7 @@ sentence-transformers sidecar.
 | **R2 Progress writes** _(done in Rust 2026-10-07: quiz, card review, flashcard-review, mark-reviewed once/20 h, rename, activity; same results as Python on a throwaway copy (`deploy/study-api/parity.sh`); retries with the same `event_id` change nothing — **the app still has to send `event_id`**)_ | quiz-result, card review (SM-2 port), mark-reviewed (once/day), rename, delete, activity, `study_events` — all with `event_id` idempotency (A2, A3) | Retries change nothing |
 | **R3 Ingestion** _(done in Rust 2026-10-07, not live: upload (50 MB cap, safe names) → `ingest_jobs` queue with `SKIP LOCKED` workers (no Redis) → PDF text page by page, Hirara OCR en+my for scans/office/images → heading/paragraph passages ~1,600 chars with page + heading → bge-m3 with retries → ready only when embedded; e2e on a copy: 2.5 MB PDF → 32 passages, all with pages, real vectors, 52 s (`deploy/study-api/ingest_e2e.sh`). Still to do: Idempotency-Key (A4), re-embed job, metrics)_ | Upload (Idempotency-Key, 50 MB cap) → Postgres job queue → extract per page → heading-aware chunks → TEI → `ready` only when embedded; re-embed job; metrics (F1–F7) | 100% real vectors; recall@5 at target |
 | **R4 Retrieval + AI** _(done in Rust 2026-10-07, not live: in-process hybrid search (same top 5 as Go on a test question), `/ask` SSE with history + topic + pages in citations, owner check, 2,000-char cap, 30 per 10 min, `max_tokens`, `user`, `usage` → `llm_usage`; embedder down → keyword search + `retrieval: degraded`. **Credit debit not wired yet** — waits for P3 prices)_ | Hybrid search (HNSW + `simple`/`english` tsv, RRF); `/ask` SSE with history + topic; OpenRouter client (`max_tokens`, `user`); OctoCredits check + debit; per-user rate limits (A5, A6) | Ask AI cites pages; credits move |
-| **R5 Build pipeline** | Outline / lesson / scenarios / concepts / connections ported with the same prompts; one build per studio (A1); ids kept on rebuild; capped context | Same studio from the same files |
+| **R5 Build pipeline** _(done in Rust 2026-10-07, not live: prompts byte-identical to Python (fixture test), builds are DB jobs that resume after a restart (tested: killed at 5/8, finished 8/8), one build per studio, outline made before the studio is cleared and old topics put back if no lesson is written, capped lesson fallback (24k chars, was 120k), every call metered with its `build_id`; connections + concepts made once under a double tap (row lock: 2 taps → 1 call); create / delete studio. Off by default: `BUILD_WORKER=1`)_ | Outline / lesson / scenarios / concepts / connections ported with the same prompts; one build per studio (A1); ids kept on rebuild; capped context | Same studio from the same files |
 | **R6 Notifications** | Build finished, cards due, plan reminders over FCM (outbox) | Push arrives on the phone |
 | **R7 Cut over** | Gateway routes path by path to Rust (reads first), compares responses; then all traffic; Python + Go kept 2 weeks for rollback, then removed | `cockpit-api` / worker / gateway off |
 
@@ -141,6 +141,12 @@ payments, servers and free users.
 - [ ] **P1. Meter every AI call** _(Rust R4: Ask AI metered. First real number on 2026-10-07: one answer = 8,230 prompt + 252 completion tokens = **$0.0285** with today's ~3,100-char chunks; the R3 passages (~950 chars) should cut the prompt by about two thirds)_ — request OpenRouter `usage` (tokens + exact
   USD cost) and send `user`; store in `llm_usage` (user, studio, feature,
   model, tokens in/out, cost_usd, request id). Pairs with A6.
+  _Rust R5: builds metered per `build_id`. First build number (2026-10-07,
+  copy of a real studio: 2 passages / 5,900 chars → 8 lessons, 50 cards, 4
+  scenarios on gemini-3.1-flash-lite): **$0.025 per build**, 10 calls,
+  18k tokens in / 14k out; lessons ≈ 85 % of it. Sonnet calls: connections +
+  one concept map = $0.017. Bigger studios scale with lesson count — P2
+  measures that._
 - [ ] **P2. Benchmark** — build ~20 studios of different sizes, run each feature;
   per-feature average and worst-case cost from `llm_usage`.
 - [ ] **P3. Re-base the credit** — e.g. 1,000 credits = $1 of AI cost, a ×2–3
@@ -278,6 +284,13 @@ replace the Postgres one without touching the API.
 - [ ] Cap Quiz me at ~10 questions
 - [ ] Study plan reminders (notifications)
 - [ ] One name per concept across a studio (merge near-duplicates)
+- [ ] **Rebuild keeps too few ids** — ids carry over only when a lesson's
+  title comes back exactly (normalized). Two Rust builds of the same files:
+  3 of 8 lessons and 8 of 50 cards kept their ids ("Junta Structural
+  Vulnerabilities" → "Junta Status"), so the rest lose mastery and card
+  schedules on "Update studio". Fix: match by title similarity (word
+  overlap) and card front similarity, or pass the old titles into the
+  outline prompt ("reuse these titles where they still fit").
 - [ ] Burmese font in the PDF export
 - [ ] Desktop pages still on the old design (several show mock data:
   Analytics, Ask AI, Manage, Welcome back, Study plan)

@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use axum::extract::{Path, State};
+use axum::Json;
 use chrono::{DateTime, Utc};
 use octo_common::error::ApiError;
 use serde_json::Value;
@@ -213,6 +214,78 @@ pub async fn get(
         Ok(None) => sse::events(vec![sse::error(format!("Studio {id} not found"))]),
         Err(e) => sse::events(vec![sse::error(e.message)]),
     }
+}
+
+fn clip(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
+}
+
+/// `POST /studios` `{title, subject}` — a new empty studio (`data`).
+pub async fn create(State(state): State<AppState>, UserId(user): UserId, Json(body): Json<Value>) -> SseStream {
+    let field = |k: &str| body.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
+    let title = clip(field("title").unwrap_or("Untitled Studio"), 200);
+    let subject = field("subject").map(|s| clip(s, 120));
+    let id = Uuid::new_v4();
+    let r = sqlx::query("INSERT INTO studios (id, user_id, title, subject) VALUES ($1, $2, $3, $4)")
+        .bind(id)
+        .bind(user)
+        .bind(&title)
+        .bind(&subject)
+        .execute(&state.cockpit)
+        .await;
+    if let Err(e) = r {
+        return sse::events(vec![sse::error(format!("Could not create studio: {e}"))]);
+    }
+    match load_studio(&state.cockpit, id, user).await {
+        Ok(Some(s)) => sse::one(&s),
+        Ok(None) => sse::events(vec![sse::error("Could not create studio")]),
+        Err(e) => sse::events(vec![sse::error(format!("Could not create studio: {}", e.message))]),
+    }
+}
+
+/// `DELETE /studios/{id}` — the studio and everything in it: its rows
+/// (cascade), its passages (vector DB, no cross-database key) and its files.
+pub async fn delete(State(state): State<AppState>, UserId(user): UserId, Path(id): Path<String>) -> SseStream {
+    let not_found = || sse::events(vec![sse::error(format!("Studio {id} not found"))]);
+    let Ok(sid) = Uuid::parse_str(&id) else { return not_found() };
+    let keys: Vec<String> = match sqlx::query_scalar(
+        "SELECT d.object_key FROM documents d JOIN studios s ON s.id = d.studio_id WHERE s.id = $1 AND s.user_id = $2",
+    )
+    .bind(sid)
+    .bind(user)
+    .fetch_all(&state.cockpit)
+    .await
+    {
+        Ok(k) => k,
+        Err(e) => return sse::events(vec![sse::error(format!("Could not delete studio: {e}"))]),
+    };
+    let gone = sqlx::query("DELETE FROM studios WHERE id = $1 AND user_id = $2")
+        .bind(sid)
+        .bind(user)
+        .execute(&state.cockpit)
+        .await;
+    match gone {
+        Ok(r) if r.rows_affected() == 0 => return not_found(),
+        Err(e) => return sse::events(vec![sse::error(format!("Could not delete studio: {e}"))]),
+        Ok(_) => {}
+    }
+    // Clean-up is best effort; the studio is already gone for the user.
+    if let Err(e) = sqlx::query("DELETE FROM chunks WHERE studio_id = $1 AND user_id = $2")
+        .bind(sid)
+        .bind(user)
+        .execute(&state.vector)
+        .await
+    {
+        tracing::warn!(studio = %sid, "delete chunks: {e}");
+    }
+    if let Some(store) = &state.store {
+        for k in keys {
+            if let Err(e) = store.delete(&k).await {
+                tracing::warn!(studio = %sid, "delete object: {e}");
+            }
+        }
+    }
+    sse::one(&serde_json::json!({ "id": id, "deleted": true }))
 }
 
 /// `GET /me` — id, email and OctoCredits balance.

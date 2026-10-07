@@ -1,0 +1,271 @@
+{
+ "outline_system": "You are a curriculum designer. From the study material, produce a lesson outline as strict JSON. Ground it ONLY in the material — never invent. Output JSON only: no markdown, no commentary.",
+ "outline_hint": "List the lessons this material should be broken into — ONE per distinct concept\nor section. Let the material decide the count (don't merge unrelated concepts,\ndon't cap it): a short note may be 2-3, a chapter 6-12, a full textbook 20+.\nCover the WHOLE material, ordered the way it should be studied.\n\nReturn ONLY JSON: an array of\n{\"title\": str, \"scope\": str, \"buildsOn\": [str], \"relatesTo\": [str]}\nwhere scope is a one-line note on exactly what that lesson should cover,\nbuildsOn lists the titles of EARLIER lessons in this array that it directly\nrelies on (0-2, often none), and relatesTo lists the titles of OTHER lessons in\nthis array it is closely connected to without depending on them (0-3).\nUse the exact titles. No prose outside JSON.\nTitles are short names, not sentences: 2-5 words, no colon, no numbering\n(e.g. \"TCP congestion control\", not \"Understanding how TCP controls congestion\").",
+ "detail_system": "You are an expert tutor writing ONE in-depth study lesson. Use ONLY the provided material — never invent facts. Be thorough and concrete. Output a single JSON object only: no markdown, no commentary.",
+ "detail_hint": "Write a rich, complete lesson on \"TCP congestion control\".\nFocus: How TCP reacts to loss\nOTHER LESSONS in this course: Slow start; Routing \"basics\"\n\nReturn ONLY a JSON object:\n{\n  \"title\": \"TCP congestion control\",\n  \"summary\": [str, str, str],        // EXACTLY 3 key points, each ONE plain sentence of at most 12 words\n  \"definition\": str,                 // 1-2 precise sentences\n  \"simpleExplanation\": str,          // plain-language, \"explain like I'm 10\"\n  \"detailedExplanation\": str,        // THOROUGH: multiple paragraphs, mechanisms, how/why it works\n  \"whyItMatters\": str,               // 2-4 sentences on real-world relevance\n  \"examples\": [str, ...],            // 2-4 concrete worked examples\n  \"commonMistakes\": [str, ...],      // 2-4 pitfalls learners hit\n  \"memoryHooks\": [str, ...],         // 1-3 mnemonics / analogies\n  \"flashcards\": [{\"front\": str, \"back\": str}, ...],   // 6-10\n  \"quizQuestions\": [                                     // 4-6, MIX the types below\n    {\n      \"type\": \"multipleChoice\" | \"trueFalse\" | \"shortAnswer\" | \"fillBlank\",\n      \"question\": str,                 // for fillBlank, put a \"____\" blank inside the sentence\n      \"choices\": [str],                // multipleChoice: 4 options; trueFalse: [\"True\",\"False\"]; shortAnswer/fillBlank: []\n      \"answer\": str,                   // the exact correct answer; must equal one choice for multipleChoice/trueFalse\n      \"explanation\": str\n    }, ...\n  ],\n  \"difficulty\": 1-5, \"importance\": 1-5,\n\"concepts\": [                      // 4-8 key ideas of THIS lesson\n    {\"name\": str, \"meaning\": str, \"example\": str}, ...\n  ],                                 // name: 1-4 words; meaning: one plain sentence; example: one short concrete case\n  \"links\": [                         // 4-10 relationships the material actually states\n    {\"from\": str, \"label\": str, \"to\": str}, ...\n  ],                                 // from/to: a concept name above, or an exact title from OTHER LESSONS;\n                                     // label: a 1-3 word verb phrase read \"from label to\", e.g. \"causes\", \"is part of\", \"halves\", \"contrasts with\"\n}\nVary the quiz question types to suit THIS subject, don't use only multipleChoice:\n- conceptual / reasoning topics favor multipleChoice and trueFalse\n- terminology, facts, formulas, vocabulary favor shortAnswer and fillBlank\n- keep shortAnswer and fillBlank answers to 1-3 words so they can be auto-graded\n- when there are 3+ questions, include at least two different types\nBase everything ONLY on the provided material.",
+ "detail_hint_alone": "Write a rich, complete lesson on \"Only lesson\".\nFocus: Everything\n\nReturn ONLY a JSON object:\n{\n  \"title\": \"Only lesson\",\n  \"summary\": [str, str, str],        // EXACTLY 3 key points, each ONE plain sentence of at most 12 words\n  \"definition\": str,                 // 1-2 precise sentences\n  \"simpleExplanation\": str,          // plain-language, \"explain like I'm 10\"\n  \"detailedExplanation\": str,        // THOROUGH: multiple paragraphs, mechanisms, how/why it works\n  \"whyItMatters\": str,               // 2-4 sentences on real-world relevance\n  \"examples\": [str, ...],            // 2-4 concrete worked examples\n  \"commonMistakes\": [str, ...],      // 2-4 pitfalls learners hit\n  \"memoryHooks\": [str, ...],         // 1-3 mnemonics / analogies\n  \"flashcards\": [{\"front\": str, \"back\": str}, ...],   // 6-10\n  \"quizQuestions\": [                                     // 4-6, MIX the types below\n    {\n      \"type\": \"multipleChoice\" | \"trueFalse\" | \"shortAnswer\" | \"fillBlank\",\n      \"question\": str,                 // for fillBlank, put a \"____\" blank inside the sentence\n      \"choices\": [str],                // multipleChoice: 4 options; trueFalse: [\"True\",\"False\"]; shortAnswer/fillBlank: []\n      \"answer\": str,                   // the exact correct answer; must equal one choice for multipleChoice/trueFalse\n      \"explanation\": str\n    }, ...\n  ],\n  \"difficulty\": 1-5, \"importance\": 1-5,\n\"concepts\": [                      // 4-8 key ideas of THIS lesson\n    {\"name\": str, \"meaning\": str, \"example\": str}, ...\n  ],                                 // name: 1-4 words; meaning: one plain sentence; example: one short concrete case\n  \"links\": [                         // 4-10 relationships the material actually states\n    {\"from\": str, \"label\": str, \"to\": str}, ...\n  ],                                 // from/to: a concept name above, or an exact title from OTHER LESSONS;\n                                     // label: a 1-3 word verb phrase read \"from label to\", e.g. \"causes\", \"is part of\", \"halves\", \"contrasts with\"\n}\nVary the quiz question types to suit THIS subject, don't use only multipleChoice:\n- conceptual / reasoning topics favor multipleChoice and trueFalse\n- terminology, facts, formulas, vocabulary favor shortAnswer and fillBlank\n- keep shortAnswer and fillBlank answers to 1-3 words so they can be auto-graded\n- when there are 3+ questions, include at least two different types\nBase everything ONLY on the provided material.",
+ "scenario_system": "You are an instructional designer building APPLICATION scenarios that test reasoning, not recall — realistic situations the learner must diagnose. Ground everything ONLY in the material; never invent facts. Output strict JSON only: no markdown, no commentary.",
+ "scenario_hint": "From the material, create realistic application scenarios — situations where the\nlearner must REASON through a problem, not recall a fact. Make as many as the\nmaterial genuinely supports (typically 5-10), ordered easy → hard.\n\nReturn ONLY JSON: an array. Each scenario:\n{\n  \"title\": str,                    // short case name\n  \"difficulty\": 1-5,\n  \"estimatedMinutes\": int,\n  \"skills\": [str],                 // 2-4 skills being tested\n  \"aiNote\": str,                   // one line, e.g. \"Multiple concepts may be required.\"\n  \"problem\": str,                  // the situation, 2-4 short sentences\n  \"question\": str,                 // what the learner must determine\n  \"clues\": [{\"label\": str, \"detail\": str}],  // 3-5 things to investigate + what each reveals\n  \"options\": [str, str, str, str], // 4 candidate first actions (only one is best)\n  \"correctIndex\": 0,               // index (0-3) of the best first action\n  \"reasoning\": str,                // WHY that action is right; rule out the others\n  \"outcomeLabel\": str,             // short result, e.g. \"Likely issue: Layer 3\"\n  \"relatedTopics\": [str]           // 2-3 related topic titles from the material\n}\nBase everything ONLY on the provided material. No prose outside the JSON.",
+ "connect_system": "You are a curriculum designer. Given a course's lesson titles in study order, say how they connect. Output JSON only: no markdown, no commentary.",
+ "connect_hint": "Lessons, in the order they are studied:\n- A\n- B\n- C\n\nReturn ONLY a JSON object mapping EVERY title above to\n{\"buildsOn\": [str], \"relatesTo\": [str]}:\nbuildsOn = titles of EARLIER lessons it directly relies on (0-2, often none);\nrelatesTo = titles of OTHER lessons it is closely connected to without\ndepending on them (0-3). Use the exact titles.",
+ "concept_system": "You are a tutor drawing a concept map of ONE lesson. Use ONLY the lesson text given — never invent. Output a single JSON object only.",
+ "concept_question": "Lesson: \"TCP congestion control\"\nOTHER LESSONS in this course: Slow start; Routing \"basics\"\nReturn ONLY a JSON object:\n{\n\"concepts\": [                      // 4-8 key ideas of THIS lesson\n    {\"name\": str, \"meaning\": str, \"example\": str}, ...\n  ],                                 // name: 1-4 words; meaning: one plain sentence; example: one short concrete case\n  \"links\": [                         // 4-10 relationships the material actually states\n    {\"from\": str, \"label\": str, \"to\": str}, ...\n  ],                                 // from/to: a concept name above, or an exact title from OTHER LESSONS;\n                                     // label: a 1-3 word verb phrase read \"from label to\", e.g. \"causes\", \"is part of\", \"halves\", \"contrasts with\"\n}",
+ "concept_context": "Def.\n\nLong.\n\nMatters.\n\nExamples:\n- e1\n- e2",
+ "shaped_topic": {
+  "id": "gen_e867b0890f",
+  "studioId": "studio-1",
+  "title": "T",
+  "subject": "",
+  "summary": [
+   "a",
+   "b",
+   "c",
+   "d"
+  ],
+  "definition": "",
+  "simpleExplanation": "",
+  "detailedExplanation": "",
+  "whyItMatters": "",
+  "examples": [
+   "x"
+  ],
+  "commonMistakes": [],
+  "relatedTopicIds": [],
+  "prerequisites": [
+   "P"
+  ],
+  "relatesTo": [
+   "R"
+  ],
+  "memoryHooks": [],
+  "sources": [
+   {
+    "fileName": "f.pdf",
+    "snippet": "s",
+    "page": null
+   }
+  ],
+  "concepts": [
+   {
+    "id": "gen_e867b0890f_c0",
+    "name": "Window",
+    "meaning": "m",
+    "example": "x"
+   },
+   {
+    "id": "gen_e867b0890f_c2",
+    "name": "Loss",
+    "meaning": "m2",
+    "example": ""
+   }
+  ],
+  "conceptLinks": [
+   {
+    "from": "gen_e867b0890f_c0",
+    "label": "is cut by loss",
+    "to": "gen_e867b0890f_c2"
+   },
+   {
+    "from": "gen_e867b0890f_c2",
+    "label": "precedes",
+    "toTopic": "Slow start"
+   }
+  ],
+  "flashcards": [
+   {
+    "id": "fc_39266c05",
+    "topicId": "gen_e867b0890f",
+    "front": "F1",
+    "back": "B1",
+    "type": "definition",
+    "difficulty": 2,
+    "status": "fresh"
+   }
+  ],
+  "quizQuestions": [
+   {
+    "id": "q_9ec29dfe",
+    "topicId": "gen_e867b0890f",
+    "type": "multipleChoice",
+    "question": "Q",
+    "choices": [
+     "a",
+     "b",
+     "c",
+     "d"
+    ],
+    "answer": "a",
+    "explanation": "e",
+    "difficulty": 2
+   },
+   {
+    "id": "q_feb128e4",
+    "topicId": "gen_e867b0890f",
+    "type": "trueFalse",
+    "question": "TF?",
+    "choices": [
+     "True",
+     "False"
+    ],
+    "answer": "True",
+    "explanation": "",
+    "difficulty": 2
+   },
+   {
+    "id": "q_69965586",
+    "topicId": "gen_e867b0890f",
+    "type": "fillBlank",
+    "question": "x ____",
+    "choices": [],
+    "answer": "y",
+    "explanation": "",
+    "difficulty": 2
+   },
+   {
+    "id": "q_0e5d60df",
+    "topicId": "gen_e867b0890f",
+    "type": "shortAnswer",
+    "question": "SA",
+    "choices": [],
+    "answer": "w",
+    "explanation": "",
+    "difficulty": 2
+   }
+  ],
+  "difficulty": 4,
+  "importance": 3,
+  "estimatedStudyTimeMinutes": 12,
+  "mastery": 0.0
+ },
+ "shaped_scenario": {
+  "id": "scn_112292eb03",
+  "studioId": "studio-1",
+  "title": "S",
+  "difficulty": 2,
+  "estimatedMinutes": 6,
+  "skills": [
+   "k"
+  ],
+  "aiNote": "",
+  "problem": "P",
+  "question": "",
+  "clues": [
+   {
+    "id": "clue_c575e7",
+    "label": "L",
+    "detail": "D"
+   }
+  ],
+  "options": [
+   {
+    "id": "opt_0",
+    "label": "a"
+   },
+   {
+    "id": "opt_2",
+    "label": "c"
+   },
+   {
+    "id": "opt_3",
+    "label": "d"
+   }
+  ],
+  "correctOptionId": "opt_3",
+  "reasoning": "",
+  "outcomeLabel": "",
+  "relatedTopics": []
+ },
+ "outline_clean": null,
+ "parse_cases": [
+  [
+   "```json\n[{\"a\":1}]\n```",
+   [
+    {
+     "a": 1
+    }
+   ]
+  ],
+  [
+   "Here: {\"x\": 2} thanks",
+   {
+    "x": 2
+   }
+  ],
+  [
+   "[{\"a\":1},{\"b\":2},{\"c\":",
+   null
+  ],
+  [
+   "nothing",
+   null
+  ],
+  [
+   "{\"a\":[1,2]",
+   [
+    1,
+    2
+   ]
+  ],
+  [
+   "[1,2] and {\"k\":1}",
+   [
+    1,
+    2
+   ]
+  ]
+ ],
+ "connections": {
+  "A": {
+   "buildsOn": [],
+   "relatesTo": [
+    "B",
+    "C"
+   ]
+  },
+  "B": {
+   "buildsOn": [
+    "A"
+   ],
+   "relatesTo": [
+    "C"
+   ]
+  },
+  "C": {
+   "buildsOn": [
+    "A",
+    "B"
+   ],
+   "relatesTo": []
+  }
+ },
+ "keep": {
+  "tcp basics": {
+   "id": "gen_1",
+   "cards": {
+    "what is tcp?": "fc_1"
+   }
+  }
+ },
+ "carried": {
+  "id": "gen_1",
+  "title": "TCP basics",
+  "flashcards": [
+   {
+    "id": "fc_1",
+    "front": "what is  tcp?",
+    "topicId": "gen_1"
+   },
+   {
+    "id": "fc_m",
+    "front": "Other",
+    "topicId": "gen_1"
+   }
+  ],
+  "quizQuestions": [
+   {
+    "id": "q_1",
+    "topicId": "gen_1"
+   }
+  ]
+ }
+}
