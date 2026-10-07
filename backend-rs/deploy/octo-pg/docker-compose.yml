@@ -1,0 +1,21 @@
+services:
+  octo-pg:
+    image: pgvector/pgvector:pg17
+    container_name: octo-pg
+    env_file: .env
+    environment:
+      POSTGRES_USER: octo_admin
+      POSTGRES_DB: postgres
+    command: ["postgres", "-c", "shared_buffers=1GB", "-c", "effective_cache_size=4GB", "-c", "max_connections=200", "-c", "shared_preload_libraries=pg_stat_statements"]
+    ports:
+      - "127.0.0.1:5440:5432"
+    volumes:
+      - octo-pg-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U octo_admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+volumes:
+  octo-pg-data:

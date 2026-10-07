@@ -216,19 +216,22 @@ In Rust, the "candidates" go behind a repository trait so a Scylla store can
 replace the Postgres one without touching the API.
 
 **Plan:**
-- [ ] **D1. Off-site backups first** _(2026-10-07: all 9 databases dumped to `/opt/backups/db-20261007-093320` on the server and copied to the IT PC, checksums verified; cloud copy + WAL still to do)_: pgBackRest or WAL-G →
+- [ ] **D1. Off-site backups first** _(2026-10-07: all 9 databases dumped to `/opt/backups/db-20261007-093320` + IT PC copy; **nightly dumps of octo-pg at 03:15**, kept 14 days in `/opt/backups/nightly`; cloud copy + WAL still to do)_: pgBackRest or WAL-G →
   Cloudflare R2 / Backblaze B2 — continuous WAL + weekly full, point-in-time
   restore; MinIO → R2 nightly with `rclone`. **Test a restore monthly.**
-- [ ] **D2. One Postgres 17 cluster (+ pgvector)** _(2026-10-07: `octo-pg` container up, `127.0.0.1:5440`, pgvector + pg_stat_statements; rehearsal restored cockpit, vector, octonotes, ghostwriter, octopilot_staging, octopilot — row counts match the sources table by table, except octonotes `jobs`, which kept growing after the dump; apps still use the old instances)_, one database, a schema per
-  app (`identity`, `credits`, `studio`, `rag`, `notes`, `ghostwriter`), a role
-  per app (writes its own schema; reads `identity` / `credits` through views),
-  per-role connection limit + `statement_timeout`. ~3 GB `shared_buffers`.
+- [x] **D2. One Postgres 17 cluster (+ pgvector)** — `octo-pg`, `127.0.0.1:5440`
+  (`backend-rs/deploy/octo-pg`). One database per app for now (schemas per
+  app later, with the Rust services); app roles keep their passwords, no
+  superusers. Interns now reach `cockpit` on port **5440** (was 5433).
 - [ ] **D3. PgBouncer** (transaction pooling) in front of every app.
-- [ ] **D4. Move the databases in one at a time** (see "Safe move" below):
-  cockpit-db + cockpit-vectordb → `studio` + `rag`; octonotes-db → `notes`;
-  gw-staging-db → `ghostwriter`; host PG16 (octopilot) → `identity` /
-  `credits` / app schemas. Labs and MBR can stay separate. Pick a retirement
-  date for octopilot-legacy.
+- [x] **D4. Databases moved 2026-10-07** — cockpit + vector, ghostwriter +
+  octopilot_staging, octonotes, octopilot (main). Each: writers stopped, final
+  dump, restore, every table's row count identical, old DB set read-only,
+  configs to 5440, apps healthy, no DB errors, grants identical. The
+  octopilot-api container was recreated from the same image with
+  `DATABASE_URL` from `/opt/octopilot-api/runtime.env` (old container kept as
+  `octopilot-api-pre-octopg`). Old instances read-only until **2026-10-21**,
+  then last dump and remove. Labs, MBR and octopilot-legacy were not moved.
 - [ ] **D5. Retention:** (OctoNotes `jobs` is already ~31k rows and growing — clean up finished jobs.) monthly partitions for `study_events`, notifications,
   LLM usage; after 12 months keep daily rollups, drop raw partitions.
 - [ ] **D6. Vectors:** HNSW must fit in RAM (~5 GB per 1M bge-m3 chunks);
