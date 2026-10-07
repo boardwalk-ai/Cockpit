@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/octo-common", "crates/octopilot-rs", "crates/octonotes-api", "crates/ghostwriter-api"]
+members = ["crates/octo-common", "crates/octopilot-rs", "crates/octonotes-api", "crates/ghostwriter-api", "crates/study-api"]
 
 # Versions shared by every crate, so Doc Oct (octopilot-rs) and OctoNotes
 # (octonotes-api) always build against the same auth / DB / HTTP stack.
