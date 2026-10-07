@@ -99,6 +99,23 @@ pub fn detail_hint(title: &str, scope: &str, others: &[String]) -> String {
         .to_string()
 }
 
+/// The lesson request on a rebuild: the lesson's old flashcards are listed
+/// so the ones still right come back word for word (and keep the student's
+/// card schedules). Without any it is Python's prompt exactly.
+pub fn detail_hint_rebuild(title: &str, scope: &str, others: &[String], old_fronts: &[String]) -> String {
+    let fronts: Vec<String> =
+        old_fronts.iter().map(|f| f.trim()).filter(|f| !f.is_empty()).take(15).map(|f| format!("- {f}")).collect();
+    let hint = detail_hint(title, scope, others);
+    if fronts.is_empty() {
+        return hint;
+    }
+    format!(
+        "{hint}\nThe student is already studying these flashcards from an earlier version of this lesson:\n{}\n\
+Keep every one that is still correct, with its front word for word; change or add cards only where the material calls for it.",
+        fronts.join("\n")
+    )
+}
+
 // --- Scenarios -------------------------------------------------------------
 pub const SCENARIO_SYSTEM: &str = "You are an instructional designer building APPLICATION scenarios that test \
 reasoning, not recall — realistic situations the learner must diagnose. \
@@ -627,6 +644,167 @@ pub fn carry_ids(mut payload: Value, keep: &HashMap<String, (String, HashMap<Str
     payload
 }
 
+// --- Matching a rebuild to the studio before it ----------------------------------
+// Exact titles alone kept 3 of 8 lessons across two builds of the same
+// files ("Junta Structural Vulnerabilities" → "Junta Status"). So the
+// outline is shown the old titles, and lessons and cards are then matched
+// by similarity, one to one, best pairs first.
+
+/// The outline request; with old titles, asks to keep them where they fit.
+/// Without any it is Python's prompt exactly.
+pub fn outline_hint(old_titles: &[String]) -> String {
+    let titles: Vec<&String> = old_titles.iter().filter(|t| !t.trim().is_empty()).collect();
+    if titles.is_empty() {
+        return OUTLINE_HINT.to_string();
+    }
+    let listed = titles.iter().map(|t| format!("- {t}")).collect::<Vec<_>>().join("\n");
+    format!(
+        "{OUTLINE_HINT}\n\nThese lessons were made from this material before (the student has \
+progress on them):\n{listed}\nWhere a lesson still covers the same thing, reuse its exact title. \
+Change, add or drop lessons only where the material calls for it."
+    )
+}
+
+const STOP: [&str; 26] = [
+    "the", "and", "for", "with", "what", "which", "does", "how", "why", "are", "its", "into", "from", "about",
+    "when", "who", "is", "of", "a", "an", "in", "to", "on", "do", "be", "vs",
+];
+
+fn words(s: &str) -> HashSet<String> {
+    s.to_lowercase()
+        .split(|c: char| c.is_whitespace() || c.is_ascii_punctuation() || c == '–' || c == '—' || c == '။' || c == '၊')
+        .filter(|w| !w.is_empty() && !STOP.contains(w))
+        .map(str::to_string)
+        .collect()
+}
+
+fn bigram_dice(a: &str, b: &str) -> f64 {
+    let grams = |s: &str| {
+        let c: Vec<char> = s.chars().filter(|c| !c.is_whitespace()).collect();
+        c.windows(2).map(|w| (w[0], w[1])).collect::<Vec<_>>()
+    };
+    let (ga, gb) = (grams(a), grams(b));
+    if ga.is_empty() || gb.is_empty() {
+        return 0.0;
+    }
+    let mut pool = gb.clone();
+    let mut common = 0;
+    for g in &ga {
+        if let Some(i) = pool.iter().position(|x| x == g) {
+            pool.swap_remove(i);
+            common += 1;
+        }
+    }
+    2.0 * common as f64 / (ga.len() + gb.len()) as f64
+}
+
+/// How alike two titles (or card fronts) are, 0–1. Several words: shared
+/// words over the shorter side ("Resistance Evolution" ~ "Resistance
+/// Movement Evolution" = 1) for titles, over both sides for cards. One word
+/// or text without spaces (Burmese): letter pairs, damped so only close
+/// spellings pass.
+pub fn similarity(a: &str, b: &str, by_shorter: bool) -> f64 {
+    let (na, nb) = (norm(Some(&json!(a))), norm(Some(&json!(b))));
+    if na.is_empty() || nb.is_empty() {
+        return 0.0;
+    }
+    if na == nb {
+        return 1.0;
+    }
+    let (wa, wb) = (words(&na), words(&nb));
+    if wa.len() >= 2 && wb.len() >= 2 {
+        let common = wa.intersection(&wb).count() as f64;
+        let base = if by_shorter { wa.len().min(wb.len()) } else { wa.union(&wb).count() } as f64;
+        return common / base;
+    }
+    bigram_dice(&na, &nb) * 0.75
+}
+
+pub const MATCH_MIN: f64 = 0.6;
+
+/// For each new item, the old item it takes over (one to one, best pairs
+/// first, ties in order), if any is alike enough.
+pub fn assign(new: &[String], old: &[String], by_shorter: bool) -> Vec<Option<usize>> {
+    let mut pairs = Vec::new();
+    for (i, n) in new.iter().enumerate() {
+        for (j, o) in old.iter().enumerate() {
+            let s = similarity(n, o, by_shorter);
+            if s >= MATCH_MIN {
+                // Ties go to the pair that shares more of both sides.
+                pairs.push((s, similarity(n, o, false), i, j));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| b.0.total_cmp(&a.0).then(b.1.total_cmp(&a.1)).then(a.2.cmp(&b.2)).then(a.3.cmp(&b.3)));
+    let mut out = vec![None; new.len()];
+    let mut taken = HashSet::new();
+    for (_, _, i, j) in pairs {
+        if out[i].is_none() && !taken.contains(&j) {
+            out[i] = Some(j);
+            taken.insert(j);
+        }
+    }
+    out
+}
+
+/// A rebuilt topic takes the id of the old topic it was matched to, and
+/// its cards the ids of the old topic's cards they match (by front).
+pub fn carry_from(mut payload: Value, old: &Value) -> Value {
+    let Some(tid) = old.get("id").and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string) else {
+        return payload;
+    };
+    let old_cards: Vec<(String, String)> = old
+        .get("flashcards")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|c| Some((c.get("id")?.as_str()?.to_string(), text(c.get("front")))))
+        .filter(|(id, _)| !id.is_empty())
+        .collect();
+    let Some(obj) = payload.as_object_mut() else { return payload };
+    let built_as = obj.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+    obj.insert("id".into(), json!(tid));
+    for key in ["flashcards", "quizQuestions"] {
+        for item in obj.get_mut(key).and_then(Value::as_array_mut).into_iter().flatten() {
+            if let Some(m) = item.as_object_mut() {
+                m.insert("topicId".into(), json!(tid));
+            }
+        }
+    }
+    if let Some(cards) = obj.get_mut("flashcards").and_then(Value::as_array_mut) {
+        let fronts: Vec<String> = cards.iter().map(|c| text(c.get("front"))).collect();
+        let olds: Vec<String> = old_cards.iter().map(|(_, f)| f.clone()).collect();
+        for (c, m) in cards.iter_mut().zip(assign(&fronts, &olds, false)) {
+            if let (Some(j), Some(o)) = (m, c.as_object_mut()) {
+                o.insert("id".into(), json!(old_cards[j].0));
+            }
+        }
+    }
+    // Concept ids are built from the topic id; keep them in step.
+    if !built_as.is_empty() {
+        let fix = |v: &mut Value| {
+            if let Some(s) = v.as_str() {
+                if let Some(rest) = s.strip_prefix(built_as.as_str()) {
+                    *v = json!(format!("{tid}{rest}"));
+                }
+            }
+        };
+        for c in obj.get_mut("concepts").and_then(Value::as_array_mut).into_iter().flatten() {
+            if let Some(id) = c.get_mut("id") {
+                fix(id);
+            }
+        }
+        for l in obj.get_mut("conceptLinks").and_then(Value::as_array_mut).into_iter().flatten() {
+            for k in ["from", "to"] {
+                if let Some(v) = l.get_mut(k) {
+                    fix(v);
+                }
+            }
+        }
+    }
+    payload
+}
+
 /// A lesson reply with the outline's facts added before shaping.
 pub fn lesson_raw(mut obj: Map<String, Value>, lesson: &Lesson, others: &[String]) -> Value {
     obj.entry("title").or_insert_with(|| json!(lesson.title));
@@ -792,6 +970,87 @@ mod tests {
         assert_eq!(o[2].relates_to, Vec::<String>::new());
         assert_eq!(outline(r#"{"lessons":[{"title":"X"}]}"#).len(), 1);
         assert!(outline("sorry").is_empty());
+    }
+
+    #[test]
+    fn rebuild_titles_match_by_similarity() {
+        let old: Vec<String> = [
+            "Historical Context 2021",
+            "Junta Structural Vulnerabilities",
+            "Resistance Movement Evolution",
+            "Ethnic Armed Organizations",
+            "External Actor Interests",
+            "International Response Paralysis",
+            "Humanitarian Crisis Impact",
+            "Future Political Outlook",
+        ]
+        .map(String::from)
+        .to_vec();
+        let new: Vec<String> = [
+            "Historical Context 2021",
+            "Junta Status",
+            "Resistance Evolution",
+            "Ethnic Armed Organizations",
+            "External Actor Influence",
+            "International Response",
+            "Humanitarian Crisis",
+            "Future Political Outlook",
+        ]
+        .map(String::from)
+        .to_vec();
+        let m = assign(&new, &old, true);
+        assert_eq!(m, vec![Some(0), None, Some(2), Some(3), Some(4), Some(5), Some(6), Some(7)]);
+        // look-alike names are not merged
+        let m = assign(&["UDP basics".into(), "Subnetting".into()], &["TCP basics".into(), "Supernetting".into()], true);
+        assert_eq!(m, vec![None, None]);
+        // one to one: the closer old title wins
+        let m = assign(&["TCP congestion control".into()], &["TCP congestion".into(), "TCP congestion control".into()], true);
+        assert_eq!(m, vec![Some(1)]);
+        // Burmese
+        assert_eq!(similarity("ဓာတုဗေဒ အခြေခံ", "ဓာတုဗေဒ  အခြေခံ", true), 1.0);
+        assert!(similarity("ဓာတုဗေဒအခြေခံများ", "ဓာတုဗေဒအခြေခံ", true) >= MATCH_MIN);
+        assert!(similarity("ဓာတုဗေဒ", "ရူပဗေဒ", true) < MATCH_MIN);
+    }
+
+    #[test]
+    fn carry_from_moves_ids_cards_and_concepts() {
+        let old = json!({"id": "gen_old", "flashcards": [
+            {"id": "fc_a", "front": "What is a coup?"}, {"id": "fc_b", "front": "Who leads the SAC?"}]});
+        let new = shape_topic(
+            &json!({"title": "Coups", "flashcards": [
+                {"front": "Who leads the SAC now?"}, {"front": "What is a coup?"}, {"front": "Something new entirely"}],
+                "concepts": [{"name": "Coup"}, {"name": "SAC"}], "links": [{"from": "SAC", "label": "staged", "to": "Coup"}],
+                "quizQuestions": [{"question": "q", "answer": "a"}]}),
+            "s",
+            vec![],
+        );
+        let got = carry_from(new, &old);
+        assert_eq!(got["id"], "gen_old");
+        let ids: Vec<&str> = got["flashcards"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap()).collect();
+        assert_eq!(&ids[..2], ["fc_b", "fc_a"]);
+        assert!(ids[2].starts_with("fc_") && ids[2] != "fc_a" && ids[2] != "fc_b");
+        assert!(got["flashcards"].as_array().unwrap().iter().all(|c| c["topicId"] == "gen_old"));
+        assert_eq!(got["quizQuestions"][0]["topicId"], "gen_old");
+        assert_eq!(got["concepts"][0]["id"], "gen_old_c0");
+        assert_eq!(got["conceptLinks"][0]["from"], "gen_old_c1");
+        assert_eq!(got["conceptLinks"][0]["to"], "gen_old_c0");
+    }
+
+    #[test]
+    fn lesson_hint_lists_old_cards_only_on_a_rebuild() {
+        assert_eq!(detail_hint_rebuild("T", "S", &[], &[]), detail_hint("T", "S", &[]));
+        let h = detail_hint_rebuild("T", "S", &[], &["What is a coup?".into(), "".into()]);
+        assert!(h.starts_with(&detail_hint("T", "S", &[])));
+        assert!(h.contains("\n- What is a coup?\n"));
+    }
+
+    #[test]
+    fn outline_hint_lists_old_titles_only_when_there_are_some() {
+        assert_eq!(outline_hint(&[]), OUTLINE_HINT);
+        let h = outline_hint(&["TCP basics".into(), " ".into()]);
+        assert!(h.starts_with(OUTLINE_HINT));
+        assert!(h.contains("\n- TCP basics\n"));
+        assert!(!h.contains("- \n"));
     }
 
     #[test]

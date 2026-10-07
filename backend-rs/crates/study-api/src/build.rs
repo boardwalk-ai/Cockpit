@@ -11,14 +11,15 @@
 //! * **A failed rebuild leaves the studio as it was**: the outline is made
 //!   before anything is cleared, the old topics are kept on the build row
 //!   (`previous`) and put back if no lesson could be written.
-//! * **Ids carry over** (rebuilt lessons and cards keep their old ids, so
+//! * **Ids carry over**: the outline is shown the old titles, then lessons
+//!   and cards are matched to the old ones by similarity (they keep their old ids, so
 //!   mastery and card schedules stay) — also across a resume.
 //! * **Metered**: every call is in `llm_usage` with this build's id, so a
 //!   build's exact cost is one query.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
@@ -440,11 +441,23 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
         .map(|rows| rows.iter().map(|r| (r.get("id"), r.get("filename"))).collect())
         .unwrap_or_default();
 
-    // Outline first: if it fails the studio is untouched.
+    // The topics before this build (a resumed build kept them on its row).
+    let previous: Vec<Value> = match stored_previous {
+        Some(Value::Array(a)) => a,
+        _ => sqlx::query_scalar("SELECT payload FROM generated_topics WHERE studio_id = $1 ORDER BY ordinal")
+            .bind(studio)
+            .fetch_all(&state.cockpit)
+            .await
+            .map_err(|e| e.to_string())?,
+    };
+    let old_titles: Vec<String> = previous.iter().map(|p| gen::text(p.get("title"))).collect();
+
+    // Outline first: if it fails the studio is untouched. It sees the old
+    // titles, so lessons that still fit keep their names (and progress).
     set(state, build, "generating", "Building studio…", 0, 0).await;
     let material = gen::material(&chunks, gen::CONTEXT_CHAR_BUDGET);
     let reply = ctx
-        .ask("build_outline", gen::OUTLINE_SYSTEM, gen::OUTLINE_HINT, &material, gen::OUTLINE_MAX_TOKENS)
+        .ask("build_outline", gen::OUTLINE_SYSTEM, &gen::outline_hint(&old_titles), &material, gen::OUTLINE_MAX_TOKENS)
         .await
         .map_err(|e| {
             tracing::warn!(%build, "outline: {e}");
@@ -455,17 +468,13 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
         return Err("Couldn't plan the lessons. Try again.".into());
     }
     let total = outline.len() as i32;
+    // Which old topic each new lesson takes over (its id, so its mastery and
+    // card schedules stay).
+    let new_titles: Vec<String> = outline.iter().map(|l| l.title.clone()).collect();
+    let takes_over = Arc::new(gen::assign(&new_titles, &old_titles, true));
 
-    // Keep the old topics on the build (unless a resumed build already
-    // did), then clear the studio for the live fill — in one transaction.
-    let previous: Vec<Value> = match stored_previous {
-        Some(Value::Array(a)) => a,
-        _ => sqlx::query_scalar("SELECT payload FROM generated_topics WHERE studio_id = $1 ORDER BY ordinal")
-            .bind(studio)
-            .fetch_all(&state.cockpit)
-            .await
-            .map_err(|e| e.to_string())?,
-    };
+    // Keep the old topics on the build, then clear the studio for the live
+    // fill — in one transaction.
     {
         let mut tx = state.cockpit.begin().await.map_err(|e| e.to_string())?;
         sqlx::query(
@@ -486,8 +495,7 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
         tx.commit().await.map_err(|e| e.to_string())?;
     }
 
-    let keep = Arc::new(gen::keep_map(&previous));
-    let used = Arc::new(Mutex::new(HashSet::<String>::new()));
+    let previous = Arc::new(previous);
     let outline = Arc::new(outline);
     let names = Arc::new(names);
     let material_fallback: Arc<String> = Arc::new(gen::material(&chunks, gen::LESSON_FALLBACK_CHARS));
@@ -495,18 +503,30 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
 
     let written = futures::stream::iter(0..outline.len())
         .map(|i| {
-            let (ctx, outline, names, keep, used, fallback, studio_str) =
-                (ctx.clone(), outline.clone(), names.clone(), keep.clone(), used.clone(), material_fallback.clone(), studio_str.clone());
+            let (ctx, outline, names, previous, takes_over, fallback, studio_str) = (
+                ctx.clone(),
+                outline.clone(),
+                names.clone(),
+                previous.clone(),
+                takes_over.clone(),
+                material_fallback.clone(),
+                studio_str.clone(),
+            );
             async move {
                 let lesson = &outline[i];
                 let others: Vec<String> =
                     outline.iter().filter(|o| o.title != lesson.title).map(|o| o.title.clone()).collect();
-                let topic = lesson_topic(&ctx, lesson, &others, &names, &fallback, &studio_str).await?;
-                // The old id, unless another new lesson already took it.
-                let tid = topic.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
-                let carried = gen::carry_ids(topic.clone(), &keep);
-                let carried_id = carried.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
-                let topic = if carried_id != tid && used.lock().unwrap().insert(carried_id) { carried } else { topic };
+                let old = takes_over[i].map(|j| &previous[j]);
+                let old_fronts: Vec<String> = old
+                    .and_then(|o| o.get("flashcards"))
+                    .and_then(Value::as_array)
+                    .map(|cards| cards.iter().map(|c| gen::text(c.get("front"))).collect())
+                    .unwrap_or_default();
+                let topic = lesson_topic(&ctx, lesson, &others, &old_fronts, &names, &fallback, &studio_str).await?;
+                let topic = match old {
+                    Some(o) => gen::carry_from(topic, o),
+                    None => topic,
+                };
                 save_lesson(&ctx, i as i32, &topic, total).await.ok()
             }
         })
@@ -516,7 +536,7 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
         .await;
 
     if written == 0 {
-        restore(state, studio, user, &previous).await;
+        restore(state, studio, user, previous.as_slice()).await;
         return Err("Couldn't write the lessons — your studio wasn't changed. Try again.".into());
     }
 
@@ -542,11 +562,13 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
 }
 
 /// The material for one lesson: the passages retrieved for its title and
-/// scope (all of them as citations), else the first 24k characters.
+/// scope (all of them as citations), else the first 24k characters. On a
+/// rebuild the lesson's old card fronts go along, to be kept.
 async fn lesson_topic(
     ctx: &Ctx,
     lesson: &Lesson,
     others: &[String],
+    old_fronts: &[String],
     names: &HashMap<Uuid, String>,
     fallback: &str,
     studio_str: &str,
@@ -562,7 +584,7 @@ async fn lesson_topic(
         .ask(
             "build_lesson",
             gen::DETAIL_SYSTEM,
-            &gen::detail_hint(&lesson.title, &lesson.scope, others),
+            &gen::detail_hint_rebuild(&lesson.title, &lesson.scope, others, old_fronts),
             context,
             gen::DETAIL_MAX_TOKENS,
         )

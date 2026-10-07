@@ -284,13 +284,15 @@ replace the Postgres one without touching the API.
 - [ ] Cap Quiz me at ~10 questions
 - [ ] Study plan reminders (notifications)
 - [ ] One name per concept across a studio (merge near-duplicates)
-- [ ] **Rebuild keeps too few ids** — ids carry over only when a lesson's
-  title comes back exactly (normalized). Two Rust builds of the same files:
-  3 of 8 lessons and 8 of 50 cards kept their ids ("Junta Structural
-  Vulnerabilities" → "Junta Status"), so the rest lose mastery and card
-  schedules on "Update studio". Fix: match by title similarity (word
-  overlap) and card front similarity, or pass the old titles into the
-  outline prompt ("reuse these titles where they still fit").
+- [x] **Rebuild keeps too few ids** _(fixed in Rust R5, 2026-10-07)_ — ids carried over
+  only on an exact title (two builds of the same files: 3/8 lessons, 8/50
+  cards kept). Now the outline is shown the old titles ("reuse where it
+  still fits"), lessons are matched one-to-one by word overlap, and each
+  matched lesson is shown its old card fronts ("keep the ones still right,
+  word for word"); cards matched by word overlap. Measured after the first
+  two parts: **8/8 and 7/7 lessons kept**, cards still 14/53 — the card-front
+  part is unit-tested but not yet run against the model (OpenRouter credit
+  ran out mid-test, 402). Re-run  after the top-up.
 - [ ] Burmese font in the PDF export
 - [ ] Desktop pages still on the old design (several show mock data:
   Analytics, Ask AI, Manage, Welcome back, Study plan)
