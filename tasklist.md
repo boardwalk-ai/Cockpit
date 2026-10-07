@@ -72,7 +72,7 @@ lesson retrieves its top 8 chunks; on failure it gets all of the material.
 - [x] **F2. Re-embed the backlog** _(done 2026-10-07: 54 re-embedded, 62/62 real; retrieval spot-check OK)_ — add `embedded boolean` to `chunks`
   (placeholders = false); one-off job embeds them in batches of 32 and flips
   the flag. Recheck: 62/62 real.
-- [ ] **F3. Ready only when embedded** — worker sets the document `embedding`
+- [ ] **F3. Ready only when embedded** _(in Rust R3)_ — worker sets the document `embedding`
   → `ready` after real vectors land; retry with backoff (3 tries), then
   `failed` with a reason the app can show. No placeholders written.
 - [ ] **F4. Fail fast and say so** — 3 s timeout on query embedding; on failure
@@ -80,10 +80,10 @@ lesson retrieves its top 8 chunks; on failure it gets all of the material.
   didn't search the notes. Never swallow silently.
 - [ ] **F5. Cap lesson context** — when retrieval fails, pick chunks by title
   words (lexical) and cap at ~16k chars per lesson, not the whole material.
-- [ ] **F6. Pages and headings** — extract per page; split on headings /
+- [ ] **F6. Pages and headings** _(in Rust R3; `chunks.page`/`heading` columns added by the Rust worker)_ — extract per page; split on headings /
   paragraphs, 300–500 tokens with ~50 overlap; store `page` and `heading` on
   each chunk; send them with citations ("Lecture 5.pdf · p.12").
-- [ ] **F7. Burmese** — OCR languages `en` + `my`; `tsv` with the `simple`
+- [ ] **F7. Burmese** _(in Rust R3: OCR en+my, `tsv` english+simple)_ — OCR languages `en` + `my`; `tsv` with the `simple`
   config (language-neutral) alongside `english`.
 - [ ] **F8. Lesson Ask AI sends the topic** (`ApiAiService.teach` → `topic`).
 - [ ] **F9. Measure it** — a 30-question set from a real studio (question →
@@ -117,7 +117,7 @@ sentence-transformers sidecar.
 | **R0 Freeze the contract** _(started: studio DTOs compared field by field against Python on all 14 production studios — identical)_ | List every endpoint + SSE event shape; generate OpenAPI (`utoipa`); record golden responses from today's API | Golden tests run against Python |
 | **R1 Skeleton + reads** _(in progress: `crates/study-api` — `/health`, `/ready`, `/me`, `/studios`, `/studios/{id}` incl. source files; SM-2 port; 5 unit tests; built on the server, run once in loopback shadow mode, stopped)_ | Crate, config, auth, DB pools, `/health` `/ready`; `/me`, `/studios`, `/studios/{id}` (mastery + SM-2 overlays) | Golden read tests pass on Rust |
 | **R2 Progress writes** _(done in Rust 2026-10-07: quiz, card review, flashcard-review, mark-reviewed once/20 h, rename, activity; same results as Python on a throwaway copy (`deploy/study-api/parity.sh`); retries with the same `event_id` change nothing — **the app still has to send `event_id`**)_ | quiz-result, card review (SM-2 port), mark-reviewed (once/day), rename, delete, activity, `study_events` — all with `event_id` idempotency (A2, A3) | Retries change nothing |
-| **R3 Ingestion** | Upload (Idempotency-Key, 50 MB cap) → Postgres job queue → extract per page → heading-aware chunks → TEI → `ready` only when embedded; re-embed job; metrics (F1–F7) | 100% real vectors; recall@5 at target |
+| **R3 Ingestion** _(done in Rust 2026-10-07, not live: upload (50 MB cap, safe names) → `ingest_jobs` queue with `SKIP LOCKED` workers (no Redis) → PDF text page by page, Hirara OCR en+my for scans/office/images → heading/paragraph passages ~1,600 chars with page + heading → bge-m3 with retries → ready only when embedded; e2e on a copy: 2.5 MB PDF → 32 passages, all with pages, real vectors, 52 s (`deploy/study-api/ingest_e2e.sh`). Still to do: Idempotency-Key (A4), re-embed job, metrics)_ | Upload (Idempotency-Key, 50 MB cap) → Postgres job queue → extract per page → heading-aware chunks → TEI → `ready` only when embedded; re-embed job; metrics (F1–F7) | 100% real vectors; recall@5 at target |
 | **R4 Retrieval + AI** | Hybrid search (HNSW + `simple`/`english` tsv, RRF); `/ask` SSE with history + topic; OpenRouter client (`max_tokens`, `user`); OctoCredits check + debit; per-user rate limits (A5, A6) | Ask AI cites pages; credits move |
 | **R5 Build pipeline** | Outline / lesson / scenarios / concepts / connections ported with the same prompts; one build per studio (A1); ids kept on rebuild; capped context | Same studio from the same files |
 | **R6 Notifications** | Build finished, cards due, plan reminders over FCM (outbox) | Push arrives on the phone |

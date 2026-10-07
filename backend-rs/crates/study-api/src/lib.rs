@@ -6,16 +6,23 @@
 //! writes (quiz, cards, "Got it", rename, activity) — idempotent with the
 //! app's `event_id`. Against the cockpit + vector databases in octo-pg.
 
+pub mod chunk;
 pub mod config;
+pub mod documents;
 pub mod dto;
+pub mod extract;
 pub mod identity;
+pub mod ingest;
 pub mod progress;
 pub mod schedule;
 pub mod sse;
+pub mod storage;
 pub mod studios;
 
+use std::sync::Arc;
+
 use axum::{
-    extract::State,
+    extract::{DefaultBodyLimit, State},
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -23,6 +30,7 @@ use axum::{
 use octo_common::{identity::UserIdCache, FirebaseAuth, HasFirebase};
 use serde_json::json;
 use sqlx::PgPool;
+use tokio::sync::Notify;
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
@@ -37,6 +45,10 @@ pub struct AppState {
     pub firebase: FirebaseAuth,
     pub user_ids: UserIdCache,
     pub http: reqwest::Client,
+    /// Uploaded files (None if MinIO isn't configured).
+    pub store: Option<storage::Store>,
+    /// Wakes an ingest worker when a job is queued.
+    pub jobs: Arc<Notify>,
 }
 
 impl HasFirebase for AppState {
@@ -54,6 +66,7 @@ impl AppState {
             None => None,
         };
         let http = reqwest::Client::new();
+        let config_store = config.clone();
         Ok(Self {
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             config,
@@ -61,6 +74,8 @@ impl AppState {
             vector,
             shared,
             user_ids: UserIdCache::default(),
+            store: storage::Store::new(&config_store).ok(),
+            jobs: Arc::new(Notify::new()),
             http,
         })
     }
@@ -110,6 +125,13 @@ pub fn app(state: AppState) -> Router {
         .route("/studios/:studio_id/topics/:topic_id/flashcard-review", post(progress::flashcard_review))
         .route("/studios/:studio_id/topics/:topic_id/mark-reviewed", post(progress::mark_reviewed))
         .route("/studios/:studio_id/flashcards/:card_id/review", post(progress::card_review))
+        .route(
+            "/studios/:studio_id/documents",
+            get(documents::list)
+                .post(documents::upload)
+                .layer(DefaultBodyLimit::max((state.config.max_upload_mb + 1) * 1024 * 1024)),
+        )
+        .route("/studios/:studio_id/build/:job_id", get(documents::progress))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

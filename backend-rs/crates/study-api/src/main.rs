@@ -15,6 +15,11 @@ async fn main() {
     }
     let (bind, port) = (config.bind.clone(), config.port);
     let state = AppState::connect(config).await.expect("connect databases");
+    if state.config.ingest_worker {
+        study_api::ingest::ensure_schema(&state).await.expect("chunks schema");
+        study_api::ingest::spawn(&state);
+        tracing::info!("ingest workers: {}", state.config.ingest_workers);
+    }
     let listener = TcpListener::bind((bind.as_str(), port)).await.expect("bind");
     tracing::info!("study-api listening on http://{bind}:{port}");
     axum::serve(listener, app(state))
