@@ -27,6 +27,9 @@ pub struct Config {
     pub ingest_worker: bool,
     pub ingest_workers: usize,
     pub max_upload_mb: usize,
+    /// Create/alter this service's tables at startup (chunks.page/heading,
+    /// llm_usage). On at the cutover; off while only shadowing.
+    pub migrate: bool,
 }
 
 fn var(name: &str) -> Option<String> {
@@ -57,6 +60,7 @@ impl Config {
             ingest_worker: var("INGEST_WORKER").is_some_and(|v| v == "1" || v == "true"),
             ingest_workers: var("INGEST_WORKERS").and_then(|v| v.parse().ok()).unwrap_or(2),
             max_upload_mb: var("MAX_UPLOAD_MB").and_then(|v| v.parse().ok()).unwrap_or(50),
+            migrate: var("MIGRATE").is_some_and(|v| v == "1" || v == "true"),
         }
     }
 }

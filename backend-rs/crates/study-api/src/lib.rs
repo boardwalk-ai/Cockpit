@@ -6,6 +6,7 @@
 //! writes (quiz, cards, "Got it", rename, activity) — idempotent with the
 //! app's `event_id`. Against the cockpit + vector databases in octo-pg.
 
+pub mod ask;
 pub mod chunk;
 pub mod config;
 pub mod documents;
@@ -13,8 +14,10 @@ pub mod dto;
 pub mod extract;
 pub mod identity;
 pub mod ingest;
+pub mod llm;
 pub mod progress;
 pub mod schedule;
+pub mod search;
 pub mod sse;
 pub mod storage;
 pub mod studios;
@@ -49,6 +52,8 @@ pub struct AppState {
     pub store: Option<storage::Store>,
     /// Wakes an ingest worker when a job is queued.
     pub jobs: Arc<Notify>,
+    /// Ask AI questions per user per 10 minutes.
+    pub ask_limit: Arc<ask::RateLimit>,
 }
 
 impl HasFirebase for AppState {
@@ -76,6 +81,7 @@ impl AppState {
             user_ids: UserIdCache::default(),
             store: storage::Store::new(&config_store).ok(),
             jobs: Arc::new(Notify::new()),
+            ask_limit: Arc::new(ask::RateLimit::default()),
             http,
         })
     }
@@ -117,6 +123,7 @@ pub fn app(state: AppState) -> Router {
         .route("/health", get(health))
         .route("/ready", get(ready))
         .route("/me", get(studios::me))
+        .route("/ask", get(ask::ask))
         .route("/studios", get(studios::list))
         .route("/studios/:studio_id", get(studios::get))
         .route("/studios/:studio_id/rename", post(progress::rename))

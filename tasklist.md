@@ -25,11 +25,11 @@ What's left is idempotency and AI-cost abuse. Suggested first: A1, A5, A6.
   makes a second studio or a duplicate document (duplicate chunks in RAG).
   Fix: `Idempotency-Key` header from the app (per studio, per picked file),
   stored on the row; same key → return the existing one. _(DB column)_
-- [ ] **A5. Protect AI credit on `/ask`** — no studio-owner check, no length cap on
+- [ ] **A5. Protect AI credit on `/ask`** _(in Rust R4)_ — no studio-owner check, no length cap on
   `q`, no rate limit, no credit debit: any signed-in user can drain OpenRouter.
   Fix: owned-studio check, `q` ≤ 2000 chars, per-user rate limit
   (e.g. 30 / 10 min); same limit on `/connections` and `/topics/{id}/concepts`.
-- [ ] **A6. Tag OpenRouter calls with the user** — pass `user: <cockpit user id>`
+- [ ] **A6. Tag OpenRouter calls with the user** _(in Rust R4 for Ask AI)_ — pass `user: <cockpit user id>`
   on every LLM call so usage can be traced per user.
 - [ ] **A7. Small ones** — auth on `GET /studios/{id}/topics/{tid}` (seed demos
   only today); cap upload size (e.g. 50 MB per file).
@@ -118,7 +118,7 @@ sentence-transformers sidecar.
 | **R1 Skeleton + reads** _(in progress: `crates/study-api` — `/health`, `/ready`, `/me`, `/studios`, `/studios/{id}` incl. source files; SM-2 port; 5 unit tests; built on the server, run once in loopback shadow mode, stopped)_ | Crate, config, auth, DB pools, `/health` `/ready`; `/me`, `/studios`, `/studios/{id}` (mastery + SM-2 overlays) | Golden read tests pass on Rust |
 | **R2 Progress writes** _(done in Rust 2026-10-07: quiz, card review, flashcard-review, mark-reviewed once/20 h, rename, activity; same results as Python on a throwaway copy (`deploy/study-api/parity.sh`); retries with the same `event_id` change nothing — **the app still has to send `event_id`**)_ | quiz-result, card review (SM-2 port), mark-reviewed (once/day), rename, delete, activity, `study_events` — all with `event_id` idempotency (A2, A3) | Retries change nothing |
 | **R3 Ingestion** _(done in Rust 2026-10-07, not live: upload (50 MB cap, safe names) → `ingest_jobs` queue with `SKIP LOCKED` workers (no Redis) → PDF text page by page, Hirara OCR en+my for scans/office/images → heading/paragraph passages ~1,600 chars with page + heading → bge-m3 with retries → ready only when embedded; e2e on a copy: 2.5 MB PDF → 32 passages, all with pages, real vectors, 52 s (`deploy/study-api/ingest_e2e.sh`). Still to do: Idempotency-Key (A4), re-embed job, metrics)_ | Upload (Idempotency-Key, 50 MB cap) → Postgres job queue → extract per page → heading-aware chunks → TEI → `ready` only when embedded; re-embed job; metrics (F1–F7) | 100% real vectors; recall@5 at target |
-| **R4 Retrieval + AI** | Hybrid search (HNSW + `simple`/`english` tsv, RRF); `/ask` SSE with history + topic; OpenRouter client (`max_tokens`, `user`); OctoCredits check + debit; per-user rate limits (A5, A6) | Ask AI cites pages; credits move |
+| **R4 Retrieval + AI** _(done in Rust 2026-10-07, not live: in-process hybrid search (same top 5 as Go on a test question), `/ask` SSE with history + topic + pages in citations, owner check, 2,000-char cap, 30 per 10 min, `max_tokens`, `user`, `usage` → `llm_usage`; embedder down → keyword search + `retrieval: degraded`. **Credit debit not wired yet** — waits for P3 prices)_ | Hybrid search (HNSW + `simple`/`english` tsv, RRF); `/ask` SSE with history + topic; OpenRouter client (`max_tokens`, `user`); OctoCredits check + debit; per-user rate limits (A5, A6) | Ask AI cites pages; credits move |
 | **R5 Build pipeline** | Outline / lesson / scenarios / concepts / connections ported with the same prompts; one build per studio (A1); ids kept on rebuild; capped context | Same studio from the same files |
 | **R6 Notifications** | Build finished, cards due, plan reminders over FCM (outbox) | Push arrives on the phone |
 | **R7 Cut over** | Gateway routes path by path to Rust (reads first), compares responses; then all traffic; Python + Go kept 2 weeks for rollback, then removed | `cockpit-api` / worker / gateway off |
@@ -138,7 +138,7 @@ $5/month. "Round $1.40 up to $2" per action would charge an Ask AI turn
 (~1.5¢) 100 credits. A 10% markup doesn't cover store fees (15–30%),
 payments, servers and free users.
 
-- [ ] **P1. Meter every AI call** — request OpenRouter `usage` (tokens + exact
+- [ ] **P1. Meter every AI call** _(Rust R4: Ask AI metered. First real number on 2026-10-07: one answer = 8,230 prompt + 252 completion tokens = **$0.0285** with today's ~3,100-char chunks; the R3 passages (~950 chars) should cut the prompt by about two thirds)_ — request OpenRouter `usage` (tokens + exact
   USD cost) and send `user`; store in `llm_usage` (user, studio, feature,
   model, tokens in/out, cost_usd, request id). Pairs with A6.
 - [ ] **P2. Benchmark** — build ~20 studios of different sizes, run each feature;

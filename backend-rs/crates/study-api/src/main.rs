@@ -15,8 +15,11 @@ async fn main() {
     }
     let (bind, port) = (config.bind.clone(), config.port);
     let state = AppState::connect(config).await.expect("connect databases");
-    if state.config.ingest_worker {
+    if state.config.migrate || state.config.ingest_worker {
         study_api::ingest::ensure_schema(&state).await.expect("chunks schema");
+        study_api::llm::ensure_schema(&state.cockpit).await.expect("llm_usage schema");
+    }
+    if state.config.ingest_worker {
         study_api::ingest::spawn(&state);
         tracing::info!("ingest workers: {}", state.config.ingest_workers);
     }
