@@ -17,19 +17,26 @@ const _green = Color(0xFF30A46C);
 /// The phone's study plan: for an exam or at your own pace, so many
 /// minutes on chosen days. Today is a checklist (lesson, cards, quiz) with
 /// a ring of minutes done; below, the days coming up to the exam or to
-/// every topic at 80%. Kept on the phone, per studio.
+/// every topic at 80%. Kept on the phone, per studio; [onSettings] hears
+/// it (on open, and when the user changes it) so the server can remind.
 class StudyPlanMobile extends StatefulWidget {
   const StudyPlanMobile({
     super.key,
     required this.studio,
     required this.onBack,
     required this.onStep,
+    this.onSettings,
     this.now,
   });
 
   final Studio studio;
   final VoidCallback onBack;
   final void Function(PlanStep step) onStep;
+
+  /// The plan's settings; [chosen] when the user just set them (a good
+  /// moment to ask for notifications), not when the page loaded them.
+  final void Function(PlanSettings settings, {required bool chosen})?
+  onSettings;
   final DateTime? now;
 
   @override
@@ -81,6 +88,7 @@ class _StudyPlanMobileState extends State<StudyPlanMobile> {
       _done = {};
     }
     if (_settings != null) {
+      widget.onSettings?.call(_settings!, chosen: false);
       _rebuild();
     } else {
       setState(() {});
@@ -100,7 +108,7 @@ class _StudyPlanMobileState extends State<StudyPlanMobile> {
       final raw = jsonDecode(_prefs?.getString('study.plan.today.$_id') ?? '');
       if (raw is Map &&
           raw['date'] == _today &&
-          raw['set'] == settings.encode()) {
+          raw['set'] == settings.planKey()) {
         fixed = [
           for (final j in raw['steps'] as List) ?PlanStep.fromJson(j, topics),
         ];
@@ -119,7 +127,7 @@ class _StudyPlanMobileState extends State<StudyPlanMobile> {
         'study.plan.today.$_id',
         jsonEncode({
           'date': _today,
-          'set': settings.encode(),
+          'set': settings.planKey(),
           'steps': [for (final s in plan.today!.steps) s.toJson()],
         }),
       );
@@ -196,6 +204,7 @@ class _StudyPlanMobileState extends State<StudyPlanMobile> {
     if (picked == null || !mounted) return;
     _settings = picked;
     _save('study.plan.$_id', picked.encode());
+    widget.onSettings?.call(picked, chosen: true);
     _rebuild();
   }
 
@@ -232,7 +241,7 @@ class _StudyPlanMobileState extends State<StudyPlanMobile> {
                 children: [
                   Positioned.fill(
                     child: _PlanView(
-                      key: ValueKey(_settings!.encode()),
+                      key: ValueKey(_settings!.planKey()),
                       plan: plan,
                       now: _now,
                       top: top,
@@ -1145,6 +1154,43 @@ class _SetupSheetState extends State<_SetupSheet> {
                       ),
                   ],
                 ),
+                section('REMIND ME'),
+                Row(
+                  children: [
+                    for (final (i, m) in [
+                      null,
+                      ...PlanSettings.remindChoices,
+                    ].indexed) ...[
+                      if (i > 0) const SizedBox(width: 6),
+                      Expanded(
+                        child: chip(
+                          _remindLabel(m),
+                          _s.remind == m,
+                          () => setState(
+                            () => _s = m == null
+                                ? _s.copyWith(remindOff: true)
+                                : _s.copyWith(remind: m),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  alignment: Alignment.topCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      _s.remind == null
+                          ? 'No reminders. Your plan still waits here.'
+                          : 'A nudge at ${_remindLabel(_s.remind)} on study days you haven’t studied yet.',
+                      key: ValueKey(_s.remind),
+                      style: t.small.copyWith(fontSize: 11.5),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 22),
                 _Button(
                   label: 'Make my plan',
@@ -1158,4 +1204,14 @@ class _SetupSheetState extends State<_SetupSheet> {
       ),
     );
   }
+}
+
+/// "Off", "7 AM", "Noon", "7 PM" for a minute of the day.
+String _remindLabel(int? minute) {
+  if (minute == null) return 'Off';
+  if (minute == 12 * 60) return 'Noon';
+  final h = minute ~/ 60, m = minute % 60;
+  final h12 = h % 12 == 0 ? 12 : h % 12;
+  final mm = m == 0 ? '' : ':${m.toString().padLeft(2, '0')}';
+  return '$h12$mm ${h < 12 ? 'AM' : 'PM'}';
 }

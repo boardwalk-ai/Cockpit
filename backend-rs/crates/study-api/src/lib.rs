@@ -5,7 +5,7 @@
 //! So far: R1 reads (health, readiness, `/me`, studios), R2 progress writes
 //! (quiz, cards, "Got it", rename, activity — idempotent with the app's
 //! `event_id`), R3 ingestion, R4 search + Ask AI, R5 studio builds (and
-//! create / delete studio). Against the cockpit + vector databases in octo-pg.
+//! create / delete studio), R6 notifications. Against the cockpit + vector databases in octo-pg.
 
 pub mod ask;
 pub mod build;
@@ -18,6 +18,7 @@ pub mod gen;
 pub mod identity;
 pub mod ingest;
 pub mod llm;
+pub mod notify;
 pub mod progress;
 pub mod schedule;
 pub mod search;
@@ -33,6 +34,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use octo_common::push::{FcmPusher, NoPusher, Pusher};
 use octo_common::{identity::UserIdCache, FirebaseAuth, HasFirebase};
 use serde_json::json;
 use sqlx::PgPool;
@@ -57,6 +59,10 @@ pub struct AppState {
     pub jobs: Arc<Notify>,
     /// Wakes a build worker when a build is queued.
     pub builds: Arc<Notify>,
+    /// Push notifications (does nothing without an FCM key file).
+    pub pusher: Arc<dyn Pusher>,
+    /// Wakes the notification sender when one is queued.
+    pub notices: Arc<Notify>,
     /// Ask AI questions per user per 10 minutes.
     pub ask_limit: Arc<ask::RateLimit>,
 }
@@ -77,6 +83,16 @@ impl AppState {
         };
         let http = reqwest::Client::new();
         let config_store = config.clone();
+        let pusher: Arc<dyn Pusher> = match &config.fcm_service_account_file {
+            Some(path) => match FcmPusher::from_file(http.clone(), path, notify::CHANNEL) {
+                Ok(p) => Arc::new(p),
+                Err(e) => {
+                    tracing::warn!("push off: {e}");
+                    Arc::new(NoPusher)
+                }
+            },
+            None => Arc::new(NoPusher),
+        };
         Ok(Self {
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             config,
@@ -87,6 +103,8 @@ impl AppState {
             store: storage::Store::new(&config_store).ok(),
             jobs: Arc::new(Notify::new()),
             builds: Arc::new(Notify::new()),
+            pusher,
+            notices: Arc::new(Notify::new()),
             ask_limit: Arc::new(ask::RateLimit::default()),
             http,
         })
@@ -135,6 +153,9 @@ pub fn app(state: AppState) -> Router {
         .route("/studios/:studio_id/build", post(build::start))
         .route("/studios/:studio_id/build-status/:build_id", get(build::status))
         .route("/studios/:studio_id/connections", post(build::connections))
+        .route("/studios/:studio_id/plan", post(notify::put_plan))
+        .route("/devices", post(notify::put_device))
+        .route("/devices/:device_id", axum::routing::delete(notify::remove_device))
         .route("/studios/:studio_id/topics/:topic_id/concepts", post(build::concepts))
         .route("/studios/:studio_id/rename", post(progress::rename))
         .route("/studios/:studio_id/activity", get(progress::activity))

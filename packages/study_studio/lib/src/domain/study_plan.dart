@@ -24,40 +24,70 @@ String dayKey(DateTime t) =>
 enum PlanMode { exam, pace }
 
 /// How the user wants to study: for an exam on a date, or at their own
-/// pace; how many minutes a day; on which weekdays (1 = Monday).
+/// pace; how many minutes a day; on which weekdays (1 = Monday); and when
+/// to be reminded on those days (minute of the day, null = no reminder).
 class PlanSettings {
   const PlanSettings({
     this.mode = PlanMode.pace,
     this.exam,
     this.minutes = 30,
     this.days = const {1, 2, 3, 4, 5},
+    this.remind = defaultRemind,
   });
 
   final PlanMode mode;
   final DateTime? exam;
   final int minutes;
   final Set<int> days;
+  final int? remind;
 
   static const minuteChoices = [15, 30, 45, 60];
+
+  /// 7 PM.
+  static const defaultRemind = 19 * 60;
+
+  /// Reminder times offered: 7 AM, noon, 7 PM, 9 PM.
+  static const remindChoices = [7 * 60, 12 * 60, 19 * 60, 21 * 60];
 
   PlanSettings copyWith({
     PlanMode? mode,
     DateTime? exam,
     int? minutes,
     Set<int>? days,
+    int? remind,
+    bool remindOff = false,
   }) => PlanSettings(
     mode: mode ?? this.mode,
     exam: exam ?? this.exam,
     minutes: minutes ?? this.minutes,
     days: days ?? this.days,
+    remind: remindOff ? null : (remind ?? this.remind),
   );
 
-  String encode() => jsonEncode({
+  /// The plan itself, without the reminder: what today's steps are kept
+  /// against (changing the reminder doesn't re-plan the day).
+  String planKey() => jsonEncode({
     'mode': mode.name,
     if (exam != null) 'exam': dayKey(exam!),
     'minutes': minutes,
     'days': days.toList()..sort(),
   });
+
+  String encode() => jsonEncode({
+    ...jsonDecode(planKey()) as Map<String, dynamic>,
+    'remind': remind,
+  });
+
+  /// For the server, which sends the reminders. [tzMinutes] is the phone's
+  /// offset from UTC.
+  Map<String, dynamic> toApi(int tzMinutes) => {
+    'mode': mode.name,
+    if (exam != null) 'exam': dayKey(exam!),
+    'minutes': minutes,
+    'days': days.toList()..sort(),
+    'remind': remind,
+    'tzMinutes': tzMinutes,
+  };
 
   static PlanSettings? decode(String? raw) {
     if (raw == null) return null;
@@ -75,6 +105,13 @@ class PlanSettings {
         exam: exam,
         minutes: (j['minutes'] as num?)?.toInt().clamp(5, 240) ?? 30,
         days: days.isEmpty ? const {1, 2, 3, 4, 5} : days,
+        // Plans saved before reminders existed get the usual 7 PM.
+        remind: j.containsKey('remind')
+            ? switch (j['remind']) {
+                final num m when m >= 0 && m < 1440 => m.toInt(),
+                _ => null,
+              }
+            : defaultRemind,
       );
     } on Object {
       return null;

@@ -109,7 +109,7 @@ impl AppState {
         }
 
         let pusher: Arc<dyn Pusher> = match &config.fcm_service_account_file {
-            Some(path) => Arc::new(FcmPusher::from_file(http.clone(), path)?),
+            Some(path) => Arc::new(FcmPusher::from_file(http.clone(), path, push::ANDROID_CHANNEL)?),
             None => {
                 tracing::warn!("FCM_SERVICE_ACCOUNT_FILE not set — no push notifications");
                 Arc::new(NoPusher)

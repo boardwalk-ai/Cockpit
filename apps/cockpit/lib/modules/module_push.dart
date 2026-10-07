@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghostwriter/ghostwriter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:study_studio/study_studio.dart' show StudyPush;
 
 /// GhostWriter's view of the app's push notifications: Firebase Cloud
 /// Messaging on Android and iOS. Null on the web, on desktop, and on a build
@@ -20,7 +21,22 @@ final ghostWriterPushProvider = Provider<GwPush?>((ref) {
   };
 });
 
-class FirebaseGwPush implements GwPush {
+/// The same Firebase messaging, for Study Studio (one install id, one token).
+final studyPushImplProvider = Provider<StudyPush?>(
+  (ref) => switch (ref.watch(ghostWriterPushProvider)) {
+    final StudyPush push => push,
+    _ => null,
+  },
+);
+
+/// Where a tapped notification asks to go (`data.link`, e.g. `/study/<id>`).
+Stream<String> notificationLinks(GwPush? push) => push == null
+    ? const Stream.empty()
+    : push.opened
+          .map((data) => data['link'] ?? '')
+          .where((link) => link.startsWith('/study/'));
+
+class FirebaseGwPush implements GwPush, StudyPush {
   FirebaseGwPush(this.platform);
 
   static const _deviceIdKey = 'ghostwriter.deviceId';
@@ -59,15 +75,20 @@ class FirebaseGwPush implements GwPush {
   @override
   Stream<String> get tokenRefreshes => _messaging.onTokenRefresh;
 
-  @override
-  late final Stream<Map<String, String>> opened = _opened();
+  /// The notification that launched the app, if one did (asked once).
+  late final Future<RemoteMessage?> _launch = _messaging.getInitialMessage();
 
-  Stream<Map<String, String>> _opened() async* {
-    // The notification that launched the app, if one did.
-    final launch = await _messaging.getInitialMessage();
-    if (launch != null) yield _data(launch);
-    yield* FirebaseMessaging.onMessageOpenedApp.map(_data);
-  }
+  /// Every listener (GhostWriter, the app's links) gets the launch
+  /// notification and each one tapped after; each takes its own.
+  @override
+  late final Stream<Map<String, String>> opened = Stream.multi((out) async {
+    final launch = await _launch;
+    if (launch != null) out.add(_data(launch));
+    final taps = FirebaseMessaging.onMessageOpenedApp
+        .map(_data)
+        .listen(out.add, onError: out.addError);
+    out.onCancel = taps.cancel;
+  });
 
   static Map<String, String> _data(RemoteMessage message) => {
     for (final entry in message.data.entries) entry.key: '${entry.value}',

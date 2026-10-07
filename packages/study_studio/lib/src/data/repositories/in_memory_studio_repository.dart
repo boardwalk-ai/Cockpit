@@ -22,6 +22,20 @@ class InMemoryStudioRepository implements StudioRepository {
   }
 
   @override
+  Future<void> registerDevice({
+    required String id,
+    required String token,
+    required String platform,
+    required int tzMinutes,
+  }) async {}
+
+  @override
+  Future<void> removeDevice(String id) async {}
+
+  @override
+  Future<void> savePlan(String studioId, Map<String, dynamic> plan) async {}
+
+  @override
   Future<List<DayActivity>> activity(String studioId, {int days = 14}) async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);

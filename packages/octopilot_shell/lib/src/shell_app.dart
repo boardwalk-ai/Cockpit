@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -59,12 +60,17 @@ class OctopilotShellApp extends StatefulWidget {
     super.key,
     required this.services,
     this.moduleRoutes = const [],
+    this.links,
     this.initialLocation = '/',
     this.textScale = 0.92,
   });
 
   final ShellServices services;
   final List<RouteBase> moduleRoutes;
+
+  /// Places to open as they come (a tapped notification's `/study/…`).
+  final Stream<String>? links;
+
   final String initialLocation;
 
   /// How big text is drawn, for every screen (modules too). The phone's own
@@ -82,8 +88,19 @@ class _OctopilotShellAppState extends State<OctopilotShellApp> {
     routes: [...shellRoutes(), ...widget.moduleRoutes],
   );
 
+  StreamSubscription<String>? _links;
+
+  @override
+  void initState() {
+    super.initState();
+    _links = widget.links?.listen((to) {
+      if (to.startsWith('/')) _router.go(to);
+    });
+  }
+
   @override
   void dispose() {
+    _links?.cancel();
     _router.dispose();
     super.dispose();
   }

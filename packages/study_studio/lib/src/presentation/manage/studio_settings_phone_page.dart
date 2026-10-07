@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../../application/study_push.dart';
 import '../dashboard/dashboard_page.dart' show confirmDeleteStudio;
 import '../mobile/mobile_header.dart';
 import '../mobile/mobile_style.dart';
@@ -85,6 +86,8 @@ class _StudioSettingsPhonePageState
                 backend: ApiStudyBuildBackend(
                   ref.read(studioRepositoryProvider),
                   upload,
+                  onStarted: () =>
+                      unawaited(ref.read(studyPushLinkProvider)?.sync(ask: true)),
                 ),
                 title: studio.title,
                 files: files,

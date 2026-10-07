@@ -299,10 +299,14 @@ class StudyBuildRun extends ChangeNotifier {
 
 /// The build's way to the Study API.
 class ApiStudyBuildBackend implements StudyBuildBackend {
-  ApiStudyBuildBackend(this._studios, this._upload);
+  ApiStudyBuildBackend(this._studios, this._upload, {this.onStarted});
 
   final StudioRepository _studios;
   final UploadApi _upload;
+
+  /// Called once a build is under way (to ask for notifications: "we'll
+  /// tell you when it's ready").
+  final void Function()? onStarted;
 
   @override
   Future<String> createStudio(String title) async =>
@@ -317,8 +321,11 @@ class ApiStudyBuildBackend implements StudyBuildBackend {
       _upload.watchBuild(studioId: studioId, jobId: jobId);
 
   @override
-  Future<String> startBuild(String studioId) =>
-      _upload.startBuild(studioId: studioId);
+  Future<String> startBuild(String studioId) async {
+    final id = await _upload.startBuild(studioId: studioId);
+    onStarted?.call();
+    return id;
+  }
 
   @override
   Future<BuildSnapshot> snapshot(String studioId, String buildId) =>

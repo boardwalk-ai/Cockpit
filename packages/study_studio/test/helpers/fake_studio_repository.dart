@@ -91,6 +91,24 @@ class FakeStudioRepository implements StudioRepository {
   @override
   Future<bool> renameStudio(String studioId, String title) async => true;
 
+  final devices = <String, String>{};
+  final plans = <String, Map<String, dynamic>>{};
+
+  @override
+  Future<void> registerDevice({
+    required String id,
+    required String token,
+    required String platform,
+    required int tzMinutes,
+  }) async => devices[id] = token;
+
+  @override
+  Future<void> removeDevice(String id) async => devices.remove(id);
+
+  @override
+  Future<void> savePlan(String studioId, Map<String, dynamic> plan) async =>
+      plans[studioId] = plan;
+
   @override
   Future<List<DayActivity>> activity(String studioId, {int days = 14}) async =>
       const [];

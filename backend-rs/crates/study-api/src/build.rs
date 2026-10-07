@@ -33,6 +33,7 @@ use uuid::Uuid;
 use crate::gen::{self, Lesson};
 use crate::identity::UserId;
 use crate::llm::{self, Call, Meter};
+use crate::notify;
 use crate::progress::owned_studio;
 use crate::search;
 use crate::sse::{self, SseStream};
@@ -270,10 +271,11 @@ pub async fn worker(state: AppState, n: usize) {
             Ok(Some(build)) => {
                 let t = std::time::Instant::now();
                 match run(&state, build).await {
-                    Ok(()) => {}
+                    Ok(()) => notify::build_finished(&state, build, None).await,
                     Err(e) => {
                         tracing::warn!(worker = n, %build, "build failed: {e}");
                         fail(&state, build, &e).await;
+                        notify::build_finished(&state, build, Some(&e)).await;
                     }
                 }
                 let cost = sqlx::query(

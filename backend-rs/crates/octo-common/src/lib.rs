@@ -9,6 +9,7 @@ pub mod db;
 pub mod error;
 pub mod identity;
 pub mod llm;
+pub mod push;
 
 pub use auth::{AuthedUser, FirebaseAuth, HasFirebase};
 pub use error::{db_err, ApiError};

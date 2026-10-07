@@ -30,6 +30,10 @@ pub struct Config {
     /// Run studio builds in this process (off while Python still builds).
     pub build_worker: bool,
     pub build_workers: usize,
+    /// Schedule and send notifications in this process.
+    pub notify_worker: bool,
+    /// The Firebase service-account key file for push. Unset = no push.
+    pub fcm_service_account_file: Option<String>,
     /// Create/alter this service's tables at startup (chunks.page/heading,
     /// llm_usage). On at the cutover; off while only shadowing.
     pub migrate: bool,
@@ -64,6 +68,8 @@ impl Config {
             ingest_workers: var("INGEST_WORKERS").and_then(|v| v.parse().ok()).unwrap_or(2),
             build_worker: var("BUILD_WORKER").is_some_and(|v| v == "1" || v == "true"),
             build_workers: var("BUILD_WORKERS").and_then(|v| v.parse().ok()).unwrap_or(2),
+            notify_worker: var("NOTIFY_WORKER").is_some_and(|v| v == "1" || v == "true"),
+            fcm_service_account_file: var("FCM_SERVICE_ACCOUNT_FILE"),
             max_upload_mb: var("MAX_UPLOAD_MB").and_then(|v| v.parse().ok()).unwrap_or(50),
             migrate: var("MIGRATE").is_some_and(|v| v == "1" || v == "true"),
         }

@@ -123,6 +123,34 @@ class ApiStudioRepository implements StudioRepository {
   }
 
   @override
+  Future<void> registerDevice({
+    required String id,
+    required String token,
+    required String platform,
+    required int tzMinutes,
+  }) async {
+    await _sse.post(
+      '/devices',
+      body: {
+        'id': id,
+        'token': token,
+        'platform': platform,
+        'tzMinutes': tzMinutes,
+      },
+    );
+  }
+
+  @override
+  Future<void> removeDevice(String id) async {
+    await _sse.delete('/devices/${Uri.encodeComponent(id)}');
+  }
+
+  @override
+  Future<void> savePlan(String studioId, Map<String, dynamic> plan) async {
+    await _sse.post('/studios/$studioId/plan', body: plan);
+  }
+
+  @override
   Future<List<DayActivity>> activity(String studioId, {int days = 14}) async {
     final events = await _sse.get(
       '/studios/$studioId/activity',

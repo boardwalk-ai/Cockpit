@@ -55,6 +55,20 @@ abstract interface class StudioRepository {
   /// Gives the studio a new name; true when it took.
   Future<bool> renameStudio(String studioId, String title);
 
+  /// This install gets Study Studio notifications (FCM [token]).
+  Future<void> registerDevice({
+    required String id,
+    required String token,
+    required String platform,
+    required int tzMinutes,
+  });
+
+  /// No more notifications on install [id].
+  Future<void> removeDevice(String id);
+
+  /// The studio's study plan (`PlanSettings.toApi`), for its reminders.
+  Future<void> savePlan(String studioId, Map<String, dynamic> plan);
+
   /// The last [days] local days of study (cards, quiz answers), oldest
   /// first.
   Future<List<DayActivity>> activity(String studioId, {int days = 14});

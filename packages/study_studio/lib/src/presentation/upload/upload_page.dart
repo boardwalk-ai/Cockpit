@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../../application/study_push.dart';
 import '../../domain/entities/source.dart';
 import '../mobile/mobile_style.dart';
 import '../mobile/study_build_run.dart';
@@ -136,6 +137,8 @@ class _UploadPageState extends ConsumerState<UploadPage> {
         backend: ApiStudyBuildBackend(
           ref.read(studioRepositoryProvider),
           upload,
+          onStarted: () =>
+              unawaited(ref.read(studyPushLinkProvider)?.sync(ask: true)),
         ),
         title: title,
         files: List.of(_picked),
@@ -171,6 +174,7 @@ class _UploadPageState extends ConsumerState<UploadPage> {
         return;
       }
       final buildId = await upload.startBuild(studioId: studio.id);
+      unawaited(ref.read(studyPushLinkProvider)?.sync(ask: true));
       if (!mounted) return;
       context.go('/study/${studio.id}?building=$buildId');
     } catch (e) {

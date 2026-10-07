@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/providers.dart';
+import '../../application/study_push.dart';
 import '../../domain/study_plan.dart';
 import '../mobile/mobile_header.dart';
 import '../mobile/mobile_style.dart';
@@ -42,6 +45,23 @@ class StudyPlanPhonePage extends ConsumerWidget {
           data: (studio) => StudyPlanMobile(
             studio: studio,
             onBack: () => context.go(base),
+            onSettings: (s, {required chosen}) {
+              final link = ref.read(studyPushLinkProvider);
+              if (link != null) {
+                unawaited(link.savePlan(studioId, s, chosen: chosen));
+              } else {
+                // No push here (web, desktop): the server still keeps it.
+                unawaited(
+                  ref
+                      .read(studioRepositoryProvider)
+                      .savePlan(
+                        studioId,
+                        s.toApi(DateTime.now().timeZoneOffset.inMinutes),
+                      )
+                      .catchError((Object _) {}),
+                );
+              }
+            },
             onStep: (s) {
               final id = s.topic?.id;
               context.go(switch (s.kind) {

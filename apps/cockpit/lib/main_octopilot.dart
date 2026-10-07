@@ -25,7 +25,16 @@ const _devAuth = bool.fromEnvironment('OCTOPILOT_DEV_AUTH');
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (!_devAuth) await initStudioFirebase();
-  runApp(const ProviderScope(child: OctopilotApp()));
+  runApp(
+    ProviderScope(
+      overrides: [
+        studyPushProvider.overrideWith(
+          (ref) => ref.watch(studyPushImplProvider),
+        ),
+      ],
+      child: const OctopilotApp(),
+    ),
+  );
 }
 
 const _themeKey = 'octopilot.theme';
@@ -94,7 +103,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     onCredits: _soon,
     onAbout: _soon,
     onSignIn: _auth.enabled ? _auth.signIn : null,
-    onSignOut: _auth.enabled ? _auth.signOut : null,
+    onSignOut: _auth.enabled ? _signOut : null,
     // Needs the account-deletion endpoint.
     onDeleteAccount: (context) async => _soon(context),
   );
@@ -107,6 +116,13 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     _loadVoice().then((_) => _services.prepareGreeting());
     _signIns = _auth.authStateChanges().listen((_) => _loadAccount());
     _loadAccount();
+  }
+
+  /// Stops this phone's Study Studio notifications while the sign-in still
+  /// works, then signs out.
+  Future<void> _signOut() async {
+    await ref.read(studyPushLinkProvider)?.unregister();
+    await _auth.signOut();
   }
 
   @override
@@ -166,6 +182,8 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     }
     try {
       final me = await GhostWriterHost.me(auth: _auth);
+      // Signed in: this phone gets Study Studio notifications if allowed.
+      ref.read(studyPushLinkProvider)?.start();
       _account.value = ShellAccount(
         name: (me['name'] as String?) ?? (me['email'] as String?) ?? 'You',
         email: me['email'] as String?,
@@ -203,6 +221,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     child: OctopilotShellApp(
       services: _services,
       moduleRoutes: [..._ghostWriter.routes(), ..._studyStudio.routes()],
+      links: notificationLinks(ref.read(ghostWriterPushProvider)),
     ),
   );
 }
