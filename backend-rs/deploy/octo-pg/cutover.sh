@@ -77,7 +77,7 @@ gw-staging-db|octopilot_staging|gw_staging"
         # New container: same image, DATABASE_URL from runtime.env (overrides the baked .env).
         docker rm -f octopilot-api >/dev/null 2>&1 || true
         docker run -d --name octopilot-api --network host --restart unless-stopped \
-          --env-file /opt/octopilot-api/runtime.env octopilot-api:latest >/dev/null
+          --env-file /etc/octopilot-api.env --env-file /opt/octopilot-api/runtime.env octopilot-api:latest >/dev/null
       fi
       sudo -n systemctl start octopilot-rs octopilot-web octopilot-formatter octonotes-api
       (cd /opt/cockpit/Backend && docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps --force-recreate cockpit-api cockpit-worker cockpit-gateway)
