@@ -353,3 +353,12 @@ def test_rebuild_keeps_ids_of_returning_topics_and_cards():
     assert out["quizQuestions"][0]["topicId"] == "gen_old"
     other = carry_ids({"id": "gen_z", "title": "Fresh"}, keep)
     assert other["id"] == "gen_z"
+
+
+def test_file_types_for_the_app():
+    from app.routers.stream import file_type
+
+    assert file_type("Lecture 5.PDF", "") == "pdf"
+    assert file_type("notes.docx", "") == "docx"
+    assert file_type("scan", "image/png") == "image"
+    assert file_type("x.md", "text/markdown") == "txt"

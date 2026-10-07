@@ -21,7 +21,14 @@ from sse_starlette.sse import EventSourceResponse
 from ..config import get_settings
 from ..db import CockpitSession, SharedSession, VectorSession
 from ..deps import get_current_user_id
-from ..dto import AskCitationDTO, MeDTO, ScenarioDTO, StudioDTO, TopicDTO
+from ..dto import (
+    AskCitationDTO,
+    MeDTO,
+    ScenarioDTO,
+    SourceFileDTO,
+    StudioDTO,
+    TopicDTO,
+)
 from ..models.cockpit import (
     Document,
     GeneratedScenario,
@@ -163,10 +170,58 @@ async def _load_scenarios(
         return []
 
 
+_FILE_TYPES = {
+    "pdf": "pdf",
+    "doc": "docx", "docx": "docx", "odt": "docx", "rtf": "docx",
+    "ppt": "pptx", "pptx": "pptx", "odp": "pptx", "key": "pptx",
+    "png": "image", "jpg": "image", "jpeg": "image", "gif": "image",
+    "webp": "image", "heic": "image", "bmp": "image",
+    "mp3": "audio", "wav": "audio", "m4a": "audio", "aac": "audio",
+    "ogg": "audio", "flac": "audio",
+    "mp4": "video", "mov": "video", "webm": "video", "mkv": "video", "avi": "video",
+}
+
+
+def file_type(filename: str, mime: str) -> str:
+    """The app's SourceFileType for an uploaded document."""
+    ext = (filename or "").lower().rsplit(".", 1)[-1] if "." in (filename or "") else ""
+    if ext in _FILE_TYPES:
+        return _FILE_TYPES[ext]
+    mime = mime or ""
+    for prefix in ("image", "audio", "video"):
+        if mime.startswith(prefix + "/"):
+            return prefix
+    return "pdf" if mime == "application/pdf" else "txt"
+
+
+async def _load_files(
+    cockpit: AsyncSession, studio_id: uuid.UUID, user_id: uuid.UUID
+) -> list[SourceFileDTO]:
+    """The studio's uploaded files (the app lists them in Studio settings)."""
+    try:
+        rows = await cockpit.execute(
+            select(Document)
+            .where(Document.studio_id == studio_id, Document.user_id == user_id)
+            .order_by(Document.created_at)
+        )
+        return [
+            SourceFileDTO(
+                id=str(d.id),
+                name=d.filename,
+                type=file_type(d.filename, d.mime),
+                processed=d.status == "ready",
+            )
+            for d in rows.scalars()
+        ]
+    except Exception:  # noqa: BLE001 — files are a nicety
+        return []
+
+
 def _db_studio_to_dto(
     row: Studio,
     topics: list[TopicDTO] | None = None,
     scenarios: list[ScenarioDTO] | None = None,
+    files: list[SourceFileDTO] | None = None,
 ) -> StudioDTO:
     """Map a persisted studio to the wire DTO (topics/scenarios filled after gen)."""
     return StudioDTO(
@@ -175,6 +230,7 @@ def _db_studio_to_dto(
         subject=row.subject or "",
         created_at=row.created_at,
         updated_at=row.updated_at,
+        source_files=files or [],
         topics=topics or [],
         scenarios=scenarios or [],
     )
@@ -193,6 +249,7 @@ async def _db_studios_for(cockpit: AsyncSession, user_id: uuid.UUID) -> list[Stu
                     r,
                     await _load_topics(cockpit, r.id, user_id),
                     await _load_scenarios(cockpit, r.id),
+                    await _load_files(cockpit, r.id, user_id),
                 )
             )
         return out
@@ -280,6 +337,7 @@ async def get_studio(
                         row,
                         await _load_topics(cockpit, sid, user_id),
                         await _load_scenarios(cockpit, sid),
+                        await _load_files(cockpit, sid, user_id),
                     )
                     if owned
                     else None
