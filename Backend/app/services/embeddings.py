@@ -48,7 +48,7 @@ class SentenceTransformerEmbedder(Embedder):
     def __init__(self, model_name: str, dim: int) -> None:
         from sentence_transformers import SentenceTransformer  # lazy import
 
-        self._model = SentenceTransformer(model_name)
+        self._model = SentenceTransformer(model_name, device="cpu")
         self.dim = dim
 
     def embed(self, texts: list[str]) -> list[list[float]]:

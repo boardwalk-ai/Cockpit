@@ -19,6 +19,9 @@ boto3==1.35.90
 # Heavy (pulls torch). Optional at runtime: the app falls back to a deterministic
 # dev embedder when EMBEDDINGS_BACKEND=fallback, so the container boots without it.
 sentence-transformers==3.3.1
+# Pinned: transformers 4.57 can't load bge-m3 under sentence-transformers
+# 3.3.1 ("Cannot copy out of meta tensor"); every embed then failed.
+transformers==4.46.3
 
 # --- Auth (Firebase ID-token verification — reuses Octopilot's Firebase) ---
 # We verify ID tokens against Google's public keys (no service account / admin
