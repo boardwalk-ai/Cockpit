@@ -292,7 +292,7 @@ replace the Postgres one without touching the API.
   word for word"); cards matched by word overlap. Measured after the first
   two parts: **8/8 and 7/7 lessons kept**, cards still 14/53 — the card-front
   part is unit-tested but not yet run against the model (OpenRouter credit
-  ran out mid-test, 402). Re-run  after the top-up.
+  ran out mid-test, 402). Re-run `build_e2e.sh` after the top-up.
 - [ ] Burmese font in the PDF export
 - [ ] Desktop pages still on the old design (several show mock data:
   Analytics, Ask AI, Manage, Welcome back, Study plan)
