@@ -2,18 +2,24 @@
 //! cockpit-api) and the Go worker/gateway. It speaks the same HTTP + SSE
 //! contract, so the app needs no change at the cutover.
 //!
-//! Phase R1 (this crate so far): health, readiness, `/me`, the user's
-//! studios and one studio, read from the existing cockpit + vector
-//! databases (no data migration).
+//! So far: R1 reads (health, readiness, `/me`, studios) and R2 progress
+//! writes (quiz, cards, "Got it", rename, activity) — idempotent with the
+//! app's `event_id`. Against the cockpit + vector databases in octo-pg.
 
 pub mod config;
 pub mod dto;
 pub mod identity;
+pub mod progress;
 pub mod schedule;
 pub mod sse;
 pub mod studios;
 
-use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
 use octo_common::{identity::UserIdCache, FirebaseAuth, HasFirebase};
 use serde_json::json;
 use sqlx::PgPool;
@@ -98,6 +104,12 @@ pub fn app(state: AppState) -> Router {
         .route("/me", get(studios::me))
         .route("/studios", get(studios::list))
         .route("/studios/:studio_id", get(studios::get))
+        .route("/studios/:studio_id/rename", post(progress::rename))
+        .route("/studios/:studio_id/activity", get(progress::activity))
+        .route("/studios/:studio_id/topics/:topic_id/quiz-result", post(progress::quiz_result))
+        .route("/studios/:studio_id/topics/:topic_id/flashcard-review", post(progress::flashcard_review))
+        .route("/studios/:studio_id/topics/:topic_id/mark-reviewed", post(progress::mark_reviewed))
+        .route("/studios/:studio_id/flashcards/:card_id/review", post(progress::card_review))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

@@ -14,12 +14,12 @@ What's left is idempotency and AI-cost abuse. Suggested first: A1, A5, A6.
   running build races two builds (topics mixed/duplicated, double AI cost).
   Fix: if a build for the studio is queued/running, return its `buildId`
   instead of starting another.
-- [ ] **A2. Card reviews and quiz answers idempotent** — a retried
+- [ ] **A2. Card reviews and quiz answers idempotent** _(server side done in Rust R2: `event_id` = `study_events.id`, no schema change; app to send it)_ — a retried
   `flashcards/{card}/review`, `quiz-result` or `flashcard-review` advances SM-2
   twice, moves mastery twice and logs `study_events` twice.
   Fix: the app sends an `event_id` (uuid) per answer; unique
   `(user_id, event_id)` on `study_events`; skip duplicates. _(DB index)_
-- [ ] **A3. `mark-reviewed` counts once a day** — every "Got it" adds +3%
+- [x] **A3. `mark-reviewed` counts once a day** _(Rust R2: once per lesson per 20 h)_ — every "Got it" adds +3%
   mastery. Fix: once per topic per day.
 - [ ] **A4. Create studio / upload idempotent** — a retry after a lost response
   makes a second studio or a duplicate document (duplicate chunks in RAG).
@@ -116,7 +116,7 @@ sentence-transformers sidecar.
 |---|---|---|
 | **R0 Freeze the contract** _(started: studio DTOs compared field by field against Python on all 14 production studios — identical)_ | List every endpoint + SSE event shape; generate OpenAPI (`utoipa`); record golden responses from today's API | Golden tests run against Python |
 | **R1 Skeleton + reads** _(in progress: `crates/study-api` — `/health`, `/ready`, `/me`, `/studios`, `/studios/{id}` incl. source files; SM-2 port; 5 unit tests; built on the server, run once in loopback shadow mode, stopped)_ | Crate, config, auth, DB pools, `/health` `/ready`; `/me`, `/studios`, `/studios/{id}` (mastery + SM-2 overlays) | Golden read tests pass on Rust |
-| **R2 Progress writes** | quiz-result, card review (SM-2 port), mark-reviewed (once/day), rename, delete, activity, `study_events` — all with `event_id` idempotency (A2, A3) | Retries change nothing |
+| **R2 Progress writes** _(done in Rust 2026-10-07: quiz, card review, flashcard-review, mark-reviewed once/20 h, rename, activity; same results as Python on a throwaway copy (`deploy/study-api/parity.sh`); retries with the same `event_id` change nothing — **the app still has to send `event_id`**)_ | quiz-result, card review (SM-2 port), mark-reviewed (once/day), rename, delete, activity, `study_events` — all with `event_id` idempotency (A2, A3) | Retries change nothing |
 | **R3 Ingestion** | Upload (Idempotency-Key, 50 MB cap) → Postgres job queue → extract per page → heading-aware chunks → TEI → `ready` only when embedded; re-embed job; metrics (F1–F7) | 100% real vectors; recall@5 at target |
 | **R4 Retrieval + AI** | Hybrid search (HNSW + `simple`/`english` tsv, RRF); `/ask` SSE with history + topic; OpenRouter client (`max_tokens`, `user`); OctoCredits check + debit; per-user rate limits (A5, A6) | Ask AI cites pages; credits move |
 | **R5 Build pipeline** | Outline / lesson / scenarios / concepts / connections ported with the same prompts; one build per studio (A1); ids kept on rebuild; capped context | Same studio from the same files |
