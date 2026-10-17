@@ -25,6 +25,7 @@ class SessionRecorder extends ChangeNotifier {
     required this.sessionId,
     required this.deviceId,
     this.deviceName = 'this device',
+    this.onAudio,
     AudioRecorder? mic,
   }) : _mic = mic ?? AudioRecorder();
 
@@ -36,6 +37,9 @@ class SessionRecorder extends ChangeNotifier {
   final String deviceName;
 
   final AudioRecorder _mic;
+
+  /// Every bit of audio as it's captured (live captions read it).
+  final ValueChanged<Uint8List>? onAudio;
 
   static const sampleRate = 16000;
   static const chunkMs = 10000;
@@ -116,6 +120,7 @@ class SessionRecorder extends ChangeNotifier {
     if (_status != RecorderStatus.recording) return;
     _buffer.add(pcm);
     _capturedBytes += pcm.length;
+    onAudio?.call(pcm);
     level = _rms(pcm);
     while (_buffer.length >= _chunkBytes) {
       final all = _buffer.takeBytes();

@@ -50,3 +50,7 @@ app.*.map.json
 !/assets/tts/voices/
 /assets/tts/voices/*
 !/assets/tts/voices/.gitkeep
+
+# OctoNotes on-device captions (tools/asr/fetch_asr_model.py), ~45 MB.
+/assets/asr/*
+!/assets/asr/.gitkeep

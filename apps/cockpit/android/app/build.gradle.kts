@@ -25,6 +25,22 @@ android {
         versionName = flutter.versionName
     }
 
+    // sherpa-onnx (OctoNotes captions) and onnxruntime (Pocket TTS) both
+    // bundle libonnxruntime.so; one copy goes in. It must be sherpa's newer
+    // build: the older plugin only asks for ORT API 14, which it still serves.
+    // sherpa's libraries are added as this module's own, so they're the
+    // copies picked (a module's own files come before its dependencies').
+    sourceSets["main"].jniLibs.srcDirs(
+        listOf("arm64", "armeabi", "x86", "x86_64")
+            .mapNotNull { rootProject.findProject(":sherpa_onnx_android_$it")?.projectDir }
+            .map { File(it, "src/main/jniLibs") },
+    )
+    packaging {
+        jniLibs {
+            pickFirsts += setOf("lib/*/libonnxruntime.so", "lib/*/libsherpa-onnx-c-api.so", "lib/*/libsherpa-onnx-cxx-api.so")
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.

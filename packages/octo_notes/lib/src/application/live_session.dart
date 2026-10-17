@@ -7,10 +7,15 @@ import '../data/api/octo_notes_api.dart';
 
 /// One line of the live transcript.
 class TranscriptLine {
-  const TranscriptLine({required this.id, required this.startMs, required this.text});
+  const TranscriptLine({required this.id, required this.startMs, required this.text, this.endMs, this.live = false});
   final String id;
   final int startMs;
+  final int? endMs;
   final String text;
+
+  /// From the phone's own speech model, ahead of the server's transcript
+  /// (still being heard when it's the last one).
+  final bool live;
 }
 
 /// What a session's screen shows live: the transcript as the server writes
@@ -22,17 +27,49 @@ class TranscriptLine {
 class LiveSession extends ChangeNotifier {
   LiveSession({this.api, this.sessionId, this.socket, this.thisDeviceId});
 
+  /// Set once known; captions this device sent itself aren't taken back.
+
   final OctoNotesApi? api;
   final String? sessionId;
   final LiveSocket? socket;
 
   /// This device, so it isn't reported as "the other device recording".
-  final String? thisDeviceId;
+  String? thisDeviceId;
 
   bool get isDemo => api == null || sessionId == null;
 
-  final List<TranscriptLine> lines = [];
+  /// The server's transcript, then the phone's captions past its end.
+  List<TranscriptLine> get lines {
+    final end = _server.isEmpty ? -1 : (_server.last.endMs ?? _server.last.startMs);
+    final ahead = _captions.values.where((c) => c.startMs >= end).toList()..sort((a, b) => a.startMs.compareTo(b.startMs));
+    return ahead.isEmpty ? _server : [..._server, ...ahead];
+  }
+
+  final List<TranscriptLine> _server = [];
+  final Map<String, TranscriptLine> _captions = {};
   int? _rev;
+
+  /// A caption from the recording phone (this one, or over the socket).
+  void addCaption(Map<String, dynamic> c) {
+    final id = '${c['deviceId'] ?? 'me'}:${c['segId']}';
+    final text = (c['text'] as String? ?? '').trim();
+    if (text.isEmpty) return;
+    _captions[id] = TranscriptLine(
+      id: id,
+      startMs: (c['startMs'] as num?)?.toInt() ?? 0,
+      endMs: (c['endMs'] as num?)?.toInt(),
+      text: text,
+      live: true,
+    );
+    _notify();
+  }
+
+  /// Captions the server's transcript has caught up with go.
+  void _pruneCaptions() {
+    if (_server.isEmpty) return;
+    final end = _server.last.endMs ?? _server.last.startMs;
+    _captions.removeWhere((_, c) => (c.endMs ?? c.startMs) <= end);
+  }
 
   /// The session's title, once loaded.
   String? title;
@@ -91,6 +128,9 @@ class LiveSession extends ChangeNotifier {
     }
   }
 
+  @visibleForTesting
+  void debugEvent(Map<String, dynamic> e) => _onEvent(e);
+
   void _onEvent(Map<String, dynamic> e) {
     switch (e['type']) {
       case 'ready':
@@ -99,6 +139,9 @@ class LiveSession extends ChangeNotifier {
         unawaited(_recording());
       case 'transcript.stable' || 'transcript.faithful' || 'transcript.corrected':
         unawaited(_transcript());
+      case 'transcript.live':
+        final data = e['data'];
+        if (data is Map<String, dynamic> && data['deviceId'] != thisDeviceId) addCaption(data);
       case 'device.presence':
         unawaited(_devices());
       case 'recording.state':
@@ -121,16 +164,18 @@ class LiveSession extends ChangeNotifier {
         final line = TranscriptLine(
           id: m['id'] as String,
           startMs: (m['startMs'] as num?)?.toInt() ?? 0,
+          endMs: (m['endMs'] as num?)?.toInt(),
           text: (m['displayText'] ?? m['rawText'] ?? '') as String,
         );
-        final i = lines.indexWhere((l) => l.id == line.id);
+        final i = _server.indexWhere((l) => l.id == line.id);
         if (i >= 0) {
-          lines[i] = line;
+          _server[i] = line;
         } else {
-          lines.add(line);
+          _server.add(line);
         }
       }
-      lines.sort((a, b) => a.startMs.compareTo(b.startMs));
+      _server.sort((a, b) => a.startMs.compareTo(b.startMs));
+      _pruneCaptions();
       _rev = (page['rev'] as num?)?.toInt() ?? _rev;
       _notify();
     } on Object {
@@ -187,7 +232,7 @@ class LiveSession extends ChangeNotifier {
     var i = 0;
     var t = 0;
     void add() {
-      lines.add(TranscriptLine(id: 'demo-$t', startMs: t, text: _sample[i % _sample.length]));
+      _server.add(TranscriptLine(id: 'demo-$t', startMs: t, text: _sample[i % _sample.length]));
       i++;
       t += 7000;
       _notify();

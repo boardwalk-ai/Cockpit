@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../application/account_providers.dart';
+import '../../application/live_captioner.dart';
 import '../../application/live_session.dart';
 import '../../application/session_providers.dart';
 import '../../application/session_recorder.dart';
@@ -89,6 +90,9 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
   SessionRecorder? _recorder;
   ThisDevice? _device;
 
+  /// On-device English captions while this phone records (null: not bundled).
+  LiveCaptioner? _captioner;
+
   bool get _records => widget.role == SessionRole.recorder || (widget.role == SessionRole.solo && widget.record);
 
   @override
@@ -123,11 +127,27 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
     } on Object {
       return;
     }
+    _live.thisDeviceId = _device!.id;
     if (!mounted || !_records) return;
-    _recorder = SessionRecorder(api: api, sessionId: id, deviceId: _device!.id, deviceName: _device!.name)
-      ..addListener(_changed);
+    final captioner = LiveCaptioner(onCaption: _caption);
+    final captions = await captioner.start();
+    if (!mounted) return;
+    _captioner = captions ? captioner : null;
+    _recorder = SessionRecorder(
+      api: api,
+      sessionId: id,
+      deviceId: _device!.id,
+      deviceName: _device!.name,
+      onAudio: _captioner?.accept,
+    )..addListener(_changed);
     setState(() {});
     await _recorder!.start();
+  }
+
+  /// Shown here at once, and sent to the other device.
+  void _caption(Caption c) {
+    _live.addCaption({...c.toJson(), 'deviceId': _device?.id});
+    _live.socket?.send('caption', c.toJson());
   }
 
   void _changed() {
@@ -148,6 +168,7 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
     _recorder
       ?..removeListener(_changed)
       ..dispose();
+    unawaited(_captioner?.stop());
     _ink.dispose();
     _notes.dispose();
     if (_phone) SystemChrome.setPreferredOrientations(DeviceOrientation.values);
