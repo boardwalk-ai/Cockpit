@@ -10,7 +10,9 @@ import '../../domain/account.dart';
 import '../../domain/notes_session.dart';
 import '../../theme/octo_notes_theme.dart';
 import '../new_session/new_session_dialog.dart';
+import '../new_session/new_session_sheet.dart';
 import '../widgets/octo_widgets.dart';
+import 'header_glow.dart';
 
 /// Width at/above which OctoNotes uses the desktop layout. PC-first for now.
 const double kOctoDesktop = 900;
@@ -38,7 +40,9 @@ class OctoNotesHomePage extends StatelessWidget {
             body: SafeArea(
               child: Stack(
                 children: [
-                  Center(
+                  _MobileGlow(
+                    on: !desktop,
+                    child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 1600),
                   child: Padding(
@@ -70,6 +74,7 @@ class OctoNotesHomePage extends StatelessWidget {
                   ),
                 ),
                   ),
+                  ),
                   const Positioned(
                     right: CockpitSpacing.xl,
                     bottom: CockpitSpacing.xl,
@@ -83,6 +88,17 @@ class OctoNotesHomePage extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The phone layout's header glow; the desktop page stays as it is.
+class _MobileGlow extends StatelessWidget {
+  const _MobileGlow({required this.on, required this.child});
+
+  final bool on;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => on ? HeaderGlow(child: child) : child;
 }
 
 /// Desktop home that fills the viewport height with no page scroll.
@@ -126,12 +142,34 @@ class _HeaderBar extends StatelessWidget {
           onPressed: () => Scaffold.of(context).openDrawer(),
         ),
         const SizedBox(width: CockpitSpacing.sm),
-        Text('OctoNotes', style: theme.textTheme.headlineMedium),
+        if (desktop)
+          Text('OctoNotes', style: theme.textTheme.headlineMedium)
+        else
+          // Gives way (ellipsis) before the buttons on a narrow phone.
+          Flexible(
+            child: Text(
+              'OctoNotes',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.headlineSmall,
+            ),
+          ),
       ],
     );
 
     final newSession = FilledButton.icon(
-      onPressed: () => showNewSessionDialog(context),
+      // Desktop: the modal. Phone: the sheet that rises over Home.
+      onPressed: () => desktop
+          ? showNewSessionDialog(context)
+          : showNewSessionSheet(context),
+      // A phone has room for a compact pill only.
+      style: desktop
+          ? null
+          : FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.md),
+              minimumSize: const Size(0, 36),
+              textStyle: theme.textTheme.labelLarge,
+            ),
       icon: const Icon(Icons.add_rounded, size: 20),
       label: const Text('New Session'),
     );
@@ -149,7 +187,7 @@ class _HeaderBar extends StatelessWidget {
                 children: [
                   newSession,
                   const SizedBox(width: CockpitSpacing.md),
-                  const _AccountPill(),
+                  const _AccountPill(showCredits: false),
                 ],
               ),
             ],
@@ -157,7 +195,13 @@ class _HeaderBar extends StatelessWidget {
           const SizedBox(height: CockpitSpacing.lg),
           const _SearchField(),
           const SizedBox(height: CockpitSpacing.md),
-          const _DevicesStatus(),
+          const Row(
+            children: [
+              _DevicesStatus(),
+              Spacer(),
+              _CreditsPill(),
+            ],
+          ),
         ],
       );
     }
@@ -182,7 +226,10 @@ class _HeaderBar extends StatelessWidget {
 /// OctoNotes, Study Studio and OctopilotWeb. Borderless: icon + number +
 /// initial, no outlined chip.
 class _AccountPill extends ConsumerWidget {
-  const _AccountPill();
+  const _AccountPill({this.showCredits = true});
+
+  /// The phone layout shows the balance as its own pill instead.
+  final bool showCredits;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -209,7 +256,7 @@ class _AccountPill extends ConsumerWidget {
       data: (account) => Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (account.octoCredits != null) ...[
+          if (showCredits && account.octoCredits != null) ...[
             Tooltip(
               message: 'OctoCredits',
               child: Row(
@@ -230,6 +277,18 @@ class _AccountPill extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+/// The phone layout's OctoCredits pill (`GET /v1/me`).
+class _CreditsPill extends ConsumerWidget {
+  const _CreditsPill();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final credits = ref.watch(notesMeProvider).valueOrNull?.octoCredits;
+    if (credits == null) return const SizedBox.shrink();
+    return OctoCreditsPill(credits: credits);
   }
 }
 
@@ -366,6 +425,8 @@ class _LiveSessionStrip extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text('Biology 101 — Cellular Respiration',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.titleMedium),
                 const SizedBox(height: CockpitSpacing.xxs),
                 Row(
@@ -374,9 +435,13 @@ class _LiveSessionStrip extends StatelessWidget {
                     Icon(Icons.smartphone_rounded,
                         size: 14, color: scheme.onSurfaceVariant),
                     const SizedBox(width: CockpitSpacing.xs),
-                    Text("Recording on Hein's iPhone",
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: scheme.onSurfaceVariant)),
+                    Flexible(
+                      child: Text("Recording on Hein's iPhone",
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall
+                              ?.copyWith(color: scheme.onSurfaceVariant)),
+                    ),
                   ],
                 ),
               ],
@@ -399,7 +464,7 @@ class _LiveSessionStrip extends StatelessWidget {
           ],
           FilledButton(
             onPressed: () => context.go('/notes/session'),
-            child: const Text('Open Live Session'),
+            child: Text(desktop ? 'Open Live Session' : 'Open'),
           ),
         ],
       ),
@@ -421,7 +486,24 @@ class _QuickStartSection extends StatelessWidget {
       (Icons.history_rounded, 'Continue Last Session'),
     ];
     final desktop = _isDesktop(context);
-    final tiles = [for (final (i, l) in items) _QuickStartTile(icon: i, label: l)];
+    final tiles = [
+      for (final (i, l) in items)
+        _QuickStartTile(
+          icon: i,
+          label: l,
+          // On a phone, Start Recording opens the New session sheet.
+          onTap: !desktop && i == Icons.mic_none_rounded
+              ? () => showNewSessionSheet(context)
+              : null,
+        ),
+      // A phone can also record for another device's session.
+      if (!desktop)
+        _QuickStartTile(
+          icon: Icons.qr_code_scanner_rounded,
+          label: 'Join as recorder',
+          onTap: () => context.go('/notes/join'),
+        ),
+    ];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -451,15 +533,16 @@ class _QuickStartSection extends StatelessWidget {
 }
 
 class _QuickStartTile extends StatelessWidget {
-  const _QuickStartTile({required this.icon, required this.label});
+  const _QuickStartTile({required this.icon, required this.label, this.onTap});
   final IconData icon;
   final String label;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return OctoHoverRow(
-      onTap: () {},
+      onTap: onTap ?? () {},
       padding: const EdgeInsets.symmetric(
         horizontal: CockpitSpacing.md,
         vertical: CockpitSpacing.md,

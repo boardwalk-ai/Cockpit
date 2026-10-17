@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/session_providers.dart';
-
+import '../../data/api/octo_notes_api.dart';
+import '../../domain/pairing.dart';
 import '../../theme/octo_notes_theme.dart';
 import '../widgets/octo_widgets.dart';
+import 'pair_panel.dart';
 
 /// Opens the "New OctoNotes Session" modal. Wrapped in [OctoNotesTheme] so the
 /// dialog (which lives in the root overlay, outside the home page's Theme) still
@@ -22,16 +26,40 @@ Future<void> showNewSessionDialog(BuildContext context) {
   );
 }
 
-class NewSessionDialog extends StatefulWidget {
+class NewSessionDialog extends ConsumerStatefulWidget {
   const NewSessionDialog({super.key});
 
   @override
-  State<NewSessionDialog> createState() => _NewSessionDialogState();
+  ConsumerState<NewSessionDialog> createState() => _NewSessionDialogState();
 }
 
-class _NewSessionDialogState extends State<NewSessionDialog> {
+class _NewSessionDialogState extends ConsumerState<NewSessionDialog> {
   int _workspace = 0; // 0=Typewriter, 1=Magic Pencil, 2=Lecture Capture
   bool _record = true;
+
+  /// Recording source: this computer's mic, or the student's phone (paired).
+  bool _onPhone = false;
+  Pairing? _pairing;
+  OctoNotesApi? _api;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = ref.read(octoNotesApiProvider);
+  }
+
+  /// A code nobody used is cancelled when the modal closes.
+  void _cancelPairing() {
+    final p = _pairing;
+    _pairing = null;
+    if (p != null && !p.isStarted) unawaited(_api?.cancelPairing(p.id).catchError((_) {}));
+  }
+
+  @override
+  void dispose() {
+    _cancelPairing();
+    super.dispose();
+  }
   bool _liveTranscription = true;
   bool _smartOrganization = true;
   bool _liveSuggestions = true;
@@ -90,6 +118,9 @@ class _NewSessionDialogState extends State<NewSessionDialog> {
             _Footer(
               workspaceLabel: _workspaceLabels[_workspace],
               recording: _record,
+              onPhone: _record && _onPhone,
+              pairing: () => _pairing,
+              onHandedOver: () => _pairing = null,
               workspaceMode: const ['typewriter', 'pencil', 'both'][_workspace],
               config: {
                 'record': _record,
@@ -110,7 +141,17 @@ class _NewSessionDialogState extends State<NewSessionDialog> {
         workspace: _workspace,
         onWorkspace: (i) => setState(() => _workspace = i),
         record: _record,
-        onRecord: (v) => setState(() => _record = v),
+        onRecord: (v) => setState(() {
+          _record = v;
+          if (!v) _cancelPairing();
+        }),
+        onPhone: _onPhone,
+        onSource: (phone) => setState(() {
+          _onPhone = phone;
+          if (!phone) _cancelPairing();
+        }),
+        onPairing: (p) => _pairing = p,
+        onPaired: () => setState(() {}),
         liveTranscription: _liveTranscription,
         onLiveTranscription: (v) => setState(() => _liveTranscription = v),
         smartOrganization: _smartOrganization,
@@ -298,6 +339,10 @@ class _WorkspacePanel extends StatelessWidget {
     required this.onWorkspace,
     required this.record,
     required this.onRecord,
+    required this.onPhone,
+    required this.onSource,
+    required this.onPairing,
+    required this.onPaired,
     required this.liveTranscription,
     required this.onLiveTranscription,
     required this.smartOrganization,
@@ -310,6 +355,10 @@ class _WorkspacePanel extends StatelessWidget {
   final ValueChanged<int> onWorkspace;
   final bool record;
   final ValueChanged<bool> onRecord;
+  final bool onPhone;
+  final ValueChanged<bool> onSource;
+  final ValueChanged<Pairing?> onPairing;
+  final VoidCallback onPaired;
   final bool liveTranscription;
   final ValueChanged<bool> onLiveTranscription;
   final bool smartOrganization;
@@ -350,25 +399,26 @@ class _WorkspacePanel extends StatelessWidget {
           if (record) ...[
             const SizedBox(height: CockpitSpacing.sm),
             const _FieldLabel('Recording Source'),
-            _Tile(
-              child: Row(
-                children: [
-                  Icon(Icons.smartphone_rounded, size: 18, color: scheme.primary),
-                  const SizedBox(width: CockpitSpacing.md),
-                  Expanded(
-                    child: Text("Hein's iPhone",
-                        style: theme.textTheme.titleSmall),
-                  ),
-                  Icon(Icons.circle, size: 8, color: CockpitColors.brand.success),
-                  const SizedBox(width: CockpitSpacing.xs),
-                  Text('Connected',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: CockpitColors.brand.success,
-                      )),
-                  const Icon(Icons.arrow_drop_down_rounded),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, label: Text('This computer'), icon: Icon(Icons.laptop_rounded)),
+                  ButtonSegment(value: true, label: Text('My phone'), icon: Icon(Icons.smartphone_rounded)),
                 ],
+                selected: {onPhone},
+                onSelectionChanged: (s) => onSource(s.first),
               ),
             ),
+            const SizedBox(height: CockpitSpacing.sm),
+            if (onPhone)
+              PairPanel(qrFirst: true, onChanged: onPairing, onPaired: onPaired)
+            else
+              Text(
+                "Records with this computer's microphone.",
+                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+              ),
           ],
           const SizedBox(height: CockpitSpacing.lg),
           Text('AI Assistance', style: theme.textTheme.titleSmall),
@@ -524,11 +574,19 @@ class _Footer extends StatelessWidget {
   const _Footer({
     required this.workspaceLabel,
     required this.recording,
+    required this.onPhone,
+    required this.pairing,
+    required this.onHandedOver,
     this.workspaceMode = 'typewriter',
     this.config = const {},
   });
   final String workspaceLabel;
   final bool recording;
+
+  /// The phone records; this computer receives.
+  final bool onPhone;
+  final Pairing? Function() pairing;
+  final VoidCallback onHandedOver;
   final String workspaceMode;
   final Map<String, bool> config;
 
@@ -539,11 +597,20 @@ class _Footer extends StatelessWidget {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.maybeOf(context);
     final api = ProviderScope.containerOf(context, listen: false).read(octoNotesApiProvider);
-    var target = '/notes/session';
+    final paired = pairing();
+    if (onPhone && !(paired?.isPaired ?? false)) {
+      messenger?.showSnackBar(const SnackBar(content: Text('Pair your phone first, or record with this computer.')));
+      return;
+    }
+    final role = onPhone ? 'receiver' : 'solo';
+    final query = 'role=$role${recording ? '' : '&record=0'}';
+    var target = '/notes/session?$query';
     if (api != null) {
       try {
         final session = await api.createSession(workspaceMode: workspaceMode, config: config);
-        target = '/notes/session?id=${session.id}';
+        if (onPhone) await api.startPairing(paired!.id, session.id);
+        onHandedOver();
+        target = '/notes/session?id=${session.id}&$query';
       } on Object catch (e) {
         messenger?.showSnackBar(SnackBar(content: Text('Could not start the session: $e')));
         return;
@@ -559,8 +626,7 @@ class _Footer extends StatelessWidget {
     final scheme = theme.colorScheme;
     final summary = [
       recording ? '$workspaceLabel + recording' : workspaceLabel,
-      '1 material',
-      'All devices synced',
+      if (recording) onPhone ? 'Recorded on your phone' : 'Recorded on this computer',
     ].join(' · ');
 
     return Padding(

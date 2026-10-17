@@ -1,14 +1,33 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 
+import '../../application/account_providers.dart';
+import '../../application/live_session.dart';
+import '../../application/session_providers.dart';
+import '../../application/session_recorder.dart';
+import '../../application/this_device.dart';
+import '../../data/api/live_socket.dart';
+import '../../data/api/notes_api_client.dart';
+import '../../data/api/octo_notes_api.dart';
+import '../../data/api/octo_notes_config.dart';
+import '../../data/sync/block_sync.dart';
 import '../../domain/ink_controller.dart';
 import '../../domain/notes_controller.dart';
+import '../../domain/positions.dart';
 import '../../theme/octo_notes_theme.dart';
 import '../magic_pencil/magic_pencil_workspace.dart';
+import '../new_session/pairing_widgets.dart';
 import '../widgets/octo_widgets.dart';
+
+part 'phone_session_views.dart';
+part 'phone_typewriter.dart';
 
 /// Width at/above which the hub lays the two workspace cards side by side.
 const double _kHubDesktop = 820;
@@ -16,27 +35,47 @@ const double _kHubDesktop = 820;
 /// Which surface fills the hub's middle region.
 enum _HubView { cards, typewriter, pencil }
 
-/// Panel 3 (redesign) — **Live Session Hub**.
-///
-/// The simplified session shell the boss/team asked for: a persistent Live
-/// Transcription strip (On/Off) with an animated single-line subtitle across the
-/// top, and Summarize / Finalize across the bottom. The middle region swaps
-/// **in place** between two big workspace cards, the full Typewriter editor
-/// (search + right add-to-note panel + upload), and the Magic Pencil canvas — a
-/// Close button returns to the cards. No recording header; Finalize replaces
-/// Finish Session. Borderless (`DESIGN.md`). See `docs/panel-03-live-workspace.md`.
-class LiveSessionHubPage extends StatefulWidget {
-  const LiveSessionHubPage({super.key});
+/// What this device does in the session. A session has at most two devices:
+/// the **recorder** (always a phone: records the lecture) and the
+/// **receiver** (phone or PC: live transcript, notes, pencil). One device
+/// alone does both (**solo**).
+enum SessionRole {
+  solo,
+  receiver,
+  recorder;
 
-  @override
-  State<LiveSessionHubPage> createState() => _LiveSessionHubPageState();
+  static SessionRole parse(String? v) =>
+      SessionRole.values.where((r) => r.name == v).firstOrNull ?? SessionRole.solo;
 }
 
-class _LiveSessionHubPageState extends State<LiveSessionHubPage> {
+/// Panel 3 (redesign) — **Live Session Hub**.
+///
+/// On a computer: a persistent Live Transcription strip (On/Off) with an
+/// animated single-line subtitle across the top, and Summarize / Finalize
+/// across the bottom. The middle region swaps **in place** between two big
+/// workspace cards, the full Typewriter editor, and the Magic Pencil canvas.
+/// The top bar shows who records.
+///
+/// On a phone the page follows the role: solo (recording + transcript +
+/// tools), receiver (transcript + tools, the other phone records) or
+/// recorder (the mic only). See `docs/panel-03-live-workspace.md`.
+class LiveSessionHubPage extends ConsumerStatefulWidget {
+  const LiveSessionHubPage({super.key, this.sessionId, this.role = SessionRole.solo, this.record = true});
+
+  /// The backend session; null runs the offline demo.
+  final String? sessionId;
+  final SessionRole role;
+
+  /// Solo only: record with this device's mic (off = notes only).
+  final bool record;
+
+  @override
+  ConsumerState<LiveSessionHubPage> createState() => _LiveSessionHubPageState();
+}
+
+class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
   bool _transcriptionOn = true;
   bool _subExpanded = false;
-  int _line = 0;
-  Timer? _timer;
 
   _HubView _view = _HubView.cards;
 
@@ -44,51 +83,167 @@ class _LiveSessionHubPageState extends State<LiveSessionHubPage> {
   late final InkController _ink;
   late final NotesController _notes;
 
-  // Sample rolling transcript lines (mock live speech).
-  static const _lines = <String>[
-    'Glycolysis occurs in the cytoplasm and does not require oxygen.',
-    'The net result is two ATP and two NADH.',
-    'Pyruvate then enters the mitochondria for the next stage.',
-    'The electron transport chain builds a proton gradient.',
-    'Oxygen accepts electrons at the end of the transport chain.',
-  ];
+  late final LiveSession _live;
+
+  /// This device's mic (solo or recorder role, with a backend).
+  SessionRecorder? _recorder;
+  ThisDevice? _device;
+
+  bool get _records => widget.role == SessionRole.recorder || (widget.role == SessionRole.solo && widget.record);
 
   @override
   void initState() {
     super.initState();
     _ink = InkController();
-    _notes = NotesController(sessionId: 'sess-bio101-w4');
-    _startTimer();
+    _notes = NotesController(sessionId: widget.sessionId ?? 'sess-bio101-w4');
+    final api = ref.read(octoNotesApiProvider);
+    final id = widget.sessionId;
+    _live = LiveSession(
+      api: api,
+      sessionId: id,
+      socket: api == null || id == null
+          ? null
+          : LiveSocket(
+              baseUrl: OctoNotesConfig.apiBaseUrl,
+              sessionId: id,
+              tokenProvider: ref.read(notesAuthProvider).idToken,
+            ),
+    )..addListener(_changed);
+    unawaited(_live.start());
+    unawaited(_join());
+  }
+
+  /// Registers this device, then starts the mic when this device records.
+  Future<void> _join() async {
+    final api = ref.read(octoNotesApiProvider);
+    final id = widget.sessionId;
+    if (api == null || id == null) return;
+    try {
+      _device = await ref.read(thisDeviceProvider.future);
+    } on Object {
+      return;
+    }
+    if (!mounted || !_records) return;
+    _recorder = SessionRecorder(api: api, sessionId: id, deviceId: _device!.id, deviceName: _device!.name)
+      ..addListener(_changed);
+    setState(() {});
+    await _recorder!.start();
+  }
+
+  void _changed() {
+    // The receiver finished the session: this phone stops recording too.
+    final r = _recorder;
+    if (widget.role == SessionRole.recorder && r != null && r.isActive &&
+        (_live.recordingState == 'stopped' || _live.recordingState == 'assembled')) {
+      unawaited(r.stop());
+    }
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _live
+      ..removeListener(_changed)
+      ..dispose();
+    _recorder
+      ?..removeListener(_changed)
+      ..dispose();
     _ink.dispose();
     _notes.dispose();
+    if (_phone) SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     super.dispose();
   }
 
-  void _startTimer() {
-    _timer?.cancel();
-    if (!_transcriptionOn) return;
-    _timer = Timer.periodic(const Duration(milliseconds: 2600), (_) {
-      if (!mounted) return;
-      setState(() => _line = (_line + 1) % _lines.length);
-    });
-  }
-
   void _toggle(bool on) {
-    setState(() {
-      _transcriptionOn = on;
-      if (!on) _timer?.cancel();
-    });
-    if (on) _startTimer();
+    setState(() => _transcriptionOn = on);
+    final api = ref.read(octoNotesApiProvider);
+    if (api != null && widget.sessionId != null) {
+      unawaited(api.setTranscription(widget.sessionId!, on).catchError((_) => <String, dynamic>{}));
+    }
   }
 
   void _setView(_HubView v) => setState(() => _view = v);
 
+  /// Phone: switch view with a tap of feedback; only the pencil may turn
+  /// sideways, the rest stays upright.
+  void _open(_HubView v) {
+    if (v != _view) HapticFeedback.selectionClick();
+    setState(() => _view = v);
+    _orient();
+  }
+
+  bool _phone = false;
+
+  void _orient() {
+    if (!_phone) return;
+    SystemChrome.setPreferredOrientations(
+        _view == _HubView.pencil ? DeviceOrientation.values : const [DeviceOrientation.portraitUp]);
+  }
+
   void _back() => context.canPop() ? context.pop() : context.go('/notes');
+
+  /// Recording time on this device, or the other device's as last reported.
+  int get _elapsedMs => _recorder?.elapsedMs ?? _live.elapsedMs;
+
+  // ── Tools (phone + desktop) ───────────────────────────────────────────────
+
+  Future<void> _mark() async {
+    final at = _elapsedMs;
+    try {
+      await (_recorder?.mark() ?? _live.mark());
+      if (mounted) _snack(context, 'Marked important at ${_clock(at)}');
+    } on Object catch (e) {
+      if (mounted) _snack(context, "Couldn't mark it: $e");
+    }
+  }
+
+  Future<void> _board() async {
+    final api = ref.read(octoNotesApiProvider);
+    if (api == null || widget.sessionId == null) {
+      _snack(context, 'Sign in to keep board photos with the session.');
+      return;
+    }
+    final shot = await ImagePicker().pickImage(source: ImageSource.camera, maxWidth: 2400, imageQuality: 82);
+    if (shot == null) return;
+    if (mounted) _snack(context, 'Adding the board photo…');
+    try {
+      await api.uploadBoardPhoto(widget.sessionId!, await shot.readAsBytes(),
+          filename: shot.name.toLowerCase().endsWith('.png') ? 'board.png' : 'board.jpg');
+      if (mounted) _snack(context, 'Board photo added');
+    } on Object catch (e) {
+      if (mounted) _snack(context, "Couldn't add the photo: $e");
+    }
+  }
+
+  /// Leaving while this device records: stop first (asks).
+  Future<bool> _confirmLeave() async {
+    final r = _recorder;
+    if (r == null || !r.isActive) return true;
+    final stop = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Stop recording?'),
+        content: const Text('The lecture recorded so far is kept with the session.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Keep recording')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Stop')),
+        ],
+      ),
+    );
+    if (stop != true) return false;
+    await r.stop();
+    return true;
+  }
+
+  Future<void> _leave() async {
+    if (await _confirmLeave() && mounted) _back();
+  }
+
+  Future<void> _finish() async {
+    if (await _confirmLeave() && mounted) {
+      context.go(widget.sessionId == null ? '/notes/finalize' : '/notes/finalize?id=${widget.sessionId}');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -96,48 +251,79 @@ class _LiveSessionHubPageState extends State<LiveSessionHubPage> {
       context: context,
       child: Builder(
         builder: (context) {
-          final scheme = Theme.of(context).colorScheme;
-          final desktop = MediaQuery.sizeOf(context).width >= _kHubDesktop;
-          return Scaffold(
-            backgroundColor: scheme.surface,
-            body: SafeArea(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1180),
-                  child: Padding(
-                    padding: const EdgeInsets.all(CockpitSpacing.xxl),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _TopBar(onBack: _back),
-                        const SizedBox(height: CockpitSpacing.lg),
-                        _TranscriptionStrip(
-                          on: _transcriptionOn,
-                          onChanged: _toggle,
-                          lines: _lines,
-                          current: _line,
-                          expanded: _subExpanded,
-                          onToggleExpand: () =>
-                              setState(() => _subExpanded = !_subExpanded),
-                        ),
-                        const SizedBox(height: CockpitSpacing.lg),
-                        Expanded(child: _middle(context, desktop)),
-                        const SizedBox(height: CockpitSpacing.lg),
-                        _BottomActions(
-                          showUpload: _view == _HubView.typewriter,
-                          onUpload: _upload,
-                          onSummarize: () =>
-                              _snack(context, 'Summarizing this session…'),
-                          onFinalize: () => context.go('/notes/finalize'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
+          final size = MediaQuery.sizeOf(context);
+          // A phone stays a phone when held sideways (for the pencil).
+          final phone = size.shortestSide < 600;
+          final desktop = !phone && size.width >= _kHubDesktop;
+          if (phone != _phone) {
+            _phone = phone;
+            WidgetsBinding.instance.addPostFrameCallback((_) => _orient());
+          }
+          final Widget page;
+          if (widget.role == SessionRole.recorder) {
+            page = _RecorderScreen(state: this);
+          } else if (!desktop) {
+            page = _PhoneSession(state: this);
+          } else {
+            page = _desktop(context);
+          }
+          return PopScope(
+            canPop: !(_recorder?.isActive ?? false),
+            onPopInvokedWithResult: (didPop, _) {
+              if (!didPop) unawaited(_leave());
+            },
+            child: page,
           );
         },
+      ),
+    );
+  }
+
+  Widget _desktop(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final texts = [for (final l in _live.lines) l.text];
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1180),
+            child: Padding(
+              padding: const EdgeInsets.all(CockpitSpacing.xxl),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _TopBar(
+                    onBack: _leave,
+                    title: _live.title ?? (_live.isDemo ? 'Cellular Respiration Lecture' : 'Live session'),
+                    subtitle: _live.isDemo ? 'Biology 101 • Week 4' : null,
+                    status: _RecordingStatus(state: this),
+                  ),
+                  const SizedBox(height: CockpitSpacing.lg),
+                  _TranscriptionStrip(
+                    on: _transcriptionOn,
+                    onChanged: _toggle,
+                    lines: texts.isEmpty
+                        ? const ['The transcript appears here a few seconds after the lecture starts.']
+                        : texts,
+                    current: texts.isEmpty ? 0 : texts.length - 1,
+                    expanded: _subExpanded,
+                    onToggleExpand: () => setState(() => _subExpanded = !_subExpanded),
+                  ),
+                  const SizedBox(height: CockpitSpacing.lg),
+                  Expanded(child: _middle(context, true)),
+                  const SizedBox(height: CockpitSpacing.lg),
+                  _BottomActions(
+                    showUpload: _view == _HubView.typewriter,
+                    onUpload: _upload,
+                    onSummarize: () => _snack(context, 'Summarizing this session…'),
+                    onFinalize: _finish,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -194,12 +380,22 @@ class _LiveSessionHubPageState extends State<LiveSessionHubPage> {
   }
 }
 
+/// `mm:ss`, or `h:mm:ss` past an hour.
+String _clock(int ms) {
+  final s = ms ~/ 1000;
+  String two(int n) => n.toString().padLeft(2, '0');
+  return s >= 3600 ? '${s ~/ 3600}:${two(s ~/ 60 % 60)}:${two(s % 60)}' : '${two(s ~/ 60)}:${two(s % 60)}';
+}
+
 // ===========================================================================
-// Top bar — page identity only (no recording controls)
+// Top bar — page identity, and who records
 // ===========================================================================
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.onBack});
+  const _TopBar({required this.onBack, required this.title, this.subtitle, required this.status});
   final VoidCallback onBack;
+  final String title;
+  final String? subtitle;
+  final Widget status;
 
   @override
   Widget build(BuildContext context) {
@@ -216,25 +412,17 @@ class _TopBar extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Cellular Respiration Lecture',
+            Text(title,
                 style: theme.textTheme.titleMedium
                     ?.copyWith(fontWeight: FontWeight.w700)),
-            Text('Biology 101 • Week 4',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
+            if (subtitle != null)
+              Text(subtitle!,
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSurfaceVariant)),
           ],
         ),
         const Spacer(),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.circle, size: 8, color: CockpitColors.brand.success),
-            const SizedBox(width: CockpitSpacing.xs),
-            Text('All devices synced',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant)),
-          ],
-        ),
+        status,
       ],
     );
   }

@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../theme/octo_notes_theme.dart';
 import '../widgets/octo_widgets.dart';
+import 'phone_finalize.dart';
 
 /// Width at/above which the finalize screen shows Summary + Smart Organization
 /// side by side.
@@ -23,7 +24,10 @@ class _TopicGist {
 /// divided by topic), the **Smart Organization** structure, and a **Download**
 /// action to export the final notes as PDF. Borderless (`DESIGN.md`).
 class SessionFinalizePage extends StatefulWidget {
-  const SessionFinalizePage({super.key});
+  const SessionFinalizePage({super.key, this.sessionId});
+
+  /// The backend session (the phone layout loads it; desktop still demos).
+  final String? sessionId;
 
   @override
   State<SessionFinalizePage> createState() => _SessionFinalizePageState();
@@ -72,6 +76,7 @@ class _SessionFinalizePageState extends State<SessionFinalizePage> {
       context: context,
       child: Builder(
         builder: (context) {
+          if (MediaQuery.sizeOf(context).shortestSide < 600) return PhoneFinalize(sessionId: widget.sessionId);
           final scheme = Theme.of(context).colorScheme;
           final desktop = MediaQuery.sizeOf(context).width >= _kFinalizeDesktop;
           return Scaffold(

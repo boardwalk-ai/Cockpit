@@ -3,6 +3,7 @@ import 'dart:ui' show PointMode;
 
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../domain/ink_controller.dart';
 import '../../domain/ink_models.dart';
@@ -28,7 +29,10 @@ class MagicPencilWorkspace extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final desktop = MediaQuery.sizeOf(context).width >= 1000;
+    final width = MediaQuery.sizeOf(context).width;
+    final desktop = width >= 1000;
+    // A phone: the toolbar scrolls sideways and the page rail is left out.
+    final phone = width < 600;
     return AnimatedBuilder(
       animation: ink,
       builder: (context, _) {
@@ -38,14 +42,16 @@ class MagicPencilWorkspace extends StatelessWidget {
               padding: const EdgeInsets.all(CockpitSpacing.md),
               child: Center(child: workspaceToggle),
             ),
-            _PencilToolbar(ink: ink),
+            _PencilToolbar(ink: ink, compact: phone),
             Divider(height: 1, color: scheme.outlineVariant),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _PageRail(ink: ink),
-                  VerticalDivider(width: 1, color: scheme.outlineVariant),
+                  if (!phone) ...[
+                    _PageRail(ink: ink),
+                    VerticalDivider(width: 1, color: scheme.outlineVariant),
+                  ],
                   Expanded(
                     child: _InkCanvas(
                       ink: ink,
@@ -78,8 +84,9 @@ class MagicPencilWorkspace extends StatelessWidget {
 // Toolbar
 // ===========================================================================
 class _PencilToolbar extends StatelessWidget {
-  const _PencilToolbar({required this.ink});
+  const _PencilToolbar({required this.ink, this.compact = false});
   final InkController ink;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -108,10 +115,8 @@ class _PencilToolbar extends StatelessWidget {
           color: scheme.outlineVariant,
         );
 
-    return Container(
-      padding: const EdgeInsets.symmetric(
-          horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xs),
-      child: Row(
+    final row = Row(
+        mainAxisSize: compact ? MainAxisSize.min : MainAxisSize.max,
         children: [
           tool(InkTool.pen),
           tool(InkTool.pencil),
@@ -153,7 +158,7 @@ class _PencilToolbar extends StatelessWidget {
                 size: 20,
                 color: ink.canRedo ? scheme.onSurfaceVariant : scheme.outlineVariant),
           ),
-          const Spacer(),
+          if (compact) const SizedBox(width: CockpitSpacing.md) else const Spacer(),
           OutlinedButton.icon(
             onPressed: ink.addPage,
             style: OutlinedButton.styleFrom(
@@ -166,7 +171,11 @@ class _PencilToolbar extends StatelessWidget {
           const SizedBox(width: CockpitSpacing.sm),
           _PageMenu(ink: ink),
         ],
-      ),
+      );
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xs),
+      child: compact ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: row) : row,
     );
   }
 }
@@ -502,6 +511,7 @@ class _InkCanvasState extends State<_InkCanvas> {
         });
       case InkTool.lasso:
         ink.applyLasso(_lasso);
+        if (ink.hasSelection) HapticFeedback.mediumImpact();
         setState(() => _lasso = []);
       case InkTool.pointer:
         _moveAnchor = null;
@@ -1233,4 +1243,341 @@ void _snack(BuildContext context, String msg) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
   );
+}
+
+// ===========================================================================
+// Phone, landscape: tools down the left, colours down the right, the page
+// in between (edge to edge, system bars hidden).
+// ===========================================================================
+
+/// Magic Pencil for a phone held sideways. [top] floats over the page (who
+/// records, the live transcript line).
+class PhoneMagicPencil extends StatefulWidget {
+  const PhoneMagicPencil({
+    super.key,
+    required this.ink,
+    required this.notes,
+    required this.onClose,
+    this.top,
+  });
+
+  final InkController ink;
+  final NotesController notes;
+  final VoidCallback onClose;
+  final Widget? top;
+
+  @override
+  State<PhoneMagicPencil> createState() => _PhoneMagicPencilState();
+}
+
+class _PhoneMagicPencilState extends State<PhoneMagicPencil> {
+  InkController get ink => widget.ink;
+
+  @override
+  void initState() {
+    super.initState();
+    // Turned sideways: a firm tap says "ready to draw".
+    HapticFeedback.mediumImpact();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  void _tool(InkTool t) {
+    if (ink.tool == t) return;
+    HapticFeedback.selectionClick();
+    ink.setTool(t);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: scheme.surfaceContainerLowest,
+      body: AnimatedBuilder(
+        animation: ink,
+        builder: (context, _) => SafeArea(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Rail(
+                children: [
+                  _RailButton(icon: Icons.arrow_back_rounded, tooltip: 'Back', onTap: () {
+                    HapticFeedback.lightImpact();
+                    widget.onClose();
+                  }),
+                  const SizedBox(height: CockpitSpacing.sm),
+                  for (final t in const [InkTool.pen, InkTool.pencil, InkTool.highlighter, InkTool.eraser, InkTool.lasso])
+                    _RailButton(icon: t.icon, tooltip: t.name, selected: ink.tool == t, onTap: () => _tool(t)),
+                  _ShapeButton(ink: ink, onPick: _tool),
+                ],
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(CockpitRadii.lg),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Material(
+                          color: scheme.surfaceContainerLow,
+                          child: _InkCanvas(ink: ink, notes: widget.notes, onSwitchToTypewriter: widget.onClose),
+                        ),
+                      ),
+                      if (widget.top != null)
+                        Positioned(left: CockpitSpacing.sm, right: CockpitSpacing.sm, top: CockpitSpacing.sm, child: widget.top!),
+                    ],
+                  ),
+                ),
+              ),
+              _Rail(
+                children: [
+                  for (final c in InkController.palette)
+                    _ColorDot(color: c, selected: ink.color == c && ink.tool != InkTool.eraser, onTap: () {
+                      HapticFeedback.selectionClick();
+                      ink.setColor(c);
+                      if (!ink.tool.isDrawing) ink.setTool(InkTool.pen);
+                    }),
+                  const SizedBox(height: CockpitSpacing.xs),
+                  _WidthDial(ink: ink),
+                  const Spacer(),
+                  _RailButton(
+                    icon: Icons.undo_rounded,
+                    tooltip: 'Undo',
+                    onTap: ink.canUndo
+                        ? () {
+                            HapticFeedback.lightImpact();
+                            ink.undo();
+                          }
+                        : null,
+                  ),
+                  _RailButton(
+                    icon: Icons.redo_rounded,
+                    tooltip: 'Redo',
+                    onTap: ink.canRedo
+                        ? () {
+                            HapticFeedback.lightImpact();
+                            ink.redo();
+                          }
+                        : null,
+                  ),
+                  _RailButton(
+                    icon: Icons.note_add_outlined,
+                    tooltip: 'Add page',
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      ink.addPage();
+                    },
+                  ),
+                  _PageBadge(ink: ink),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Rail extends StatelessWidget {
+  const _Rail({required this.children});
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 56,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: CockpitSpacing.sm),
+          child: Column(children: children),
+        ),
+      );
+}
+
+class _RailButton extends StatelessWidget {
+  const _RailButton({required this.icon, required this.tooltip, required this.onTap, this.selected = false});
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Tooltip(
+        message: tooltip,
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: tooltip,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutBack,
+              width: 42,
+              height: 40,
+              decoration: BoxDecoration(
+                color: selected ? scheme.primary.withValues(alpha: 0.18) : Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: AnimatedScale(
+                scale: selected ? 1.12 : 1,
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutBack,
+                child: Icon(
+                  icon,
+                  size: 21,
+                  color: onTap == null
+                      ? scheme.outlineVariant
+                      : selected
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Rectangle / circle / line behind one button.
+class _ShapeButton extends StatelessWidget {
+  const _ShapeButton({required this.ink, required this.onPick});
+  final InkController ink;
+  final ValueChanged<InkTool> onPick;
+
+  static const _shapes = [InkTool.rect, InkTool.circle, InkTool.line];
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final current = _shapes.contains(ink.tool) ? ink.tool : null;
+    return PopupMenuButton<InkTool>(
+      tooltip: 'Shapes',
+      position: PopupMenuPosition.under,
+      onOpened: HapticFeedback.selectionClick,
+      onSelected: onPick,
+      itemBuilder: (_) => [
+        for (final s in _shapes)
+          PopupMenuItem(value: s, height: 40, child: Row(children: [Icon(s.icon, size: 18), const SizedBox(width: 10), Text(s.name)])),
+      ],
+      child: Container(
+        width: 42,
+        height: 40,
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          color: current != null ? scheme.primary.withValues(alpha: 0.18) : Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(current?.icon ?? Icons.category_outlined, size: 21, color: current != null ? scheme.primary : scheme.onSurfaceVariant),
+      ),
+    );
+  }
+}
+
+class _ColorDot extends StatelessWidget {
+  const _ColorDot({required this.color, required this.selected, required this.onTap});
+  final Color color;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = Theme.of(context).colorScheme.onSurface;
+    // The near-black ink reads as white on the dark rail.
+    final shown = color.computeLuminance() < 0.05 ? const Color(0xFFECEDED) : color;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: 'Colour',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            width: selected ? 26 : 20,
+            height: selected ? 26 : 20,
+            decoration: BoxDecoration(
+              color: shown,
+              shape: BoxShape.circle,
+              border: Border.all(color: selected ? ring : Colors.transparent, width: 2.5),
+              boxShadow: selected ? [BoxShadow(color: shown.withValues(alpha: 0.5), blurRadius: 10)] : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Tap to step through the stroke widths; the dot shows the size.
+class _WidthDial extends StatelessWidget {
+  const _WidthDial({required this.ink});
+  final InkController ink;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const widths = InkController.widths;
+    return Tooltip(
+      message: 'Stroke width',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          ink.setWidth(widths[(widths.indexOf(ink.width) + 1) % widths.length]);
+        },
+        child: SizedBox(
+          width: 42,
+          height: 40,
+          child: Center(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutBack,
+              width: 4 + ink.width * 2,
+              height: 4 + ink.width * 2,
+              decoration: BoxDecoration(color: scheme.onSurface, shape: BoxShape.circle),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PageBadge extends StatelessWidget {
+  const _PageBadge({required this.ink});
+  final InkController ink;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return PopupMenuButton<int>(
+      tooltip: 'Pages',
+      onOpened: HapticFeedback.selectionClick,
+      onSelected: (i) {
+        HapticFeedback.selectionClick();
+        ink.setPage(i);
+      },
+      itemBuilder: (_) => [
+        for (var i = 0; i < ink.pageCount; i++) PopupMenuItem(value: i, height: 38, child: Text('Page ${i + 1}')),
+      ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: CockpitSpacing.xs),
+        child: Text('${ink.pageIndex + 1}/${ink.pageCount}',
+            style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
 }

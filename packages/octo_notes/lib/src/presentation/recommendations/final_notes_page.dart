@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../domain/recommendations_controller.dart';
 import '../../theme/octo_notes_theme.dart';
 import '../widgets/octo_widgets.dart';
+import 'phone_final_notes.dart';
 
 /// Width at/above which the Final Notes view shows the recommendations drawer
 /// beside the note (spec §2 — desktop/tablet right drawer).
@@ -20,7 +21,10 @@ const double _kFinalDesktop = 1040;
 /// prepares a conversion draft the student approves in Panel 15. See
 /// `docs/panel-14-study-recommendations.md`.
 class FinalNotesPage extends StatefulWidget {
-  const FinalNotesPage({super.key});
+  const FinalNotesPage({super.key, this.finalNotesId});
+
+  /// The final notes to show (the phone layout loads them; desktop still demos).
+  final String? finalNotesId;
 
   @override
   State<FinalNotesPage> createState() => _FinalNotesPageState();
@@ -49,6 +53,7 @@ class _FinalNotesPageState extends State<FinalNotesPage> {
       context: context,
       child: Builder(
         builder: (context) {
+          if (MediaQuery.sizeOf(context).shortestSide < 600) return PhoneFinalNotes(finalNotesId: widget.finalNotesId);
           final scheme = Theme.of(context).colorScheme;
           final desktop = MediaQuery.sizeOf(context).width >= _kFinalDesktop;
           return AnimatedBuilder(

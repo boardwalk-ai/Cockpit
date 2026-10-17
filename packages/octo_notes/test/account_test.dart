@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +11,7 @@ import 'package:octo_notes/src/application/account_providers.dart';
 import 'package:octo_notes/src/data/account/account_repository.dart';
 import 'package:octo_notes/src/data/api/notes_api_client.dart';
 import 'package:octo_notes/src/domain/account.dart';
+import 'package:octo_notes/src/presentation/home/header_glow.dart';
 import 'package:octo_notes/src/presentation/home/octo_notes_home_page.dart';
 
 const _meJson = {
@@ -99,5 +102,46 @@ void main() {
 
     expect(find.text('5,000'), findsOneWidget);
     expect(find.text('D'), findsOneWidget);
+  });
+
+  testWidgets('Phone home: OctoCredits pill and the header glow, desktop without', (tester) async {
+    Future<void> show(Size size) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(ProviderScope(
+        key: ValueKey(size),
+        overrides: [
+          accountRepositoryProvider.overrideWithValue(
+            InMemoryAccountRepository(NotesAccount.fromJson(_meJson)),
+          ),
+        ],
+        child: const MaterialApp(home: OctoNotesHomePage()),
+      ));
+      // The glow never settles (it drifts), so pump past the count-up.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+    }
+
+    addTearDown(tester.view.reset);
+    // The real face, so widths are what a phone draws (not the test font).
+    await tester.runAsync(() async {
+      final font = FontLoader('packages/cockpit_ui/PlusJakartaSans');
+      for (final w in ['Regular', 'Medium', 'SemiBold', 'Bold']) {
+        font.addFont(rootBundle.load('packages/cockpit_ui/assets/fonts/PlusJakartaSans-$w.ttf'));
+      }
+      await font.load();
+    });
+    await show(const Size(390, 844));
+    expect(find.byType(OctoCreditsPill), findsOneWidget);
+    expect(find.text('5,000'), findsOneWidget);
+    expect(find.byType(HeaderGlow), findsOneWidget);
+    // A finger on the header moves the glow without breaking anything.
+    await tester.tapAt(const Offset(80, 60));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+
+    await show(const Size(1440, 900));
+    expect(find.byType(HeaderGlow), findsNothing);
+    expect(find.byType(OctoCreditsPill), findsNothing);
   });
 }

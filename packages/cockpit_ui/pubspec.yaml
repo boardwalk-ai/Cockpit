@@ -19,6 +19,10 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
+  # The OctoCredits coin, shared by every module's credits pill.
+  assets:
+    - assets/images/octocredits.png
+    - assets/images/octocredits_large.png
   # Plus Jakarta Sans — the shared borderless design-system font (OFL).
   # Available to every package that depends on cockpit_ui as family
   # `packages/cockpit_ui/PlusJakartaSans`.

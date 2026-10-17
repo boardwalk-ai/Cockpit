@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import '../../domain/notes_session.dart';
+import '../../domain/pairing.dart';
 import 'notes_api_client.dart';
 
 /// Typed access to every `octonotes-api` area. Resource-shaped on purpose:
@@ -66,6 +67,23 @@ class OctoNotesApi {
       client.postJson('/v1/devices', {'id': id, 'name': name, 'platform': platform});
   Future<List<dynamic>> deckDestinations() => client.getList('/v1/deck/destinations');
 
+  // ── Recording on another phone (pairing) ──────────────────────────────────
+  /// The receiver (this device, where the session is worked on) asks for a code.
+  Future<Pairing> createPairing(String receiverDeviceId) async =>
+      Pairing.fromJson(await client.postJson('/v1/pairings', {'receiverDeviceId': receiverDeviceId}));
+
+  /// The other phone: [code] typed in, or [secret] (the QR's text).
+  Future<Pairing> claimPairing({String? code, String? secret, required String deviceId}) async =>
+      Pairing.fromJson(await client.postJson('/v1/pairings/claim', {
+        'code': ?code,
+        'secret': ?secret,
+        'deviceId': deviceId,
+      }));
+  Future<Pairing> pairing(String id) async => Pairing.fromJson(await client.getJson('/v1/pairings/$id'));
+  Future<Pairing> startPairing(String id, String sessionId) async =>
+      Pairing.fromJson(await client.postJson('/v1/pairings/$id/start', {'sessionId': sessionId}));
+  Future<void> cancelPairing(String id) => client.delete('/v1/pairings/$id');
+
   // ── Typewriter blocks + ink ───────────────────────────────────────────────
   Future<Map<String, dynamic>> blocks(String sessionId, {int? sinceRev}) =>
       client.getJson('/v1/sessions/$sessionId/blocks${sinceRev == null ? '' : '?sinceRev=$sinceRev'}');
@@ -85,13 +103,30 @@ class OctoNotesApi {
       client.postJson('/v1/ink/pages/$pageId/recognize', {'strokeIds': strokeIds});
 
   // ── Capture + transcript ──────────────────────────────────────────────────
-  Future<Map<String, dynamic>> startRecording(String sessionId, String deviceId, {String? id}) =>
-      client.postJson('/v1/sessions/$sessionId/recordings', {'id': id ?? newId(), 'deviceId': deviceId});
+  Future<Map<String, dynamic>> startRecording(String sessionId, String deviceId,
+          {String? id, String? container, int? sampleRate, int? chunkMs}) =>
+      client.postJson('/v1/sessions/$sessionId/recordings', {
+        'id': id ?? newId(),
+        'deviceId': deviceId,
+        'container': ?container,
+        'sampleRate': ?sampleRate,
+        'chunkMs': ?chunkMs,
+      });
+  Future<List<dynamic>> recordings(String sessionId) => client.getList('/v1/sessions/$sessionId/recordings');
+
+  /// Devices in the session: `{deviceId, name, platform, role, isRecording, online}`.
+  Future<List<dynamic>> sessionDevices(String sessionId) => client.getList('/v1/sessions/$sessionId/devices');
+
+  /// A photo of the board, kept with the session's materials.
+  Future<Map<String, dynamic>> uploadBoardPhoto(String sessionId, List<int> bytes, {String filename = 'board.jpg'}) =>
+      client.postFile('/v1/sessions/$sessionId/materials', bytes, filename,
+          filename.endsWith('.png') ? 'image/png' : 'image/jpeg', fields: {'kind': 'whiteboardPhoto'});
   Future<Map<String, dynamic>> setRecordingState(String recordingId, String state, {int? durationMs}) =>
       client.patchJson('/v1/recordings/$recordingId', {'state': state, 'durationMs': ?durationMs});
   Future<Map<String, dynamic>> uploadChunk(String recordingId, int seq, List<int> audio,
-          {required int startMs, required int durationMs, String contentType = 'audio/ogg'}) =>
-      client.putBytes('/v1/recordings/$recordingId/chunks/$seq?startMs=$startMs&durationMs=$durationMs', audio, contentType);
+          {required int startMs, required int durationMs, String contentType = 'audio/ogg', String? sha256}) =>
+      client.putBytes('/v1/recordings/$recordingId/chunks/$seq?startMs=$startMs&durationMs=$durationMs', audio, contentType,
+          headers: {'x-chunk-sha256': ?sha256});
   Future<Map<String, dynamic>> manifest(String recordingId) => client.getJson('/v1/recordings/$recordingId/manifest');
   Future<Map<String, dynamic>> completeRecording(String recordingId, int lastSeq) =>
       client.postJson('/v1/recordings/$recordingId/complete', {'lastSeq': lastSeq});
@@ -105,6 +140,7 @@ class OctoNotesApi {
       client.patchJson('/v1/transcript/segments/$segmentId', {'correctedText': ?text, 'speaker': ?speaker});
   Future<Map<String, dynamic>> setTranscription(String sessionId, bool on) =>
       client.postJson('/v1/sessions/$sessionId/transcription', {'on': on});
+  Future<List<dynamic>> markers(String sessionId) => client.getList('/v1/sessions/$sessionId/markers');
   Future<Map<String, dynamic>> addMarker(String sessionId, String type, int atMs) =>
       client.postJson('/v1/sessions/$sessionId/markers', {'type': type, 'atMs': atMs});
 
@@ -140,6 +176,8 @@ class OctoNotesApi {
   Future<Map<String, dynamic>> export(String finalNotesId, String format) =>
       client.postJson('/v1/final-notes/$finalNotesId/export', {'format': format});
   Future<Map<String, dynamic>> exportStatus(String exportId) => client.getJson('/v1/exports/$exportId');
+  Future<Map<String, dynamic>> finalNotes(String id) => client.getJson('/v1/final-notes/$id');
+  Future<List<dynamic>> materials(String sessionId) => client.getList('/v1/sessions/$sessionId/materials');
   Future<Map<String, dynamic>> recommendations(String finalNotesId) => client.getJson('/v1/final-notes/$finalNotesId/recommendations');
   Future<Map<String, dynamic>> createConversion(String finalNotesId, {List<String>? topicIds}) =>
       client.postJson('/v1/conversions', {'finalNotesId': finalNotesId, 'topicIds': ?topicIds});

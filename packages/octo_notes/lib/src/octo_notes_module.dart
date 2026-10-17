@@ -6,6 +6,7 @@ import 'presentation/conversion/conversion_preview_page.dart';
 import 'presentation/home/octo_notes_home_page.dart';
 import 'presentation/live/live_session_hub_page.dart';
 import 'presentation/live/session_finalize_page.dart';
+import 'presentation/new_session/join_recorder_page.dart';
 import 'presentation/recommendations/final_notes_page.dart';
 import 'presentation/record/octo_notes_record_page.dart';
 import 'presentation/review/session_review_page.dart';
@@ -49,13 +50,24 @@ class OctoNotesModule extends CockpitModule {
         // The old full workspace is kept at /notes/session/full for reference.
         GoRoute(
           path: 'session',
-          builder: (_, _) => const LiveSessionHubPage(),
+          // ?id= the backend session, ?role= solo | receiver | recorder,
+          // ?record=0 a solo session without the mic.
+          builder: (_, state) => LiveSessionHubPage(
+            sessionId: state.uri.queryParameters['id'],
+            role: SessionRole.parse(state.uri.queryParameters['role']),
+            record: state.uri.queryParameters['record'] != '0',
+          ),
           routes: [
             GoRoute(
               path: 'full',
               builder: (_, _) => const OctoNotesSessionPage(),
             ),
           ],
+        ),
+        // The other phone joins a session as its recorder (pairing).
+        GoRoute(
+          path: 'join',
+          builder: (_, _) => const JoinRecorderPage(),
         ),
         GoRoute(
           path: 'record',
@@ -65,7 +77,7 @@ class OctoNotesModule extends CockpitModule {
         // Finalize button opens (replaces Panel 13 in the redesign flow).
         GoRoute(
           path: 'finalize',
-          builder: (_, _) => const SessionFinalizePage(),
+          builder: (_, state) => SessionFinalizePage(sessionId: state.uri.queryParameters['id']),
         ),
         GoRoute(
           path: 'review',
@@ -73,7 +85,7 @@ class OctoNotesModule extends CockpitModule {
         ),
         GoRoute(
           path: 'final',
-          builder: (_, _) => const FinalNotesPage(),
+          builder: (_, state) => FinalNotesPage(finalNotesId: state.uri.queryParameters['id']),
         ),
         GoRoute(
           path: 'convert',

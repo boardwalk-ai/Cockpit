@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
 /// Error from `octonotes-api`: `{ "error": "...", "code": "...", "details": {...} }`.
 class NotesApiException implements Exception {
@@ -68,6 +69,21 @@ class NotesApiClient {
     final res = await _http.put(_uri(path),
         headers: {...await _headers(), 'content-type': contentType, ...?headers}, body: bytes);
     return _asMap(_decode(res));
+  }
+
+  /// Multipart upload (`file` plus text [fields]), e.g. a whiteboard photo.
+  Future<Map<String, dynamic>> postFile(String path, List<int> bytes, String filename, String contentType,
+      {Map<String, String> fields = const {}}) async {
+    final req = http.MultipartRequest('POST', _uri(path))
+      ..headers.addAll(await _headers())
+      ..fields.addAll(fields)
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: _mediaType(contentType)));
+    return _asMap(_decode(await http.Response.fromStream(await _http.send(req))));
+  }
+
+  static MediaType _mediaType(String type) {
+    final i = type.indexOf('/');
+    return MediaType(type.substring(0, i), type.substring(i + 1));
   }
 
   /// POSTs and yields SSE events until the stream ends. An `error` event is
