@@ -72,6 +72,32 @@ async fn authenticate(st: &AppState, frame: &AuthFrame) -> Result<Caller, ApiErr
     <Caller as axum::extract::FromRequestParts<AppState>>::from_request_parts(&mut parts, st).await
 }
 
+/// A caption a phone sends: `{segId, text, final, startMs, endMs}`, checked
+/// before it's relayed (short id, at most 1000 chars, sane times).
+fn caption(d: &Value) -> Option<(String, String, bool, i64, i64)> {
+    let seg = d["segId"].as_str().filter(|s| !s.is_empty() && s.len() <= 64)?;
+    let text: String = d["text"].as_str()?.chars().take(1000).collect();
+    let start = d["startMs"].as_i64().filter(|v| *v >= 0)?;
+    let end = d["endMs"].as_i64().filter(|v| *v >= start)?;
+    Some((seg.to_string(), text, d["final"].as_bool().unwrap_or(false), start, end))
+}
+
+#[cfg(test)]
+mod caption_tests {
+    use super::caption;
+    use serde_json::json;
+
+    #[test]
+    fn captions_are_checked() {
+        let ok = caption(&json!({ "segId": "a1", "text": "hello", "final": true, "startMs": 10, "endMs": 900 })).unwrap();
+        assert_eq!((ok.1.as_str(), ok.2), ("hello", true));
+        assert!(caption(&json!({ "segId": "", "text": "x", "startMs": 0, "endMs": 1 })).is_none());
+        assert!(caption(&json!({ "segId": "a", "text": "x", "startMs": 5, "endMs": 1 })).is_none());
+        let long = caption(&json!({ "segId": "a", "text": "y".repeat(5000), "startMs": 0, "endMs": 0 })).unwrap();
+        assert_eq!(long.1.len(), 1000);
+    }
+}
+
 async fn send(socket: &mut WebSocket, v: Value) -> Result<(), axum::Error> {
     socket.send(Message::Text(v.to_string())).await
 }
@@ -181,6 +207,13 @@ async fn run(st: AppState, session_id: Uuid, mut socket: WebSocket) -> Result<()
                         Some("presence") => if let Some(d) = device {
                             let _ = sqlx::query("UPDATE session_devices SET last_seen_at = now() WHERE session_id = $1 AND device_id = $2")
                                 .bind(session_id).bind(d).execute(&st.notes).await;
+                        },
+                        // On-device captions from the recording phone, relayed as
+                        // they are heard; the server's own transcript stays the record.
+                        Some("caption") => if let Some(d) = device {
+                            if let Some(c) = caption(&v["data"]) {
+                                st.hub.session(session_id, Event::new("transcript.live", json!({ "deviceId": d, "segId": c.0, "text": c.1, "final": c.2, "startMs": c.3, "endMs": c.4 }), None)).await;
+                            }
                         },
                         Some("follow") => {
                             st.hub.session(session_id, Event::new("slide.follow", json!({ "deviceId": device, "following": v["data"]["following"] }), None)).await;
