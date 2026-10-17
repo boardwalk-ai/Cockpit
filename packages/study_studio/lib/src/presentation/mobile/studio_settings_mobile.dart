@@ -23,6 +23,7 @@ class StudioSettingsMobile extends StatefulWidget {
     required this.onExportCards,
     required this.onDelete,
     this.pickFiles,
+    this.share,
   });
 
   final Studio studio;
@@ -39,6 +40,9 @@ class StudioSettingsMobile extends StatefulWidget {
 
   /// Picks files (the add sheet; replaced in tests).
   final Future<List<SmPickedFile>> Function(BuildContext context)? pickFiles;
+
+  /// The SHARE section's row (the share link), when sharing is available.
+  final Widget? share;
 
   @override
   State<StudioSettingsMobile> createState() => _StudioSettingsMobileState();
@@ -406,6 +410,10 @@ class _StudioSettingsMobileState extends State<StudioSettingsMobile> {
                       : () => _export('cards', widget.onExportCards),
                 ),
               ),
+              if (widget.share != null) ...[
+                appear(section('SHARE')),
+                appear(widget.share!),
+              ],
               const SizedBox(height: 34),
               appear(
                 Center(

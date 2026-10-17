@@ -8,7 +8,6 @@
 use std::time::Duration;
 
 use pgvector::Vector;
-use serde_json::json;
 use sqlx::Row;
 use uuid::Uuid;
 
@@ -30,30 +29,14 @@ pub async fn ensure_schema(state: &AppState) -> sqlx::Result<()> {
 
 /// Embeds `texts` with the embed service, retrying with backoff.
 pub async fn embed(state: &AppState, texts: &[String]) -> Result<Vec<Vec<f32>>, String> {
-    let url = format!("{}/embed", state.config.embed_service_url.trim_end_matches('/'));
     let mut last = String::new();
     for attempt in 0..EMBED_TRIES {
         if attempt > 0 {
             tokio::time::sleep(Duration::from_secs(2u64.pow(attempt))).await;
         }
-        let r = state
-            .http
-            .post(&url)
-            .timeout(Duration::from_secs(180))
-            .json(&json!({ "texts": texts }))
-            .send()
-            .await;
-        match r {
-            Ok(r) if r.status().is_success() => {
-                let v: serde_json::Value = r.json().await.map_err(|e| e.to_string())?;
-                let vecs: Vec<Vec<f32>> = serde_json::from_value(v["vectors"].clone()).map_err(|e| e.to_string())?;
-                if vecs.len() == texts.len() {
-                    return Ok(vecs);
-                }
-                last = format!("embed returned {} vectors for {} texts", vecs.len(), texts.len());
-            }
-            Ok(r) => last = format!("embed HTTP {}", r.status()),
-            Err(e) => last = e.to_string(),
+        match crate::embedder::embed_once(state, texts, Duration::from_secs(180)).await {
+            Ok(vecs) => return Ok(vecs),
+            Err(e) => last = e,
         }
     }
     Err(last)

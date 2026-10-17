@@ -1,0 +1,10 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.boardwalklabs.octopilot",
+    "sha256_cert_fingerprints": [
+      "73:B3:A7:57:A8:DD:29:CF:54:13:8A:3C:75:D7:CD:95:37:4C:1C:C4:4A:EB:8C:AE:68:E8:4D:D7:9C:58:08:1F"
+    ]
+  }
+}]

@@ -2,6 +2,19 @@ import 'scenario.dart';
 import 'source.dart';
 import 'topic.dart';
 
+/// How far a running build is.
+class StudioBuild {
+  const StudioBuild({required this.lessonsDone, required this.lessonsTotal});
+
+  final int lessonsDone;
+  final int lessonsTotal;
+
+  /// 0–100, or null before the outline says how many lessons there are.
+  int? get percent => lessonsTotal > 0
+      ? (lessonsDone * 100 / lessonsTotal).round().clamp(0, 100)
+      : null;
+}
+
 /// A Study Studio: the environment generated from uploaded materials. Holds the
 /// source files and the Study Objects ([topics]) every tool draws from.
 class Studio {
@@ -15,6 +28,8 @@ class Studio {
     this.topics = const [],
     this.scenarios = const [],
     this.lastStudied,
+    this.build,
+    this.sharedBy,
   });
 
   final String id;
@@ -27,6 +42,12 @@ class Studio {
   final List<Topic> topics;
   final List<Scenario> scenarios;
 
+  /// A build still running on the server (null when none).
+  final StudioBuild? build;
+
+  /// Who shared it, when it was added from a share link.
+  final String? sharedBy;
+
   int get topicCount => topics.length;
 
   int get scenarioCount => scenarios.length;
@@ -34,8 +55,7 @@ class Studio {
   int get flashcardCount =>
       topics.fold(0, (sum, t) => sum + t.flashcards.length);
 
-  int get quizCount =>
-      topics.fold(0, (sum, t) => sum + t.quizQuestions.length);
+  int get quizCount => topics.fold(0, (sum, t) => sum + t.quizQuestions.length);
 
   List<Topic> get weakTopics => topics.where((t) => t.isWeak).toList();
 
@@ -61,6 +81,8 @@ class Studio {
       sourceFiles: sourceFiles,
       topics: topics ?? this.topics,
       scenarios: scenarios,
+      build: build,
+      sharedBy: sharedBy,
     );
   }
 }

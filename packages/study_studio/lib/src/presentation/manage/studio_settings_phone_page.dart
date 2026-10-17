@@ -11,6 +11,7 @@ import '../mobile/mobile_header.dart';
 import '../mobile/mobile_style.dart';
 import '../mobile/studio_export.dart';
 import '../mobile/studio_settings_mobile.dart';
+import '../mobile/studio_share_mobile.dart';
 import '../mobile/study_build_run.dart';
 import '../upload/build_flow_phone.dart';
 
@@ -86,8 +87,9 @@ class _StudioSettingsPhonePageState
                 backend: ApiStudyBuildBackend(
                   ref.read(studioRepositoryProvider),
                   upload,
-                  onStarted: () =>
-                      unawaited(ref.read(studyPushLinkProvider)?.sync(ask: true)),
+                  onStarted: () => unawaited(
+                    ref.read(studyPushLinkProvider)?.sync(ask: true),
+                  ),
                 ),
                 title: studio.title,
                 files: files,
@@ -112,6 +114,9 @@ class _StudioSettingsPhonePageState
               subject: '${studio.title} — flashcards',
             ),
             onDelete: () => confirmDeleteStudio(context, ref, studio),
+            share: ref.watch(shareApiProvider) == null
+                ? null
+                : StudioShareRow(studio: studio),
           ),
         );
   }

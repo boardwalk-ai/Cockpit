@@ -9,12 +9,16 @@ class Me {
     this.email,
     this.displayName,
     this.credits,
+    this.photoUrl,
   });
 
   final String id;
   final String? email;
   final String? displayName;
   final int? credits;
+
+  /// The account photo (Google sign-in), for the header's profile button.
+  final String? photoUrl;
 
   /// Initials for the avatar fallback (e.g. "DT" from a name/email).
   String get initials {

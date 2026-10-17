@@ -501,7 +501,7 @@ async fn send_pending(state: &AppState) -> sqlx::Result<usize> {
             .as_object()
             .map(|m| m.iter().map(|(k, v)| (k.clone(), v.as_str().map(str::to_string).unwrap_or_else(|| v.to_string()))).collect())
             .unwrap_or_default();
-        let notice = Notice { title: r.get("title"), body: r.get("body"), data };
+        let notice = Notice { title: r.get("title"), body: r.get("body"), data, ..Default::default() };
         let mut delivered = 0;
         let mut last_error = None;
         for (device, token) in devices {

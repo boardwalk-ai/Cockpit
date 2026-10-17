@@ -26,6 +26,8 @@ class ApiStudioRepository implements StudioRepository {
     final events = await _sse.post(
       '/studios',
       body: {'title': title, if (subject != null) 'subject': subject},
+      extraHeaders: {'Idempotency-Key': newRequestId()},
+      retry: true,
     );
     final data = events.firstWhere(
       (e) => e.event == 'data',
@@ -67,7 +69,8 @@ class ApiStudioRepository implements StudioRepository {
   }) async {
     await _sse.post(
       '/studios/$studioId/topics/$topicId/quiz-result',
-      query: {'correct': correct},
+      query: {'correct': correct, 'event_id': newRequestId()},
+      retry: true,
     );
   }
 
@@ -79,7 +82,8 @@ class ApiStudioRepository implements StudioRepository {
   }) async {
     await _sse.post(
       '/studios/$studioId/topics/$topicId/flashcard-review',
-      query: {'quality': quality},
+      query: {'quality': quality, 'event_id': newRequestId()},
+      retry: true,
     );
   }
 
@@ -108,7 +112,8 @@ class ApiStudioRepository implements StudioRepository {
   }) async {
     await _sse.post(
       '/studios/$studioId/flashcards/${Uri.encodeComponent(cardId)}/review',
-      query: {'topic_id': topicId, 'grade': grade},
+      query: {'topic_id': topicId, 'grade': grade, 'event_id': newRequestId()},
+      retry: true,
     );
   }
 
@@ -160,6 +165,22 @@ class ApiStudioRepository implements StudioRepository {
     final list = data?['value'];
     if (list is! List) return const [];
     return [for (final j in list) ?DayActivity.fromJson(j)];
+  }
+
+  @override
+  Future<bool?> gradeRecall({
+    required String studioId,
+    required String question,
+    required String answer,
+    required String said,
+  }) async {
+    final events = await _sse.post(
+      '/studios/$studioId/grade',
+      body: {'question': question, 'answer': answer, 'said': said},
+    );
+    final data = events.where((e) => e.event == 'data').firstOrNull?.data;
+    final correct = data?['correct'];
+    return correct is bool ? correct : null;
   }
 
   @override

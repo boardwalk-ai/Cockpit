@@ -34,9 +34,22 @@ pub struct Config {
     pub notify_worker: bool,
     /// The Firebase service-account key file for push. Unset = no push.
     pub fcm_service_account_file: Option<String>,
+    /// Web origins allowed to call the API (comma-separated), as Python's.
+    pub cors_origins: Vec<String>,
+    /// Share links are this + the code.
+    pub share_base_url: String,
+    /// Overrides `system_settings.secondary_model` (benchmarks on a copy).
+    pub build_model: Option<String>,
     /// Create/alter this service's tables at startup (chunks.page/heading,
     /// llm_usage). On at the cutover; off while only shadowing.
     pub migrate: bool,
+    /// Test environment: only the allowlist (and admins) get in, behind
+    /// the feature flags, both in the shared DB (octo_common::access).
+    pub access_gate: bool,
+    /// Always let in by the gate (they run the admin app).
+    pub admin_emails: Vec<String>,
+    /// OctoCredits for a tester's account made on first sign-in.
+    pub starting_credits: i32,
 }
 
 fn var(name: &str) -> Option<String> {
@@ -70,8 +83,18 @@ impl Config {
             build_workers: var("BUILD_WORKERS").and_then(|v| v.parse().ok()).unwrap_or(2),
             notify_worker: var("NOTIFY_WORKER").is_some_and(|v| v == "1" || v == "true"),
             fcm_service_account_file: var("FCM_SERVICE_ACCOUNT_FILE"),
+            cors_origins: var("CORS_ORIGINS")
+                .map(|v| v.split(',').map(|o| o.trim().to_string()).filter(|o| !o.is_empty()).collect())
+                .unwrap_or_default(),
+            share_base_url: var("SHARE_BASE_URL").unwrap_or_else(|| "https://studystudio.octopilothub.com/s/".into()),
+            build_model: var("BUILD_MODEL"),
             max_upload_mb: var("MAX_UPLOAD_MB").and_then(|v| v.parse().ok()).unwrap_or(50),
             migrate: var("MIGRATE").is_some_and(|v| v == "1" || v == "true"),
+            access_gate: var("ACCESS_GATE").is_some_and(|v| v == "1" || v == "true"),
+            admin_emails: var("ADMIN_EMAILS")
+                .map(|v| v.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect())
+                .unwrap_or_default(),
+            starting_credits: var("STARTING_CREDITS").and_then(|v| v.parse().ok()).unwrap_or(0),
         }
     }
 }

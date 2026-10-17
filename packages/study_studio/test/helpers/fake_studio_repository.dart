@@ -115,4 +115,12 @@ class FakeStudioRepository implements StudioRepository {
 
   @override
   Future<void> markReviewed(String studioId, String topicId) async {}
+
+  @override
+  Future<bool?> gradeRecall({
+    required String studioId,
+    required String question,
+    required String answer,
+    required String said,
+  }) async => null;
 }

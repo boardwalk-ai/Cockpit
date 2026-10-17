@@ -1,0 +1,107 @@
+{
+ "label": "b1-glm",
+ "files": [
+  {
+   "file": "EBSCO-FullText-09_08_2026.pdf",
+   "bytes": 2572871,
+   "ingest": "done",
+   "error": "",
+   "seconds": 21.7,
+   "passages": 32,
+   "chars": 30886
+  }
+ ],
+ "steps": {
+  "ask": {
+   "promptTokens": 6278,
+   "completionTokens": 676,
+   "reasoningTokens": 0,
+   "costUsd": 0.028974,
+   "calls": 3,
+   "model": "anthropic/claude-sonnet-4-6",
+   "avgCostUsd": 0.009658
+  },
+  "concepts": {
+   "promptTokens": 0,
+   "completionTokens": 0,
+   "reasoningTokens": 0,
+   "costUsd": 0,
+   "calls": 0,
+   "model": null,
+   "avgCostUsd": null
+  },
+  "grade": {
+   "promptTokens": 448,
+   "completionTokens": 105,
+   "reasoningTokens": 3,
+   "costUsd": 0.000124,
+   "calls": 3,
+   "model": "z-ai/glm-5.3-flash",
+   "avgCostUsd": 4.1e-05
+  }
+ },
+ "build": {
+  "seconds": 372.6,
+  "error": null,
+  "usage": {
+   "byFeature": {
+    "build_lesson": {
+     "calls": 19,
+     "completionTokens": 45133,
+     "costUsd": 0.030382,
+     "model": "z-ai/glm-5.3-flash",
+     "promptTokens": 53989,
+     "reasoningTokens": 4
+    },
+    "build_outline": {
+     "calls": 1,
+     "completionTokens": 1290,
+     "costUsd": 0.001703,
+     "model": "z-ai/glm-5.3-flash",
+     "promptTokens": 7053,
+     "reasoningTokens": 0
+    },
+    "build_scenarios": {
+     "calls": 1,
+     "completionTokens": 3540,
+     "costUsd": 0.002842,
+     "model": "z-ai/glm-5.3-flash",
+     "promptTokens": 7146,
+     "reasoningTokens": 12
+    }
+   },
+   "calls": 21,
+   "completionTokens": 49963,
+   "costUsd": 0.034927,
+   "promptTokens": 68188,
+   "reasoningTokens": 16
+  },
+  "lessons": 19,
+  "cards": 173,
+  "quiz": 114,
+  "scenarios": 7,
+  "lessonChars": 39832,
+  "titles": [
+   "New metric of leadership",
+   "Defining transparency",
+   "Candor and upward communication",
+   "Groupthink and denial",
+   "Board oversight failures",
+   "Why leaders resist transparency",
+   "Transparency is inevitable",
+   "Guidant concealment case",
+   "DaVita no-secrets policy",
+   "Tell the truth",
+   "Speaking truth to power",
+   "Rewarding contrarians",
+   "Practicing unpleasant conversations",
+   "Diversifying information sources",
+   "Admitting mistakes",
+   "Organizational support for candor",
+   "Boards as last line of defense",
+   "Setting information free",
+   "Leaders as role models"
+  ]
+ },
+ "wallSeconds": 428.9
+}

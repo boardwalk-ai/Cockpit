@@ -73,7 +73,7 @@
       "runtimeExecutable": "H:/Git/usr/bin/bash.exe",
       "runtimeArgs": [
         "-lc",
-        "cd /h/Cockpit-ghostwriter/backend-rs && FIREBASE_PROJECT_ID= BIND=127.0.0.1 PORT=8791 GHOSTWRITER_DRIVER=scripted OCTOPILOT_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/octopilot_dev CARGO_TARGET_DIR=/h/Cockpit-ghostwriter/backend-rs/target cargo run -p ghostwriter-api"
+        "cd /h/Cockpit-ghostwriter/backend-rs && FIREBASE_PROJECT_ID= BIND=127.0.0.1 PORT=8791 GHOSTWRITER_DRIVER=scripted OCTOPILOT_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/octopilot_dev CARGO_TARGET_DIR=/h/Cockpit-ghostwriter/backend-rs/target-dev cargo run -p ghostwriter-api"
       ],
       "port": 8791
     },
@@ -91,6 +91,17 @@
       ],
       "cwd": "apps/cockpit",
       "port": 5300
+    },
+    {
+      "name": "releases-page",
+      "runtimeExecutable": "C:/Users/USER/AppData/Local/Python/bin/python.exe",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8899"
+      ],
+      "cwd": "tools/releases-page",
+      "port": 8899
     }
   ]
 }

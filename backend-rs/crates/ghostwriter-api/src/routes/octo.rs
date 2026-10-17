@@ -52,6 +52,14 @@ pub async fn ask(
     let question = clean_text(body.question, QUESTION_LIMIT, "question")?
         .ok_or_else(|| ApiError::bad_request("question is required"))?;
     let unavailable = || ApiError::unavailable("Octo cannot answer right now.");
+    if let Some(access) = &st.access {
+        // The main chat and GhostWriter's Ask Octo have their own flags.
+        let feature = if body.scope.as_deref() == Some("app") { "main_chat" } else { "ghostwriter" };
+        let email = caller.email.as_deref().map(str::to_lowercase);
+        if !access.is_admin(email.as_deref()) && !access.snapshot().await.flag(feature, email.as_deref()) {
+            return Err(octo_common::access::feature_off(feature));
+        }
+    }
 
     let (llm, model): (Arc<dyn Llm>, String) = match (&st.llm, &st.octopilot) {
         (Some(llm), _) => (llm.clone(), DEFAULT_MODEL.to_string()),

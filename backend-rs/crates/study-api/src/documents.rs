@@ -7,7 +7,7 @@ use std::convert::Infallible;
 use std::time::Duration;
 
 use axum::extract::{Multipart, Path, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
 use chrono::{DateTime, Utc};
@@ -22,6 +22,7 @@ use crate::identity::UserId;
 use crate::progress::owned_studio;
 use crate::sse;
 use crate::storage::key_for;
+use crate::studios::idempotency_key;
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -61,11 +62,18 @@ pub async fn upload(
     State(state): State<AppState>,
     UserId(user): UserId,
     Path(studio): Path<String>,
+    headers: HeaderMap,
     mut form: Multipart,
 ) -> Result<(StatusCode, Json<JobOut>), ApiError> {
     let sid = owned_studio(&state.cockpit, &studio, user)
         .await
         .ok_or_else(|| ApiError::not_found("Studio not found"))?;
+    let idem = idempotency_key(&headers);
+    if let Some(k) = &idem {
+        if let Some(job) = existing_job(&state, user, k).await? {
+            return Ok((StatusCode::ACCEPTED, Json(job)));
+        }
+    }
     let store = state.store.as_ref().ok_or_else(|| ApiError::unavailable("Uploads are off"))?;
     let max = state.config.max_upload_mb * 1024 * 1024;
 
@@ -96,9 +104,10 @@ pub async fn upload(
     store.put(&key, &bytes, &mime).await.map_err(ApiError::bad_gateway)?;
 
     let mut tx = state.cockpit.begin().await?;
-    sqlx::query(
-        "INSERT INTO documents (id, studio_id, user_id, filename, mime, bytes, object_key, status) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'uploaded')",
+    let inserted = sqlx::query(
+        "INSERT INTO documents (id, studio_id, user_id, filename, mime, bytes, object_key, status, idempotency_key) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'uploaded', $8) \
+         ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
     )
     .bind(doc)
     .bind(sid)
@@ -107,8 +116,18 @@ pub async fn upload(
     .bind(&mime)
     .bind(bytes.len() as i32)
     .bind(&key)
+    .bind(&idem)
     .execute(&mut *tx)
     .await?;
+    if inserted.rows_affected() == 0 {
+        // The same file arrived twice at once: keep the first, drop this copy.
+        drop(tx);
+        let _ = store.delete(&key).await;
+        let job = existing_job(&state, user, idem.as_deref().unwrap_or_default()).await?;
+        return job
+            .map(|j| (StatusCode::ACCEPTED, Json(j)))
+            .ok_or_else(|| ApiError::new(StatusCode::CONFLICT, "That file is still uploading."));
+    }
     let job = Uuid::new_v4();
     let created: DateTime<Utc> = sqlx::query_scalar(
         "INSERT INTO ingest_jobs (id, document_id, user_id, status, chunks_written) \
@@ -133,6 +152,27 @@ pub async fn upload(
             created_at: created,
         }),
     ))
+}
+
+/// The ingest job of the document uploaded earlier with this key.
+async fn existing_job(state: &AppState, user: Uuid, key: &str) -> Result<Option<JobOut>, ApiError> {
+    let row = sqlx::query(
+        "SELECT j.id, j.document_id, j.status, j.chunks_written, j.error, j.created_at FROM ingest_jobs j \
+         JOIN documents d ON d.id = j.document_id WHERE d.user_id = $1 AND d.idempotency_key = $2 \
+         ORDER BY j.created_at DESC LIMIT 1",
+    )
+    .bind(user)
+    .bind(key)
+    .fetch_optional(&state.cockpit)
+    .await?;
+    Ok(row.map(|r| JobOut {
+        id: r.get("id"),
+        document_id: r.get("document_id"),
+        status: r.get("status"),
+        chunks_written: r.get("chunks_written"),
+        error: r.get("error"),
+        created_at: r.get("created_at"),
+    }))
 }
 
 pub async fn list(

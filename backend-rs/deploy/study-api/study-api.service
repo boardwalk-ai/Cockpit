@@ -1,0 +1,28 @@
+[Unit]
+Description=Study Studio API (study-api, Rust)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=study-api
+Group=study-api
+EnvironmentFile=/opt/study-api/app.env
+WorkingDirectory=/var/lib/study-api
+ExecStart=/opt/study-api/bin/study-api
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/study-api
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

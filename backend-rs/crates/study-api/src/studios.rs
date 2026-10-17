@@ -5,6 +5,7 @@
 use std::collections::HashMap;
 
 use axum::extract::{Path, State};
+use axum::http::HeaderMap;
 use axum::Json;
 use chrono::{DateTime, Utc};
 use octo_common::error::ApiError;
@@ -161,7 +162,7 @@ pub async fn load_files(db: &PgPool, studio: Uuid, user: Uuid) -> Vec<SourceFile
 /// A studio the user owns, in full; None if it isn't theirs.
 pub async fn load_studio(db: &PgPool, studio: Uuid, user: Uuid) -> Result<Option<Studio>, ApiError> {
     let row = sqlx::query(
-        "SELECT id, title, subject, created_at, updated_at FROM studios \
+        "SELECT id, title, subject, created_at, updated_at, shared_by FROM studios \
          WHERE id = $1 AND user_id = $2",
     )
     .bind(studio)
@@ -179,7 +180,25 @@ pub async fn load_studio(db: &PgPool, studio: Uuid, user: Uuid) -> Result<Option
         source_files: load_files(db, studio, user).await,
         topics: load_topics(db, studio, user).await?,
         scenarios: load_scenarios(db, studio).await,
+        build: running_build(db, studio).await,
+        shared_by: r.try_get("shared_by").ok().flatten(),
     }))
+}
+
+async fn running_build(db: &PgPool, studio: Uuid) -> Option<dto::BuildState> {
+    let r = sqlx::query(
+        "SELECT id, status, lessons_done, lessons_total FROM studio_builds          WHERE studio_id = $1 AND status NOT IN ('done', 'failed') ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(studio)
+    .fetch_optional(db)
+    .await
+    .ok()??;
+    Some(dto::BuildState {
+        id: r.get::<Uuid, _>("id").to_string(),
+        status: r.get("status"),
+        lessons_done: r.get("lessons_done"),
+        lessons_total: r.get("lessons_total"),
+    })
 }
 
 /// `GET /studios` — the user's studios, newest first, one `item` each.
@@ -221,21 +240,62 @@ fn clip(s: &str, n: usize) -> String {
 }
 
 /// `POST /studios` `{title, subject}` — a new empty studio (`data`).
-pub async fn create(State(state): State<AppState>, UserId(user): UserId, Json(body): Json<Value>) -> SseStream {
+/// The `Idempotency-Key` header (A4): the app sends one per create / per
+/// picked file, so a retry after a lost response returns the first result.
+pub fn idempotency_key(headers: &HeaderMap) -> Option<String> {
+    let k = headers.get("idempotency-key")?.to_str().ok()?.trim();
+    (!k.is_empty() && k.len() <= 200).then(|| k.to_string())
+}
+
+/// `studios.idempotency_key` / `documents.idempotency_key`, unique per user.
+pub async fn ensure_schema(cockpit: &PgPool) -> sqlx::Result<()> {
+    for t in ["studios", "documents"] {
+        sqlx::query(&format!("ALTER TABLE {t} ADD COLUMN IF NOT EXISTS idempotency_key text"))
+            .execute(cockpit)
+            .await?;
+        sqlx::query(&format!(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_{t}_idempotency ON {t} (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL"
+        ))
+        .execute(cockpit)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn create(
+    State(state): State<AppState>,
+    UserId(user): UserId,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> SseStream {
     let field = |k: &str| body.get(k).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty());
     let title = clip(field("title").unwrap_or("Untitled Studio"), 200);
     let subject = field("subject").map(|s| clip(s, 120));
-    let id = Uuid::new_v4();
-    let r = sqlx::query("INSERT INTO studios (id, user_id, title, subject) VALUES ($1, $2, $3, $4)")
-        .bind(id)
-        .bind(user)
-        .bind(&title)
-        .bind(&subject)
-        .execute(&state.cockpit)
-        .await;
-    if let Err(e) = r {
-        return sse::events(vec![sse::error(format!("Could not create studio: {e}"))]);
-    }
+    let key = idempotency_key(&headers);
+    let r: sqlx::Result<Option<Uuid>> = sqlx::query_scalar(
+        "INSERT INTO studios (id, user_id, title, subject, idempotency_key) VALUES ($1, $2, $3, $4, $5)          ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING RETURNING id",
+    )
+    .bind(Uuid::new_v4())
+    .bind(user)
+    .bind(&title)
+    .bind(&subject)
+    .bind(&key)
+    .fetch_optional(&state.cockpit)
+    .await;
+    let id = match r {
+        Ok(Some(id)) => id,
+        // Same key again: the studio the first request made.
+        Ok(None) => match sqlx::query_scalar("SELECT id FROM studios WHERE user_id = $1 AND idempotency_key = $2")
+            .bind(user)
+            .bind(&key)
+            .fetch_optional(&state.cockpit)
+            .await
+        {
+            Ok(Some(id)) => id,
+            _ => return sse::events(vec![sse::error("Could not create studio")]),
+        },
+        Err(e) => return sse::events(vec![sse::error(format!("Could not create studio: {e}"))]),
+    };
     match load_studio(&state.cockpit, id, user).await {
         Ok(Some(s)) => sse::one(&s),
         Ok(None) => sse::events(vec![sse::error("Could not create studio")]),
@@ -279,7 +339,8 @@ pub async fn delete(State(state): State<AppState>, UserId(user): UserId, Path(id
         tracing::warn!(studio = %sid, "delete chunks: {e}");
     }
     if let Some(store) = &state.store {
-        for k in keys {
+        // Copies from a share link have no files of their own (empty key).
+        for k in keys.into_iter().filter(|k| !k.is_empty()) {
             if let Err(e) = store.delete(&k).await {
                 tracing::warn!(studio = %sid, "delete object: {e}");
             }
@@ -290,15 +351,18 @@ pub async fn delete(State(state): State<AppState>, UserId(user): UserId, Path(id
 
 /// `GET /me` — id, email and OctoCredits balance.
 pub async fn me(State(state): State<AppState>, UserId(user): UserId) -> SseStream {
-    let mut me = Me { id: user.to_string(), email: None, credits: None };
+    let mut me = Me { id: user.to_string(), email: None, credits: None, name: None, photo_url: None };
     if let Some(shared) = &state.shared {
-        if let Ok(Some(r)) = sqlx::query("SELECT email, octo_credits FROM users WHERE id = $1")
+        if let Ok(Some(r)) = sqlx::query("SELECT email, octo_credits, name, photo_url FROM users WHERE id = $1")
             .bind(user)
             .fetch_optional(shared)
             .await
         {
             me.email = r.try_get("email").ok();
             me.credits = r.try_get("octo_credits").ok();
+            let some = |s: Option<String>| s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
+            me.name = some(r.try_get("name").ok().flatten());
+            me.photo_url = some(r.try_get("photo_url").ok().flatten()).filter(|u| u.starts_with("https://"));
         }
     }
     sse::one(&me)

@@ -25,8 +25,79 @@ pub struct Usage {
     pub prompt_tokens: i64,
     pub completion_tokens: i64,
     pub cached_tokens: i64,
+    /// "Thinking" tokens (billed as output); 0 with thinking off.
+    pub reasoning_tokens: i64,
     /// USD, as OpenRouter bills it.
     pub cost: f64,
+    /// Wall time of the call (ms), when known.
+    pub latency_ms: i64,
+}
+
+impl Usage {
+    /// Adds another call's numbers (a retry, or a whole feature).
+    pub fn add(&mut self, o: &Usage) {
+        self.prompt_tokens += o.prompt_tokens;
+        self.completion_tokens += o.completion_tokens;
+        self.cached_tokens += o.cached_tokens;
+        self.reasoning_tokens += o.reasoning_tokens;
+        self.cost += o.cost;
+        self.latency_ms += o.latency_ms;
+    }
+
+    /// What the API sends back with an AI result.
+    pub fn json(&self, model: &str) -> Value {
+        json!({
+            "model": model,
+            "promptTokens": self.prompt_tokens,
+            "completionTokens": self.completion_tokens,
+            "reasoningTokens": self.reasoning_tokens,
+            "costUsd": (self.cost * 1e6).round() / 1e6,
+        })
+    }
+}
+
+/// Thinking off on every call: lessons, answers and maps don't need it, and
+/// its tokens are billed as output.
+fn no_thinking() -> Value {
+    json!({ "enabled": false })
+}
+
+/// For models whose thinking can't be turned off (OpenRouter answers 400
+/// "Reasoning is mandatory", e.g. GLM 5.3 Flash): the least there is.
+fn least_thinking() -> Value {
+    json!({ "effort": "minimal" })
+}
+
+fn thinking_mandatory(status: reqwest::StatusCode, body: &str) -> bool {
+    status.as_u16() == 400 && body.contains("Reasoning is mandatory")
+}
+
+/// POSTs a completion; if the model insists on thinking, once more with the
+/// least of it.
+async fn post(c: &Call<'_>, body: &mut Value, timeout: Duration) -> Result<reqwest::Response, String> {
+    for _ in 0..2 {
+        let res = c
+            .http
+            .post(format!("{BASE}/chat/completions"))
+            .bearer_auth(c.key)
+            .header("HTTP-Referer", "https://cockpit.octopilot.ai")
+            .header("X-Title", "Cockpit Study Studio")
+            .timeout(timeout)
+            .json(&*body)
+            .send()
+            .await
+            .map_err(|e| format!("openrouter: {e}"))?;
+        if res.status().as_u16() != 400 || body["reasoning"] == least_thinking() {
+            return Ok(res);
+        }
+        let status = res.status();
+        let text = res.text().await.unwrap_or_default();
+        if !thinking_mandatory(status, &text) {
+            return Err(format!("openrouter {status}: {}", text.chars().take(300).collect::<String>()));
+        }
+        body["reasoning"] = least_thinking();
+    }
+    Err("openrouter: no answer".into())
 }
 
 pub struct Call<'a> {
@@ -63,14 +134,16 @@ pub fn parse_line(data: &str) -> Vec<Piece> {
             prompt_tokens: u["prompt_tokens"].as_i64().unwrap_or(0),
             completion_tokens: u["completion_tokens"].as_i64().unwrap_or(0),
             cached_tokens: u["prompt_tokens_details"]["cached_tokens"].as_i64().unwrap_or(0),
+            reasoning_tokens: u["completion_tokens_details"]["reasoning_tokens"].as_i64().unwrap_or(0),
             cost: u["cost"].as_f64().unwrap_or(0.0),
+            latency_ms: 0,
         }));
     }
     out
 }
 
 pub async fn stream(c: Call<'_>) -> Result<impl Stream<Item = Result<Piece, String>>, String> {
-    let body = json!({
+    let mut body = json!({
         "model": c.model,
         "messages": c.messages,
         "stream": true,
@@ -78,18 +151,9 @@ pub async fn stream(c: Call<'_>) -> Result<impl Stream<Item = Result<Piece, Stri
         "temperature": c.temperature,
         "user": c.user.to_string(),
         "usage": { "include": true },
+        "reasoning": no_thinking(),
     });
-    let res = c
-        .http
-        .post(format!("{BASE}/chat/completions"))
-        .bearer_auth(c.key)
-        .header("HTTP-Referer", "https://cockpit.octopilot.ai")
-        .header("X-Title", "Cockpit Study Studio")
-        .timeout(Duration::from_secs(300))
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| format!("openrouter: {e}"))?;
+    let res = post(&c, &mut body, Duration::from_secs(300)).await?;
     if !res.status().is_success() {
         let status = res.status();
         let text = res.text().await.unwrap_or_default();
@@ -132,33 +196,32 @@ const TRIES: u32 = 3;
 /// errors, 429 and 5xx — as Python's tenacity wrapper. Other 4xx (a bad key,
 /// no credit) fail at once. Each attempt that was billed is metered.
 pub async fn complete(c: Call<'_>, cockpit: &PgPool, meter: Meter<'_>) -> Result<String, String> {
-    let body = json!({
+    complete_costed(c, cockpit, meter).await.map(|(text, _)| text)
+}
+
+/// `complete`, plus the usage of every billed attempt together.
+pub async fn complete_costed(c: Call<'_>, cockpit: &PgPool, meter: Meter<'_>) -> Result<(String, Usage), String> {
+    let mut body = json!({
         "model": c.model,
         "messages": c.messages,
         "max_tokens": c.max_tokens,
         "temperature": c.temperature,
         "user": c.user.to_string(),
         "usage": { "include": true },
+        "reasoning": no_thinking(),
     });
     let mut last = String::new();
+    let mut total = Usage::default();
     for attempt in 0..TRIES {
         if attempt > 0 {
             tokio::time::sleep(Duration::from_secs(1 << (attempt - 1))).await;
         }
-        let res = c
-            .http
-            .post(format!("{BASE}/chat/completions"))
-            .bearer_auth(c.key)
-            .header("HTTP-Referer", "https://cockpit.octopilot.ai")
-            .header("X-Title", "Cockpit Study Studio")
-            .timeout(Duration::from_secs(240))
-            .json(&body)
-            .send()
-            .await;
+        let started = std::time::Instant::now();
+        let res = post(&c, &mut body, Duration::from_secs(240)).await;
         let res = match res {
             Ok(r) => r,
             Err(e) => {
-                last = format!("openrouter: {e}");
+                last = e;
                 continue;
             }
         };
@@ -178,15 +241,17 @@ pub async fn complete(c: Call<'_>, cockpit: &PgPool, meter: Meter<'_>) -> Result
                 continue;
             }
         };
-        let (text, usage) = parse_completion(&v);
+        let (text, mut usage) = parse_completion(&v);
+        usage.latency_ms = started.elapsed().as_millis() as i64;
         if usage.prompt_tokens > 0 || usage.cost > 0.0 {
             record(cockpit, meter, c.model, &usage).await;
+            total.add(&usage);
         }
         if let Some(err) = v.get("error").filter(|e| !e.is_null()) {
             last = format!("openrouter: {err}");
             continue;
         }
-        return Ok(text);
+        return Ok((text, total));
     }
     Err(last)
 }
@@ -213,6 +278,9 @@ pub async fn ensure_schema(cockpit: &PgPool) -> sqlx::Result<()> {
     )
     .execute(cockpit)
     .await?;
+    sqlx::query("ALTER TABLE llm_usage ADD COLUMN IF NOT EXISTS reasoning_tokens integer NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS latency_ms integer")
+        .execute(cockpit)
+        .await?;
     sqlx::query("ALTER TABLE llm_usage ADD COLUMN IF NOT EXISTS build_id uuid")
         .execute(cockpit)
         .await?;
@@ -238,7 +306,8 @@ pub struct Meter<'a> {
 pub async fn record(cockpit: &PgPool, m: Meter<'_>, model: &str, u: &Usage) {
     let r = sqlx::query(
         "INSERT INTO llm_usage (id, user_id, studio_id, build_id, feature, model, generation_id, prompt_tokens, \
-         completion_tokens, cached_tokens, cost_usd) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::numeric)",
+         completion_tokens, cached_tokens, cost_usd, reasoning_tokens, latency_ms) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::numeric,$12,$13)",
     )
     .bind(Uuid::new_v4())
     .bind(m.user)
@@ -251,6 +320,8 @@ pub async fn record(cockpit: &PgPool, m: Meter<'_>, model: &str, u: &Usage) {
     .bind(u.completion_tokens as i32)
     .bind(u.cached_tokens as i32)
     .bind(format!("{:.6}", u.cost))
+    .bind(u.reasoning_tokens as i32)
+    .bind(if u.latency_ms > 0 { Some(u.latency_ms as i32) } else { None })
     .execute(cockpit)
     .await;
     if let Err(e) = r {
@@ -269,7 +340,7 @@ mod tests {
             vec![Piece::Text("Hi".into())]
         );
         let last = parse_line(
-            r#"{"id":"gen-1","choices":[{"delta":{"content":""}}],"usage":{"prompt_tokens":1200,"completion_tokens":300,"prompt_tokens_details":{"cached_tokens":800},"cost":0.0081}}"#,
+            r#"{"id":"gen-1","choices":[{"delta":{"content":""}}],"usage":{"prompt_tokens":1200,"completion_tokens":300,"prompt_tokens_details":{"cached_tokens":800},"completion_tokens_details":{"reasoning_tokens":40},"cost":0.0081}}"#,
         );
         assert_eq!(
             last,
@@ -278,10 +349,20 @@ mod tests {
                 prompt_tokens: 1200,
                 completion_tokens: 300,
                 cached_tokens: 800,
-                cost: 0.0081
+                reasoning_tokens: 40,
+                cost: 0.0081,
+                latency_ms: 0,
             })]
         );
         assert!(parse_line("not json").is_empty());
+    }
+
+    #[test]
+    fn knows_when_thinking_cannot_be_off() {
+        let body = r#"{"error":{"message":"Reasoning is mandatory for this endpoint and cannot be disabled.","code":400}}"#;
+        assert!(thinking_mandatory(reqwest::StatusCode::BAD_REQUEST, body));
+        assert!(!thinking_mandatory(reqwest::StatusCode::BAD_REQUEST, "bad model"));
+        assert!(!thinking_mandatory(reqwest::StatusCode::PAYMENT_REQUIRED, body));
     }
 
     #[test]

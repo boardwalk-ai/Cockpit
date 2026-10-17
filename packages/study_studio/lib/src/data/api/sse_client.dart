@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:http/http.dart' as http;
 
@@ -69,18 +70,30 @@ class SseClient {
     return _parse(resp);
   }
 
+  /// A POST. With [retry], a dropped connection is tried once more — only
+  /// for requests the server dedupes (an `event_id` or `Idempotency-Key`).
   Future<List<SseEvent>> post(
     String path, {
     Map<String, dynamic>? query,
     Map<String, dynamic>? body,
+    Map<String, String>? extraHeaders,
+    bool retry = false,
   }) async {
     final headers = await _headers();
     if (body != null) headers['Content-Type'] = 'application/json';
-    final resp = await _client.post(
+    if (extraHeaders != null) headers.addAll(extraHeaders);
+    Future<http.Response> send() => _client.post(
       _uri(path, query),
       headers: headers,
       body: body == null ? null : jsonEncode(body),
     );
+    http.Response resp;
+    try {
+      resp = await send();
+    } on http.ClientException {
+      if (!retry) rethrow;
+      resp = await send();
+    }
     return _parse(resp);
   }
 
@@ -111,9 +124,7 @@ class SseClient {
             .transform(const LineSplitter())) {
       final e = reader.add(line);
       if (e == null) continue;
-      if (e.event == 'error') {
-        throw SseException('${e.data['message'] ?? 'stream error'}');
-      }
+      if (e.event == 'error') throw SseException.from(e.data);
       yield e;
     }
     final last = reader.add('');
@@ -138,9 +149,7 @@ class SseClient {
     if (last != null) events.add(last);
 
     final err = events.where((e) => e.event == 'error');
-    if (err.isNotEmpty) {
-      throw SseException('${err.first.data['message'] ?? 'stream error'}');
-    }
+    if (err.isNotEmpty) throw SseException.from(err.first.data);
     return events;
   }
 
@@ -183,9 +192,32 @@ class SseReader {
   }
 }
 
+/// A random id (uuid v4) for `event_id` / `Idempotency-Key`.
+String newRequestId() {
+  final r = Random.secure();
+  final b = List<int>.generate(16, (_) => r.nextInt(256));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  final h = b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
+  return '${h.substring(0, 8)}-${h.substring(8, 12)}-${h.substring(12, 16)}-'
+      '${h.substring(16, 20)}-${h.substring(20)}';
+}
+
 class SseException implements Exception {
-  SseException(this.message);
+  SseException(this.message, {this.code});
+
+  /// From an `error` event's data (`message`, maybe `code`).
+  factory SseException.from(Map<String, dynamic> data) => SseException(
+    '${data['message'] ?? 'stream error'}',
+    code: data['code'] as String?,
+  );
+
   final String message;
+
+  /// Machine-readable reason, e.g. `insufficient_credits`.
+  final String? code;
+
+  bool get outOfCredits => code == 'insufficient_credits';
   @override
   String toString() => 'SseException: $message';
 }

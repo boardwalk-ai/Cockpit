@@ -27,6 +27,11 @@ pub fn error(message: impl Into<String>) -> Event {
         .data(json!({ "message": message.into() }).to_string())
 }
 
+/// An error with machine-readable fields (`message` plus e.g. `code`).
+pub fn error_data(data: &serde_json::Value) -> Event {
+    Event::default().event("error").data(data.to_string())
+}
+
 /// A finished list of events as a response.
 pub fn events(list: Vec<Event>) -> SseStream {
     let s = stream::iter(list.into_iter().map(Ok));

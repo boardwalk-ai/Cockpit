@@ -54,6 +54,8 @@ pub struct AppState {
     /// Shared octopilot DB (users, OctoCredits, keys, models).
     pub octopilot: Option<PgPool>,
     pub user_ids: UserIdCache,
+    /// The test environment's allowlist + feature flags (ACCESS_GATE).
+    pub access: Option<octo_common::access::Access>,
     /// The central OctoCredits balance (shared protocol, octo-common).
     pub credits: octo_common::credits::Credits,
     /// The runs this process is driving.
@@ -121,7 +123,16 @@ impl AppState {
             config.credits_ledger_type.clone(),
             config.credits_enabled,
         );
+        let access = match (&octopilot, config.access_gate) {
+            (Some(pool), true) => {
+                let a = octo_common::access::Access::new(pool.clone(), config.admin_emails.clone());
+                a.ensure_schema().await?;
+                Some(a)
+            }
+            _ => None,
+        };
         Ok(Self {
+            access,
             credits,
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             scraper: Arc::new(HttpScraper::new(http.clone(), config.scraper_url.clone())),

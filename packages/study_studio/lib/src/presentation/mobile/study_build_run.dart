@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../data/api/sse_client.dart' show SseException;
 import '../../data/api/upload_api.dart' show BuildSnapshot, UploadApi;
 import '../../domain/repositories/studio_repository.dart';
 import 'mobile_style.dart';
@@ -233,6 +234,11 @@ class StudyBuildRun extends ChangeNotifier {
     }
     try {
       buildId = await backend.startBuild(studioId!);
+    } on SseException catch (e) {
+      error = e.outOfCredits ? e.message : 'Couldn’t start the build';
+      SmHaptics.error();
+      notifyListeners();
+      return;
     } on Object {
       error = 'Couldn’t start the build';
       SmHaptics.error();

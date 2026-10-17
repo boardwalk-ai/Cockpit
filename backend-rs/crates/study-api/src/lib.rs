@@ -11,17 +11,22 @@ pub mod ask;
 pub mod build;
 pub mod chunk;
 pub mod config;
+pub mod credits;
 pub mod documents;
 pub mod dto;
+pub mod embedder;
 pub mod extract;
 pub mod gen;
+pub mod grade;
 pub mod identity;
 pub mod ingest;
 pub mod llm;
+pub mod metrics;
 pub mod notify;
 pub mod progress;
 pub mod schedule;
 pub mod search;
+pub mod share;
 pub mod sse;
 pub mod storage;
 pub mod studios;
@@ -39,6 +44,8 @@ use octo_common::{identity::UserIdCache, FirebaseAuth, HasFirebase};
 use serde_json::json;
 use sqlx::PgPool;
 use tokio::sync::Notify;
+use axum::http::{header, HeaderName, HeaderValue, Method};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::config::Config;
@@ -63,8 +70,11 @@ pub struct AppState {
     pub pusher: Arc<dyn Pusher>,
     /// Wakes the notification sender when one is queued.
     pub notices: Arc<Notify>,
-    /// Ask AI questions per user per 10 minutes.
-    pub ask_limit: Arc<ask::RateLimit>,
+    /// Admin-set OctoCredit prices, re-read once a minute.
+    pub prices: Arc<credits::PriceCache>,
+    pub metrics: metrics::Metrics,
+    /// The test environment's allowlist + feature flags (ACCESS_GATE).
+    pub access: Option<octo_common::access::Access>,
 }
 
 impl HasFirebase for AppState {
@@ -93,7 +103,13 @@ impl AppState {
             },
             None => Arc::new(NoPusher),
         };
+        let access = match (&shared, config.access_gate) {
+            (Some(pool), true) => Some(octo_common::access::Access::new(pool.clone(), config.admin_emails.clone())),
+            (None, true) => panic!("ACCESS_GATE needs SHARED_DATABASE_URL"),
+            _ => None,
+        };
         Ok(Self {
+            access,
             firebase: FirebaseAuth::new(config.firebase_project_id.clone(), http.clone()),
             config,
             cockpit,
@@ -105,7 +121,8 @@ impl AppState {
             builds: Arc::new(Notify::new()),
             pusher,
             notices: Arc::new(Notify::new()),
-            ask_limit: Arc::new(ask::RateLimit::default()),
+            prices: Arc::new(credits::PriceCache::default()),
+            metrics: metrics::Metrics::default(),
             http,
         })
     }
@@ -123,18 +140,7 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<serde_json::V
         Some(p) => octo_common::db::ping(p).await,
         None => true,
     };
-    let embed = if state.config.embed_service_url.is_empty() {
-        false
-    } else {
-        state
-            .http
-            .get(format!("{}/ready", state.config.embed_service_url.trim_end_matches('/')))
-            .timeout(std::time::Duration::from_secs(3))
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false)
-    };
+    let embed = !state.config.embed_service_url.is_empty() && embedder::healthy(&state).await;
     let ok = cockpit && vector && shared && embed;
     (
         if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE },
@@ -142,10 +148,24 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<serde_json::V
     )
 }
 
+/// Browsers from the configured origins may call the API (none: no CORS).
+fn cors(origins: &[String]) -> CorsLayer {
+    let list: Vec<HeaderValue> = origins.iter().filter_map(|o| HeaderValue::from_str(o).ok()).collect();
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(list))
+        .allow_credentials(true)
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE, Method::OPTIONS, Method::HEAD])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::ACCEPT, HeaderName::from_static("x-user-id")])
+        .max_age(std::time::Duration::from_secs(600))
+}
+
 pub fn app(state: AppState) -> Router {
+    let cors = cors(&state.config.cors_origins);
     Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
+        .route("/metrics", get(metrics::render))
+        .route("/search", get(search::debug))
         .route("/me", get(studios::me))
         .route("/ask", get(ask::ask))
         .route("/studios", get(studios::list).post(studios::create))
@@ -154,6 +174,10 @@ pub fn app(state: AppState) -> Router {
         .route("/studios/:studio_id/build-status/:build_id", get(build::status))
         .route("/studios/:studio_id/connections", post(build::connections))
         .route("/studios/:studio_id/plan", post(notify::put_plan))
+        .route("/studios/:studio_id/grade", post(grade::grade))
+        .route("/studios/:studio_id/share", get(share::get_share).post(share::start).delete(share::stop))
+        .route("/shares/:code", get(share::preview))
+        .route("/shares/:code/copy", post(share::copy))
         .route("/devices", post(notify::put_device))
         .route("/devices/:device_id", axum::routing::delete(notify::remove_device))
         .route("/studios/:studio_id/topics/:topic_id/concepts", post(build::concepts))
@@ -170,6 +194,8 @@ pub fn app(state: AppState) -> Router {
                 .layer(DefaultBodyLimit::max((state.config.max_upload_mb + 1) * 1024 * 1024)),
         )
         .route("/studios/:studio_id/build/:job_id", get(documents::progress))
+        .layer(axum::middleware::from_fn_with_state(state.clone(), metrics::track))
+        .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }

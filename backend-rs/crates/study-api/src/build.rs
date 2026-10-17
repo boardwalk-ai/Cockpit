@@ -30,6 +30,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::credits;
 use crate::gen::{self, Lesson};
 use crate::identity::UserId;
 use crate::llm::{self, Call, Meter};
@@ -92,6 +93,9 @@ pub async fn start(State(state): State<AppState>, UserId(user): UserId, Path(id)
     let Some(sid) = owned_studio(&state.cockpit, &id, user).await else {
         return sse::events(vec![sse::error(format!("Studio {id} not found"))]);
     };
+    if let Err(short) = credits::precheck(&state, user, "build").await {
+        return sse::events(vec![sse::error_data(&short.data())]);
+    }
     match start_or_join(&state, sid, user).await {
         Ok((build, joined)) => {
             if !joined {
@@ -149,6 +153,38 @@ pub struct StatusQ {
     snapshot: bool,
 }
 
+/// A build's AI usage from `llm_usage`: totals and per feature.
+pub async fn build_usage(state: &AppState, build: Uuid) -> Value {
+    let rows = sqlx::query(
+        "SELECT feature, count(*)::int AS calls, sum(prompt_tokens)::int8 AS p, sum(completion_tokens)::int8 AS c, \
+         sum(reasoning_tokens)::int8 AS r, sum(cost_usd)::float8 AS cost, max(model) AS model \
+         FROM llm_usage WHERE build_id = $1 GROUP BY feature ORDER BY feature",
+    )
+    .bind(build)
+    .fetch_all(&state.cockpit)
+    .await
+    .unwrap_or_default();
+    let mut total = json!({ "calls": 0, "promptTokens": 0, "completionTokens": 0, "reasoningTokens": 0, "costUsd": 0.0 });
+    let mut by = serde_json::Map::new();
+    for r in &rows {
+        let f = json!({
+            "calls": r.get::<i32, _>("calls"),
+            "promptTokens": r.get::<i64, _>("p"),
+            "completionTokens": r.get::<i64, _>("c"),
+            "reasoningTokens": r.get::<i64, _>("r"),
+            "costUsd": (r.get::<f64, _>("cost") * 1e6).round() / 1e6,
+            "model": r.get::<String, _>("model"),
+        });
+        for k in ["calls", "promptTokens", "completionTokens", "reasoningTokens"] {
+            total[k] = json!(total[k].as_i64().unwrap_or(0) + f[k].as_i64().unwrap_or(0));
+        }
+        total["costUsd"] = json!(((total["costUsd"].as_f64().unwrap_or(0.0) + f["costUsd"].as_f64().unwrap_or(0.0)) * 1e6).round() / 1e6);
+        by.insert(r.get::<String, _>("feature"), f);
+    }
+    total["byFeature"] = Value::Object(by);
+    total
+}
+
 fn progress_event(r: &sqlx::postgres::PgRow) -> Event {
     let (status, done, total): (String, i32, i32) = (r.get("status"), r.get("lessons_done"), r.get("lessons_total"));
     sse::event(
@@ -201,7 +237,13 @@ pub async fn status(
                 last = Some(key.clone());
             }
             match key.0.as_str() {
-                "done" => { yield Ok(sse::done()); return; }
+                "done" => {
+                    if let Some(b) = build {
+                        yield Ok(sse::event("usage", &build_usage(&state, b).await));
+                    }
+                    yield Ok(sse::done());
+                    return;
+                }
                 "failed" => {
                     let e: Option<String> = r.get("error");
                     yield Ok(sse::error(e.unwrap_or_else(|| "Build failed".into())));
@@ -429,7 +471,11 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
         Some(pool) => {
             let key = octo_common::llm::openrouter_key(pool).await;
             let primary = octo_common::llm::model(pool, "primary_model", PRIMARY_FALLBACK).await;
-            (key, octo_common::llm::model(pool, "secondary_model", &primary).await)
+            let model = match &state.config.build_model {
+                Some(m) => m.clone(),
+                None => octo_common::llm::model(pool, "secondary_model", &primary).await,
+            };
+            (key, model)
         }
         None => (None, PRIMARY_FALLBACK.to_string()),
     };
@@ -547,11 +593,19 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
     match ctx.ask("build_scenarios", gen::SCENARIO_SYSTEM, gen::SCENARIO_HINT, &material, gen::SCENARIO_MAX_TOKENS).await {
         Ok(reply) => {
             let list = gen::scenarios(&reply, &studio_str);
+            if list.is_empty() {
+                let head: String = reply.chars().take(400).collect();
+                tracing::warn!(%build, reply = %head, "scenarios: nothing usable in the reply");
+            }
             if let Err(e) = save_scenarios(state, studio, user, &list).await {
                 tracing::warn!(%build, "scenarios: {e}");
             }
         }
         Err(e) => tracing::warn!(%build, "scenarios: {e}"),
+    }
+
+    if let Err(e) = unify_studio_concepts(state, studio).await {
+        tracing::warn!(%build, "concept names: {e}");
     }
 
     let _ = sqlx::query(
@@ -560,6 +614,7 @@ pub async fn run(state: &AppState, build: Uuid) -> Result<(), String> {
     .bind(build)
     .execute(&state.cockpit)
     .await;
+    credits::settle_build(state, user, studio, build).await;
     Ok(())
 }
 
@@ -655,6 +710,26 @@ async fn restore(state: &AppState, studio: Uuid, user: Uuid, previous: &[Value])
     }
 }
 
+/// After a build: the same idea gets one name in every lesson's map.
+async fn unify_studio_concepts(state: &AppState, studio: Uuid) -> sqlx::Result<()> {
+    let rows = sqlx::query("SELECT id, payload FROM generated_topics WHERE studio_id = $1 ORDER BY ordinal")
+        .bind(studio)
+        .fetch_all(&state.cockpit)
+        .await?;
+    let mut known = HashMap::new();
+    for r in rows {
+        let mut p: Value = r.get("payload");
+        if gen::unify_concepts(&mut known, &mut p) {
+            sqlx::query("UPDATE generated_topics SET payload = $2 WHERE id = $1")
+                .bind(r.get::<Uuid, _>("id"))
+                .bind(&p)
+                .execute(&state.cockpit)
+                .await?;
+        }
+    }
+    Ok(())
+}
+
 async fn save_scenarios(state: &AppState, studio: Uuid, user: Uuid, list: &[Value]) -> sqlx::Result<()> {
     let mut tx = state.cockpit.begin().await?;
     sqlx::query("DELETE FROM generated_scenarios WHERE studio_id = $1").bind(studio).execute(&mut *tx).await?;
@@ -685,6 +760,8 @@ pub async fn connections(State(state): State<AppState>, UserId(user): UserId, Pa
     let Some(sid) = owned_studio(&state.cockpit, &id, user).await else {
         return sse::events(vec![sse::error("Studio not found")]);
     };
+    let mut usage_out: Option<Value> = None;
+    let mut hold: Option<(credits::Hold, f64)> = None;
     let r: Result<(i32, bool), String> = async {
         let mut tx = state.cockpit.begin().await.map_err(|e| e.to_string())?;
         let rows = sqlx::query("SELECT id, payload FROM generated_topics WHERE studio_id = $1 ORDER BY ordinal FOR UPDATE")
@@ -702,9 +779,16 @@ pub async fn connections(State(state): State<AppState>, UserId(user): UserId, Pa
                 HashMap::new()
             } else {
                 let (key, model) = primary(&state).await;
-                match key {
+                let paid = match key {
+                    Some(_) => {
+                        let r = format!("study:connections:{sid}:{}", Uuid::new_v4());
+                        credits::reserve(&state, user, "connections", r, json!({ "studio": sid })).await.ok()
+                    }
+                    None => None,
+                };
+                match key.zip(paid) {
                     None => HashMap::new(),
-                    Some(key) => {
+                    Some((key, paid)) => {
                         let call = Call {
                             http: &state.http,
                             key: &key,
@@ -715,10 +799,15 @@ pub async fn connections(State(state): State<AppState>, UserId(user): UserId, Pa
                             user,
                         };
                         let meter = Meter { user, studio: Some(sid), build: None, feature: "connections" };
-                        match llm::complete(call, &state.cockpit, meter).await {
-                            Ok(reply) => gen::clean_connections(gen::parse_json(&reply), &titles),
+                        match llm::complete_costed(call, &state.cockpit, meter).await {
+                            Ok((reply, u)) => {
+                                usage_out = Some(u.json(&model));
+                                hold = Some((paid, u.cost));
+                                gen::clean_connections(gen::parse_json(&reply), &titles)
+                            }
                             Err(e) => {
                                 tracing::warn!(studio = %sid, "connections: {e}");
+                                hold = Some((paid, -1.0));
                                 HashMap::new()
                             }
                         }
@@ -743,10 +832,23 @@ pub async fn connections(State(state): State<AppState>, UserId(user): UserId, Pa
         Ok((added, known))
     }
     .await;
+    // Paid only when the links were saved; otherwise the credits go back.
+    if let Some((h, cost)) = hold {
+        match r {
+            Ok((added, _)) if added > 0 && cost >= 0.0 => h.settle(&state, cost, json!({ "studio": sid })).await,
+            _ => h.release(&state).await,
+        }
+    }
     match r {
-        Ok((added, known)) => sse::one(&json!({ "updated": added, "alreadyKnown": known })),
+        Ok((added, known)) => sse::one(&json!({ "updated": added, "alreadyKnown": known, "usage": usage_out })),
         Err(e) => sse::events(vec![sse::error(e)]),
     }
+}
+
+enum Concepts {
+    Missing,
+    Made(bool),
+    Short(credits::Short),
 }
 
 /// `POST /studios/{id}/topics/{topic}/concepts` — a lesson's concept map,
@@ -759,7 +861,9 @@ pub async fn concepts(
     let Some(sid) = owned_studio(&state.cockpit, &id, user).await else {
         return sse::events(vec![sse::error("Studio not found")]);
     };
-    let r: Result<Option<bool>, String> = async {
+    let mut usage_out: Option<Value> = None;
+    let mut hold: Option<(credits::Hold, f64)> = None;
+    let r: Result<Concepts, String> = async {
         let mut tx = state.cockpit.begin().await.map_err(|e| e.to_string())?;
         let rows = sqlx::query("SELECT id, payload FROM generated_topics WHERE studio_id = $1 ORDER BY ordinal FOR UPDATE")
             .bind(sid)
@@ -768,17 +872,22 @@ pub async fn concepts(
             .map_err(|e| e.to_string())?;
         let payloads: Vec<(Uuid, Value)> = rows.iter().map(|r| (r.get("id"), r.get("payload"))).collect();
         let Some(at) = payloads.iter().position(|(_, p)| p.get("id").and_then(Value::as_str) == Some(topic.as_str())) else {
-            return Ok(None);
+            return Ok(Concepts::Missing);
         };
         let (row, payload) = &payloads[at];
         let has = payload.get("concepts").and_then(Value::as_array).is_some_and(|a| !a.is_empty());
         if has {
-            return Ok(Some(false));
+            return Ok(Concepts::Made(false));
         }
         let others: Vec<String> =
             payloads.iter().enumerate().filter(|(i, _)| *i != at).map(|(_, (_, p))| gen::text(p.get("title"))).collect();
         let (key, model) = primary(&state).await;
-        let Some(key) = key else { return Ok(Some(false)) };
+        let Some(key) = key else { return Ok(Concepts::Made(false)) };
+        let src = format!("study:concepts:{sid}:{topic}:{}", Uuid::new_v4());
+        match credits::reserve(&state, user, "concepts", src, json!({ "studio": sid, "topic": topic })).await {
+            Ok(h) => hold = Some((h, -1.0)),
+            Err(short) => return Ok(Concepts::Short(short)),
+        }
         let call = Call {
             http: &state.http,
             key: &key,
@@ -793,23 +902,36 @@ pub async fn concepts(
             user,
         };
         let meter = Meter { user, studio: Some(sid), build: None, feature: "concepts" };
-        let reply = match llm::complete(call, &state.cockpit, meter).await {
-            Ok(r) => r,
+        let reply = match llm::complete_costed(call, &state.cockpit, meter).await {
+            Ok((r, u)) => {
+                usage_out = Some(u.json(&model));
+                if let Some((_, cost)) = hold.as_mut() {
+                    *cost = u.cost;
+                }
+                r
+            }
             Err(e) => {
                 tracing::warn!(studio = %sid, %topic, "concepts: {e}");
-                return Ok(Some(false));
+                return Ok(Concepts::Made(false));
             }
         };
-        let Some(Value::Object(mut obj)) = gen::parse_json(&reply) else { return Ok(Some(false)) };
+        let Some(Value::Object(mut obj)) = gen::parse_json(&reply) else { return Ok(Concepts::Made(false)) };
         obj.insert("_otherTitles".into(), json!(others));
         let tid = gen::text(payload.get("id"));
         let (c, l) = gen::shape_concepts(&Value::Object(obj), if tid.is_empty() { "t" } else { &tid });
         if c.is_empty() {
-            return Ok(Some(false));
+            return Ok(Concepts::Made(false));
         }
         let mut p = payload.clone();
         p["concepts"] = json!(c);
         p["conceptLinks"] = json!(l);
+        let mut known = HashMap::new();
+        for (i, (_, other)) in payloads.iter().enumerate() {
+            if i != at {
+                gen::unify_concepts(&mut known, &mut other.clone());
+            }
+        }
+        gen::unify_concepts(&mut known, &mut p);
         sqlx::query("UPDATE generated_topics SET payload = $2 WHERE id = $1")
             .bind(row)
             .bind(&p)
@@ -817,12 +939,20 @@ pub async fn concepts(
             .await
             .map_err(|e| e.to_string())?;
         tx.commit().await.map_err(|e| e.to_string())?;
-        Ok(Some(true))
+        Ok(Concepts::Made(true))
     }
     .await;
+    // Paid only when the map was saved; otherwise the credits go back.
+    if let Some((h, cost)) = hold {
+        match r {
+            Ok(Concepts::Made(true)) => h.settle(&state, cost, json!({ "studio": sid, "topic": topic })).await,
+            _ => h.release(&state).await,
+        }
+    }
     match r {
-        Ok(Some(made)) => sse::one(&json!({ "made": made })),
-        Ok(None) => sse::events(vec![sse::error("Topic not found")]),
+        Ok(Concepts::Made(made)) => sse::one(&json!({ "made": made, "usage": usage_out })),
+        Ok(Concepts::Missing) => sse::events(vec![sse::error("Topic not found")]),
+        Ok(Concepts::Short(short)) => sse::events(vec![sse::error_data(&short.data())]),
         Err(e) => sse::events(vec![sse::error(e)]),
     }
 }

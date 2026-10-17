@@ -11,6 +11,18 @@ class MainActivity : FlutterActivity() {
         super.onCreate(savedInstanceState)
         createGhostWriterChannel()
         createStudyChannel()
+        createAnnouncementsChannel()
+    }
+
+    // News from the Octopilot team, sent from the admin app ("announcements").
+    private fun createAnnouncementsChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val channel = NotificationChannel(
+            "announcements",
+            "Announcements",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply { description = "News from the Octopilot team" }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
     // The channel the server's push notifications name ("ghostwriter").

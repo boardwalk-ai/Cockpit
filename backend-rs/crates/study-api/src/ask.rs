@@ -1,15 +1,13 @@
 //! `GET /ask?studio_id&q&history&topic` — Ask AI as SSE: `citations`
 //! (with file names and pages) first, then `delta`s, then `meta`, `done`.
 //! A port of the Python route, plus the A5 guards: the studio must be the
-//! caller's, `q` is capped at 2,000 characters, and each user gets at most
-//! 30 questions per 10 minutes. If the embedder is down the search falls
+//! caller's and `q` is capped at 2,000 characters (no rate limit: every
+//! answer is paid for in credits — see `credits.rs`). If the embedder is down the search falls
 //! back to keywords and `meta.retrieval` says `"degraded"` instead of the
 //! failure being swallowed (F4). Every answer's cost goes to `llm_usage`.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::convert::Infallible;
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
 
 use axum::extract::{Query, State};
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -19,6 +17,7 @@ use serde_json::{json, Value};
 use sqlx::Row;
 use uuid::Uuid;
 
+use crate::credits;
 use crate::identity::UserId;
 use crate::llm::{self, Call, Piece};
 use crate::progress::owned_studio;
@@ -40,27 +39,6 @@ const HISTORY_CHARS: usize = 1200;
 const TOP_K: i64 = 8;
 const CONTEXT_K: usize = 5;
 const MAX_TOKENS: u32 = 1200;
-pub const RATE_LIMIT: usize = 30;
-pub const RATE_WINDOW: Duration = Duration::from_secs(600);
-
-/// Questions asked per user in the last window (one process, in memory).
-#[derive(Default)]
-pub struct RateLimit(Mutex<HashMap<Uuid, VecDeque<Instant>>>);
-
-impl RateLimit {
-    pub fn allow(&self, user: Uuid, now: Instant) -> bool {
-        let mut m = self.0.lock().unwrap();
-        let q = m.entry(user).or_default();
-        while q.front().is_some_and(|t| now.duration_since(*t) > RATE_WINDOW) {
-            q.pop_front();
-        }
-        if q.len() >= RATE_LIMIT {
-            return false;
-        }
-        q.push_back(now);
-        true
-    }
-}
 
 fn cut(s: &str, n: usize) -> String {
     s.trim().chars().take(n).collect()
@@ -135,10 +113,13 @@ pub async fn ask(
             yield Ok(sse::error("Studio not found"));
             return;
         };
-        if !state.ask_limit.allow(user, Instant::now()) {
-            yield Ok(sse::error("That's a lot of questions at once — try again in a few minutes."));
-            return;
-        }
+        let hold = match credits::reserve(&state, user, "ask", format!("study:ask:{}", Uuid::new_v4()), json!({ "studio": studio })).await {
+            Ok(h) => h,
+            Err(short) => {
+                yield Ok(sse::error_data(&short.data()));
+                return;
+            }
+        };
         let turns = parse_history(p.history.as_deref());
         let topic = p.topic.as_deref().map(str::trim).filter(|t| !t.is_empty()).map(|t| cut(t, 300));
 
@@ -146,6 +127,9 @@ pub async fn ask(
         let qvec = search::embed_query(&state, &query).await;
         let degraded = qvec.is_none();
         let hits = search::hybrid(&state.vector, user, studio, &query, qvec, TOP_K).await.unwrap_or_default();
+        // F9: which passages each answer stood on.
+        let used: Vec<String> = hits.iter().take(CONTEXT_K).map(|h| h.chunk_id.to_string()).collect();
+        tracing::info!(%studio, degraded, hits = %used.join(","), "ask retrieval");
 
         if !hits.is_empty() {
             let ids: Vec<Uuid> = hits.iter().map(|h| h.document_id).collect();
@@ -168,6 +152,7 @@ pub async fn ask(
 
         let (key, model) = llm::credentials(state.shared.as_ref(), "primary_model", "anthropic/claude-sonnet-4-6").await;
         let Some(key) = key else {
+            hold.release(&state).await;
             yield Ok(sse::error("The tutor isn't connected right now."));
             return;
         };
@@ -180,9 +165,15 @@ pub async fn ask(
             temperature: 0.2,
             user,
         };
+        let started = std::time::Instant::now();
+        let mut usage: Option<Value> = None;
+        let mut hold = Some(hold);
         match llm::stream(call).await {
             Err(e) => {
                 tracing::warn!("ask: {e}");
+                if let Some(h) = hold.take() {
+                    h.release(&state).await;
+                }
                 yield Ok(sse::error("Couldn't get an answer just now."));
                 return;
             }
@@ -191,12 +182,20 @@ pub async fn ask(
                 while let Some(piece) = s.next().await {
                     match piece {
                         Ok(Piece::Text(t)) => yield Ok(sse::event("delta", &json!({ "text": t }))),
-                        Ok(Piece::Usage(u)) => {
+                        Ok(Piece::Usage(mut u)) => {
+                            u.latency_ms = started.elapsed().as_millis() as i64;
+                            usage = Some(u.json(&model));
                             let meter = llm::Meter { user, studio: Some(studio), build: None, feature: "ask" };
-                            llm::record(&state.cockpit, meter, &model, &u).await
+                            llm::record(&state.cockpit, meter, &model, &u).await;
+                            if let Some(h) = hold.take() {
+                                h.settle(&state, u.cost, json!({ "studio": studio })).await;
+                            }
                         }
                         Err(e) => {
                             tracing::warn!("ask stream: {e}");
+                            if let Some(h) = hold.take() {
+                                h.release(&state).await;
+                            }
                             yield Ok(sse::error("The answer was cut off."));
                             return;
                         }
@@ -204,7 +203,7 @@ pub async fn ask(
                 }
             }
         }
-        let mut meta = json!({ "model": model });
+        let mut meta = json!({ "model": model, "usage": usage });
         if degraded {
             meta["retrieval"] = json!("degraded");
         }
@@ -247,18 +246,5 @@ mod tests {
         assert_eq!(roles, ["system", "user", "assistant", "user"]);
         assert!(m[0]["content"].as_str().unwrap().contains("\"NAT\""));
         assert!(m[3]["content"].as_str().unwrap().ends_with("Question: why?"));
-    }
-
-    #[test]
-    fn thirty_questions_per_ten_minutes() {
-        let rl = RateLimit::default();
-        let u = Uuid::new_v4();
-        let t0 = Instant::now();
-        for _ in 0..RATE_LIMIT {
-            assert!(rl.allow(u, t0));
-        }
-        assert!(!rl.allow(u, t0));
-        assert!(rl.allow(Uuid::new_v4(), t0));
-        assert!(rl.allow(u, t0 + RATE_WINDOW + Duration::from_secs(1)));
     }
 }

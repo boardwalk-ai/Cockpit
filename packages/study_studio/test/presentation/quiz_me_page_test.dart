@@ -51,14 +51,16 @@ void main() {
 
     await pumpTestApp(
       tester,
-      child: QuizMePage(studioId: studio.id),
+      child: QuizMePage(studioId: studio.id, seed: 3),
       studios: studios,
     );
 
     await tester.pumpAndSettle();
 
-    // The phone's quiz: the first question, counted.
-    final first = studio.topics.expand((t) => t.quizQuestions).first;
+    // The phone's quiz: the round's first question, counted.
+    final first = pickQuizRound([
+      for (final t in studio.topics) (t.mastery, t.quizQuestions),
+    ], seed: 3).first;
     expect(find.text(first.question), findsWidgets);
     expect(find.textContaining('1/'), findsOneWidget);
     expect(tester.takeException(), isNull);

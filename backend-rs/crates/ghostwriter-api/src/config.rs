@@ -57,6 +57,11 @@ pub struct Config {
     pub account_allowlist: Vec<String>,
     /// The OctoCredits such an account starts with.
     pub starting_credits: i32,
+    /// Test environment: the app-wide allowlist + feature flags in the
+    /// shared DB gate every request (octo_common::access).
+    pub access_gate: bool,
+    /// Always let in by the gate (they run the admin app).
+    pub admin_emails: Vec<String>,
 }
 
 impl Config {
@@ -97,6 +102,8 @@ impl Config {
                 .into_iter()
                 .map(|e| e.to_lowercase())
                 .collect(),
+            access_gate: flag("ACCESS_GATE", false),
+            admin_emails: list("ADMIN_EMAILS").into_iter().map(|e| e.to_lowercase()).collect(),
             starting_credits: std::env::var("STARTING_CREDITS")
                 .ok()
                 .and_then(|s| s.trim().parse().ok())

@@ -63,6 +63,7 @@ class OctopilotShellApp extends StatefulWidget {
     this.links,
     this.initialLocation = '/',
     this.textScale = 0.92,
+    this.overlay,
   });
 
   final ShellServices services;
@@ -72,6 +73,9 @@ class OctopilotShellApp extends StatefulWidget {
   final Stream<String>? links;
 
   final String initialLocation;
+
+  /// Wraps every screen (e.g. an in-app notification banner on top).
+  final Widget Function(BuildContext context, Widget child)? overlay;
 
   /// How big text is drawn, for every screen (modules too). The phone's own
   /// larger-text setting is followed up to its normal size, no further, so
@@ -123,7 +127,10 @@ class _OctopilotShellAppState extends State<OctopilotShellApp> {
             data: media.copyWith(
               textScaler: TextScaler.linear(system * widget.textScale),
             ),
-            child: ShellScope(services: widget.services, child: child!),
+            child: ShellScope(
+              services: widget.services,
+              child: widget.overlay?.call(context, child!) ?? child!,
+            ),
           );
         },
       ),

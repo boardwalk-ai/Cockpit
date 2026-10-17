@@ -250,6 +250,21 @@ pub struct Studio {
     pub source_files: Vec<SourceFile>,
     pub topics: Vec<Topic>,
     pub scenarios: Vec<Scenario>,
+    /// A build still running, for "Building 3 of 8" on the studio's row.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<BuildState>,
+    /// Who shared it, on a studio added from a share link.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shared_by: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildState {
+    pub id: String,
+    pub status: String,
+    pub lessons_done: i32,
+    pub lessons_total: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -258,6 +273,11 @@ pub struct Me {
     pub id: String,
     pub email: Option<String>,
     pub credits: Option<i32>,
+    /// For the profile button in the app header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub photo_url: Option<String>,
 }
 
 /// The app's `SourceFileType` for an uploaded document.

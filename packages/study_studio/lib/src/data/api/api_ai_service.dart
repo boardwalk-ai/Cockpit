@@ -57,7 +57,7 @@ class ApiAiService implements AiService {
   Future<String> teach({required Topic topic, required String message}) async {
     final events = await _sse.get(
       '/ask',
-      query: {'studio_id': topic.studioId, 'q': message},
+      query: {'studio_id': topic.studioId, 'q': message, 'topic': topic.title},
     );
     final buffer = StringBuffer();
     for (final e in events.where((e) => e.event == 'delta')) {

@@ -87,3 +87,10 @@ info.md
 
 # Claude Code local settings (keep launch.json, ignore machine-local prefs)
 .claude/settings.local.json
+
+# Firebase service-account keys (secrets)
+*firebase-adminsdk*.json
+
+# exported secrets
+openrouter-keys.zip
+*.apk

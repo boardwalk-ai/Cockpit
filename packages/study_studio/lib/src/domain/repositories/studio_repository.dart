@@ -35,6 +35,15 @@ abstract interface class StudioRepository {
 
   Future<void> markReviewed(String studioId, String topicId);
 
+  /// Asks the server whether a recall answer the word check missed still
+  /// means the expected answer. Null when it can't say (offline, no AI).
+  Future<bool?> gradeRecall({
+    required String studioId,
+    required String question,
+    required String answer,
+    required String said,
+  });
+
   /// Works out how the topics connect, for a studio built before that was
   /// recorded. True when topics were given links (reload the studio).
   Future<bool> linkTopics(String studioId);

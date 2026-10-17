@@ -13,6 +13,7 @@ import 'presentation/lightning_recall/lightning_recall_page.dart';
 import 'presentation/manage/manage_study_studio_page.dart';
 import 'presentation/mastery_report/mastery_report_page.dart';
 import 'presentation/mobile/studio_library_page.dart';
+import 'presentation/mobile/studio_share_mobile.dart';
 import 'presentation/progress/progress_page.dart';
 import 'presentation/quiz_me/quiz_me_page.dart';
 import 'presentation/ready/ready_page.dart';
@@ -52,6 +53,11 @@ class StudyStudioModule extends CockpitModule {
 
   @override
   List<RouteBase> routes() => [
+    // Share links (https://studystudio.octopilothub.com/s/CODE) open here.
+    GoRoute(
+      path: '/s/:code',
+      redirect: (_, state) => '/study/share/${state.pathParameters['code']}',
+    ),
     GoRoute(
       path: '/study',
       builder: (_, _) => const StudyHomePage(),
@@ -67,6 +73,11 @@ class StudyStudioModule extends CockpitModule {
         ),
         GoRoute(path: 'welcome', builder: (_, _) => const WelcomeBackPage()),
         GoRoute(path: 'library', builder: (_, _) => const StudioLibraryPage()),
+        GoRoute(
+          path: 'share/:code',
+          builder: (_, state) =>
+              SharePreviewPage(code: state.pathParameters['code']!),
+        ),
         GoRoute(
           path: ':studioId',
           builder: (_, state) => DashboardPage(
@@ -142,9 +153,8 @@ class StudyStudioModule extends CockpitModule {
             ),
             GoRoute(
               path: 'scenario',
-              builder: (_, state) => ScenarioModePage(
-                studioId: state.pathParameters['studioId']!,
-              ),
+              builder: (_, state) =>
+                  ScenarioModePage(studioId: state.pathParameters['studioId']!),
             ),
             GoRoute(
               path: 'analytics',

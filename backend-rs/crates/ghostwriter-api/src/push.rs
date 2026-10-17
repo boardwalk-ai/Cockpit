@@ -84,6 +84,7 @@ async fn deliver(
             ("projectId".to_string(), project_id.to_string()),
             ("runId".to_string(), run_id.to_string()),
         ]),
+        ..Default::default()
     };
     for (device_id, token) in devices {
         match st.pusher.send(&token, &notice).await {

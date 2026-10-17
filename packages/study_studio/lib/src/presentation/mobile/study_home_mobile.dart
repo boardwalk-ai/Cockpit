@@ -468,6 +468,7 @@ class StudioRow extends StatelessWidget {
     final c = SmColors.of(context);
     final t = SmText.of(context);
     final empty = studio.topicCount == 0;
+    final build = studio.build;
     return SmPressable(
       semanticLabel: studio.title,
       onTap: () => context.go('/study/${studio.id}'),
@@ -492,11 +493,17 @@ class StudioRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 1),
                   Text(
-                    empty
+                    build != null
+                        ? (build.percent == null
+                              ? 'Building…'
+                              : 'Building ${build.percent}%')
+                        : empty
                         ? 'Empty'
                         : '${studio.topicCount} topics · '
                               '${studio.flashcardCount} cards',
-                    style: t.small.copyWith(color: c.hint),
+                    style: t.small.copyWith(
+                      color: build != null ? c.accentSoft : c.hint,
+                    ),
                   ),
                 ],
               ),

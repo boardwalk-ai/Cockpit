@@ -47,6 +47,29 @@ impl Hirara<'_> {
     }
 }
 
+/// OCR, tried twice: Hirara answers 200 with empty text and an `error`
+/// when its engine times out (seen while the box was busy embedding).
+async fn ocr(hirara: &Hirara<'_>, b64: &str) -> Result<String, String> {
+    let mut why = String::new();
+    for attempt in 0..2 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+        let r = hirara.call("ocr_read", json!({ "file_base64": b64, "languages": OCR_LANGUAGES })).await?;
+        let t = text_of(&r);
+        if !t.is_empty() {
+            return Ok(t);
+        }
+        why = r.get("error").and_then(Value::as_str).unwrap_or("").to_string();
+        tracing::warn!(attempt, error = %why, "ocr returned no text");
+    }
+    if why.is_empty() {
+        Ok(String::new())
+    } else {
+        Err(format!("Couldn't read the text in this file ({why})."))
+    }
+}
+
 fn text_of(v: &Value) -> String {
     for k in ["text", "markdown"] {
         if let Some(t) = v.get(k).and_then(Value::as_str) {
@@ -105,10 +128,7 @@ pub async fn extract(
         if usable(text.chars().count(), pages.len()) {
             return whole(text);
         }
-        let ocr = hirara
-            .call("ocr_read", json!({ "file_base64": b64, "languages": OCR_LANGUAGES }))
-            .await?;
-        let t = text_of(&ocr);
+        let t = ocr(hirara, &b64).await?;
         return whole(if t.is_empty() { text } else { t });
     }
 
@@ -123,10 +143,7 @@ pub async fn extract(
     }
 
     if mime.starts_with("image/") || matches!(e.as_str(), "png" | "jpg" | "jpeg" | "gif" | "webp" | "heic" | "bmp" | "tif" | "tiff") {
-        let r = hirara
-            .call("ocr_read", json!({ "file_base64": b64, "languages": OCR_LANGUAGES }))
-            .await?;
-        return whole(text_of(&r));
+        return whole(ocr(hirara, &b64).await?);
     }
 
     if mime.starts_with("audio/") || mime.starts_with("video/") {

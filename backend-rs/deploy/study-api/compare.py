@@ -4,12 +4,17 @@ import asyncio
 import json
 from datetime import datetime
 
+import os
+
 import httpx
 from sqlalchemy import select
 
 from app.db import CockpitSession
 from app.models.cockpit import Studio
 from app.routers.stream import _db_studio_to_dto, _load_files, _load_scenarios, _load_topics
+
+
+RUST = os.environ.get("RUST_URL", "http://127.0.0.1:8110")
 
 
 def norm(v):
@@ -70,7 +75,7 @@ async def main():
                 await _load_files(c, row.id, row.user_id),
             ).model_dump(mode="json", by_alias=True)
             r = httpx.get(
-                f"http://127.0.0.1:8110/studios/{row.id}",
+                f"{RUST}/studios/{row.id}",
                 headers={"X-User-Id": str(row.user_id)},
                 timeout=30,
             )
@@ -91,7 +96,7 @@ async def main():
     # Someone else's studio must not be readable.
     if rows:
         r = httpx.get(
-            f"http://127.0.0.1:8110/studios/{rows[0].id}",
+            f"{RUST}/studios/{rows[0].id}",
             headers={"X-User-Id": "00000000-0000-0000-0000-000000000001"},
             timeout=30,
         )

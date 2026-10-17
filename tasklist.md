@@ -9,38 +9,55 @@ User/studio scoping is fine: every data endpoint needs a Firebase token (the
 filters by `user_id`, and RAG retrieval filters `user_id + studio_id` in SQL.
 What's left is idempotency and AI-cost abuse. Suggested first: A1, A5, A6.
 
-- [ ] **A1. One build at a time per studio** _(server side done in Rust R5: a second start returns the running build's id; tested with two starts → same id)_ — `POST /studios/{id}/build` starts a
+- [x] **A1. One build at a time per studio** _(2026-10-07, live on Rust)_ _(server side done in Rust R5: a second start returns the running build's id; tested with two starts → same id)_ — `POST /studios/{id}/build` starts a
   new build on every call, so a double tap, a retry or Update studio during a
   running build races two builds (topics mixed/duplicated, double AI cost).
   Fix: if a build for the studio is queued/running, return its `buildId`
   instead of starting another.
-- [ ] **A2. Card reviews and quiz answers idempotent** _(server side done in Rust R2: `event_id` = `study_events.id`, no schema change; app to send it)_ — a retried
+- [x] **A2. Card reviews and quiz answers idempotent** _(2026-10-07, live on Rust; app sends `event_id` and retries a dropped answer once)_ _(server side done in Rust R2: `event_id` = `study_events.id`, no schema change; app to send it)_ — a retried
   `flashcards/{card}/review`, `quiz-result` or `flashcard-review` advances SM-2
   twice, moves mastery twice and logs `study_events` twice.
   Fix: the app sends an `event_id` (uuid) per answer; unique
   `(user_id, event_id)` on `study_events`; skip duplicates. _(DB index)_
 - [x] **A3. `mark-reviewed` counts once a day** _(Rust R2: once per lesson per 20 h)_ — every "Got it" adds +3%
   mastery. Fix: once per topic per day.
-- [ ] **A4. Create studio / upload idempotent** — a retry after a lost response
+- [x] **A4. Create studio / upload idempotent** _(2026-10-07, live on Rust; `Idempotency-Key` on create studio + each picked file, app retries once; e2e: 2 creates → 1 studio, 2 uploads → 1 document)_ — a retry after a lost response
   makes a second studio or a duplicate document (duplicate chunks in RAG).
   Fix: `Idempotency-Key` header from the app (per studio, per picked file),
   stored on the row; same key → return the existing one. _(DB column)_
-- [ ] **A5. Protect AI credit on `/ask`** _(in Rust R4)_ — no studio-owner check, no length cap on
+- [x] **A5. Protect AI credit on `/ask`** _(2026-10-07, live on Rust; owner check + 2,000-char cap; **no rate limit** (the user's call: every AI call is paid in credits))_ _(in Rust R4)_ — no studio-owner check, no length cap on
   `q`, no rate limit, no credit debit: any signed-in user can drain OpenRouter.
   Fix: owned-studio check, `q` ≤ 2000 chars, per-user rate limit
   (e.g. 30 / 10 min); same limit on `/connections` and `/topics/{id}/concepts`.
-- [ ] **A6. Tag OpenRouter calls with the user** _(in Rust R4 for Ask AI)_ — pass `user: <cockpit user id>`
+- [x] **A6. Tag OpenRouter calls with the user** _(2026-10-07, live on Rust: every call sends `user`)_ _(in Rust R4 for Ask AI)_ — pass `user: <cockpit user id>`
   on every LLM call so usage can be traced per user.
-- [ ] **A7. Small ones** — auth on `GET /studios/{id}/topics/{tid}` (seed demos
+- [x] **A7. Small ones** _(2026-10-07, live on Rust: the demo topic endpoint isn't served any more; 50 MB upload cap)_ — auth on `GET /studios/{id}/topics/{tid}` (seed demos
   only today); cap upload size (e.g. 50 MB per file).
 
 ## Still to build
 
-- [ ] **Notification system** — build finished, study-plan reminders, cards due
-- [ ] **Store** — buying OctoCredits in the app
-- [ ] **Credit deduction** — charge OctoCredits for builds, Ask AI, concept
+- [x] **Notification system** _(R6; FCM key installed 2026-10-07 — push is on)_ — build finished, study-plan reminders, cards due
+- [x] **Store** — buying OctoCredits in the app _(2026-10-07: tap the credits pill → 6 packs ($0.99–$39.99) → Stripe Checkout through octopilot-api `POST /billing/checkout-session`; its webhook adds to the shared `users.octo_credits`; the balance re-reads on return. Not yet tried with a real payment)_
+- [x] **Credit deduction** _(2026-10-07: prices come from the admin side, see P4)_ — charge OctoCredits for builds, Ask AI, concept
   maps (today `/ask` and builds charge nothing)
-- [ ] **Ingestion** — see the next two sections (fix now, then Rust)
+- [x] **Ingestion** _(Rust R3, live)_ — see the next two sections (fix now, then Rust)
+
+## Share links (2026-10-08, live)
+
+- [x] **Share a studio by link** — Studio settings → SHARE → "Share link"
+  turns the link on (`https://studystudio.octopilothub.com/s/CODE`, 10
+  characters) and opens the share sheet; "Stop sharing" turns it off (no new
+  copies; copies made stay). Opening the link (Android App Link, verified)
+  shows who shared it and what's in it → "Add to my studios" makes the user's
+  own copy: lessons, cards, quizzes, scenarios, concept maps and the passages
+  (vectors copied, no AI), every topic/card/quiz id new so progress is
+  separate, files not copied (names kept as sources), "Shared by …" kept.
+  Copying is free; AI on the copy is paid by its owner. Server:
+  `study-api/src/share.rs`, e2e `deploy/study-api/share_e2e.sh`; web:
+  `deploy/share-web/` (assetlinks + the page for people without the app).
+- [ ] Add the Play / App Store signing key to `assetlinks.json` (today only
+  the debug key that signs the staging APKs); iOS Universal Links.
+- [ ] Show "Shared by …" on the studio page (the API sends `sharedBy`).
 
 ## Ingestion — where it stands (checked on production 2026-10-07)
 
@@ -72,21 +89,21 @@ lesson retrieves its top 8 chunks; on failure it gets all of the material.
 - [x] **F2. Re-embed the backlog** _(done 2026-10-07: 54 re-embedded, 62/62 real; retrieval spot-check OK)_ — add `embedded boolean` to `chunks`
   (placeholders = false); one-off job embeds them in batches of 32 and flips
   the flag. Recheck: 62/62 real.
-- [ ] **F3. Ready only when embedded** _(in Rust R3)_ — worker sets the document `embedding`
+- [x] **F3. Ready only when embedded** _(2026-10-07, live on Rust)_ _(in Rust R3)_ — worker sets the document `embedding`
   → `ready` after real vectors land; retry with backoff (3 tries), then
   `failed` with a reason the app can show. No placeholders written.
-- [ ] **F4. Fail fast and say so** — 3 s timeout on query embedding; on failure
+- [x] **F4. Fail fast and say so** _(2026-10-07, live on Rust)_ — 3 s timeout on query embedding; on failure
   search lexical-only and send `retrieval: "degraded"` so the answer can say it
   didn't search the notes. Never swallow silently.
-- [ ] **F5. Cap lesson context** — when retrieval fails, pick chunks by title
+- [x] **F5. Cap lesson context** _(2026-10-07, live on Rust)_ — when retrieval fails, pick chunks by title
   words (lexical) and cap at ~16k chars per lesson, not the whole material.
-- [ ] **F6. Pages and headings** _(in Rust R3; `chunks.page`/`heading` columns added by the Rust worker)_ — extract per page; split on headings /
+- [x] **F6. Pages and headings** _(2026-10-07, live on Rust)_ _(in Rust R3; `chunks.page`/`heading` columns added by the Rust worker)_ — extract per page; split on headings /
   paragraphs, 300–500 tokens with ~50 overlap; store `page` and `heading` on
   each chunk; send them with citations ("Lecture 5.pdf · p.12").
-- [ ] **F7. Burmese** _(in Rust R3: OCR en+my, `tsv` english+simple)_ — OCR languages `en` + `my`; `tsv` with the `simple`
+- [~] **F7. Burmese** _(in Rust R3: OCR en+my, `tsv` english+simple)_ — OCR languages `en` + `my`; `tsv` with the `simple` **Dropped: US launch, no Burmese work (Rust OCR still runs en+my)**
   config (language-neutral) alongside `english`.
-- [ ] **F8. Lesson Ask AI sends the topic** (`ApiAiService.teach` → `topic`).
-- [ ] **F9. Measure it** — a 30-question set from a real studio (question →
+- [x] **F8. Lesson Ask AI sends the topic** _(2026-10-07: `teach` sends `topic`)_ (`ApiAiService.teach` → `topic`).
+- [x] **F9. Measure it** _(2026-10-07 baseline: 30 questions, recall@1 0.70, **recall@5 0.90**, recall@10 0.93, MRR 0.76 — `deploy/study-api/recall_eval.py`, set kept in `/opt/study-api/eval/recall_set.json`; Ask AI logs the passages each answer used)_ — a 30-question set from a real studio (question →
   chunk that answers it); report recall@5 before/after; log the hits used for
   each answer.
 
@@ -111,17 +128,28 @@ HTTP + SSE contract stays the same, so the app doesn't change.
 **Embeddings:** run bge-m3 on Hugging Face **text-embeddings-inference**
 (TEI, written in Rust, serves bge-m3 over HTTP) instead of the Python
 sentence-transformers sidecar.
+_Done 2026-10-07: `study-embed` (TEI cpu-1.9, ONNX) on 127.0.0.1:8093 —
+`deploy/embed/run-tei.sh`. Vectors equal the Python ones (cosine 1.00000 on
+all 62 stored passages and on queries), so nothing was re-embedded; recall
+unchanged (recall@5 0.90). Limits 6 GB / 3 CPUs; inputs capped at 2,048
+tokens (an 8,192-token warm-up took 10.7 GB and was OOM-killed — the first
+try spiked the box's load to 37 for ~2 minutes; nothing else was killed).
+Queries ~0.1 s (Python 0.7–1.8 s). Upload → TEI → ready e2e:
+`deploy/study-api/embed_e2e.sh`. The Python `cockpit-embed`, `cockpit-api`,
+`cockpit-worker` and `cockpit-gateway` are stopped (restart=no;
+`cutover.sh python` starts them again). `cockpit-redis` stays: OctoNotes
+uses it._
 
 | Phase | Scope | Done when |
 |---|---|---|
 | **R0 Freeze the contract** _(started: studio DTOs compared field by field against Python on all 14 production studios — identical)_ | List every endpoint + SSE event shape; generate OpenAPI (`utoipa`); record golden responses from today's API | Golden tests run against Python |
 | **R1 Skeleton + reads** _(in progress: `crates/study-api` — `/health`, `/ready`, `/me`, `/studios`, `/studios/{id}` incl. source files; SM-2 port; 5 unit tests; built on the server, run once in loopback shadow mode, stopped)_ | Crate, config, auth, DB pools, `/health` `/ready`; `/me`, `/studios`, `/studios/{id}` (mastery + SM-2 overlays) | Golden read tests pass on Rust |
 | **R2 Progress writes** _(done in Rust 2026-10-07: quiz, card review, flashcard-review, mark-reviewed once/20 h, rename, activity; same results as Python on a throwaway copy (`deploy/study-api/parity.sh`); retries with the same `event_id` change nothing — **the app still has to send `event_id`**)_ | quiz-result, card review (SM-2 port), mark-reviewed (once/day), rename, delete, activity, `study_events` — all with `event_id` idempotency (A2, A3) | Retries change nothing |
-| **R3 Ingestion** _(done in Rust 2026-10-07, not live: upload (50 MB cap, safe names) → `ingest_jobs` queue with `SKIP LOCKED` workers (no Redis) → PDF text page by page, Hirara OCR en+my for scans/office/images → heading/paragraph passages ~1,600 chars with page + heading → bge-m3 with retries → ready only when embedded; e2e on a copy: 2.5 MB PDF → 32 passages, all with pages, real vectors, 52 s (`deploy/study-api/ingest_e2e.sh`). Still to do: Idempotency-Key (A4), re-embed job, metrics)_ | Upload (Idempotency-Key, 50 MB cap) → Postgres job queue → extract per page → heading-aware chunks → TEI → `ready` only when embedded; re-embed job; metrics (F1–F7) | 100% real vectors; recall@5 at target |
+| **R3 Ingestion** _(done in Rust 2026-10-07, not live: upload (50 MB cap, safe names) → `ingest_jobs` queue with `SKIP LOCKED` workers (no Redis) → PDF text page by page, Hirara OCR en+my for scans/office/images → heading/paragraph passages ~1,600 chars with page + heading → bge-m3 with retries → ready only when embedded; e2e on a copy: 2.5 MB PDF → 32 passages, all with pages, real vectors, 52 s (`deploy/study-api/ingest_e2e.sh`). Idempotency-Key (A4) and `/metrics` done 2026-10-07; a re-embed job isn't needed — only real vectors can be written now; re-embed once if the model ever changes)_ | Upload (Idempotency-Key, 50 MB cap) → Postgres job queue → extract per page → heading-aware chunks → TEI → `ready` only when embedded; re-embed job; metrics (F1–F7) | 100% real vectors; recall@5 at target |
 | **R4 Retrieval + AI** _(done in Rust 2026-10-07, not live: in-process hybrid search (same top 5 as Go on a test question), `/ask` SSE with history + topic + pages in citations, owner check, 2,000-char cap, 30 per 10 min, `max_tokens`, `user`, `usage` → `llm_usage`; embedder down → keyword search + `retrieval: degraded`. **Credit debit not wired yet** — waits for P3 prices)_ | Hybrid search (HNSW + `simple`/`english` tsv, RRF); `/ask` SSE with history + topic; OpenRouter client (`max_tokens`, `user`); OctoCredits check + debit; per-user rate limits (A5, A6) | Ask AI cites pages; credits move |
 | **R5 Build pipeline** _(done in Rust 2026-10-07, not live: prompts byte-identical to Python (fixture test), builds are DB jobs that resume after a restart (tested: killed at 5/8, finished 8/8), one build per studio, outline made before the studio is cleared and old topics put back if no lesson is written, capped lesson fallback (24k chars, was 120k), every call metered with its `build_id`; connections + concepts made once under a double tap (row lock: 2 taps → 1 call); create / delete studio. Off by default: `BUILD_WORKER=1`)_ | Outline / lesson / scenarios / concepts / connections ported with the same prompts; one build per studio (A1); ids kept on rebuild; capped context | Same studio from the same files |
-| **R6 Notifications** | Build finished, cards due, plan reminders over FCM (outbox) | Push arrives on the phone |
-| **R7 Cut over** | Gateway routes path by path to Rust (reads first), compares responses; then all traffic; Python + Go kept 2 weeks for rollback, then removed | `cockpit-api` / worker / gateway off |
+| **R6 Notifications** _(done in Rust 2026-10-07: outbox for studio ready/failed, plan reminders, evening due-cards nudge; devices + plan endpoints; `notify_e2e.sh`. **No push yet: the Firebase service-account key isn't on the server** (`FCM_SERVICE_ACCOUNT_FILE` in `/opt/study-api/app.env`, then restart))_ | Build finished, cards due, plan reminders over FCM (outbox) | Push arrives on the phone |
+| **R7 Cut over** _(2026-10-07: `study-api` runs as systemd on 127.0.0.1:8110 (`deploy/study-api/install.sh`, `deploy.sh`); reads compared on all 14 studios — identical; nginx now sends **all** `api.octopilothub.com` traffic to Rust with its ingest/build workers on (`cutover.sh all`; rollback `cutover.sh python`). Python + Go containers still running, idle, for rollback until **2026-10-21**. Still to do: a real-phone pass on Rust (sign in, open studio, review cards, upload, build, Ask AI), then stop cockpit-api/worker/gateway)_ | Gateway routes path by path to Rust (reads first), compares responses; then all traffic; Python + Go kept 2 weeks for rollback, then removed | `cockpit-api` / worker / gateway off |
 
 **Risks:**
 - **Prompt and JSON parity:** copy prompts verbatim; keep camelCase DTOs and the `"from"` alias.
@@ -138,7 +166,7 @@ $5/month. "Round $1.40 up to $2" per action would charge an Ask AI turn
 (~1.5¢) 100 credits. A 10% markup doesn't cover store fees (15–30%),
 payments, servers and free users.
 
-- [ ] **P1. Meter every AI call** _(Rust R4: Ask AI metered. First real number on 2026-10-07: one answer = 8,230 prompt + 252 completion tokens = **$0.0285** with today's ~3,100-char chunks; the R3 passages (~950 chars) should cut the prompt by about two thirds)_ — request OpenRouter `usage` (tokens + exact
+- [x] **P1. Meter every AI call** _(2026-10-07: every call metered — ask, builds, concepts, connections, grade)_ _(Rust R4: Ask AI metered. First real number on 2026-10-07: one answer = 8,230 prompt + 252 completion tokens = **$0.0285** with today's ~3,100-char chunks; the R3 passages (~950 chars) should cut the prompt by about two thirds)_ — request OpenRouter `usage` (tokens + exact
   USD cost) and send `user`; store in `llm_usage` (user, studio, feature,
   model, tokens in/out, cost_usd, request id). Pairs with A6.
   _Rust R5: builds metered per `build_id`. First build number (2026-10-07,
@@ -147,12 +175,19 @@ payments, servers and free users.
   18k tokens in / 14k out; lessons ≈ 85 % of it. Sonnet calls: connections +
   one concept map = $0.017. Bigger studios scale with lesson count — P2
   measures that._
-- [ ] **P2. Benchmark** — build ~20 studios of different sizes, run each feature;
+- [ ] **P2. Benchmark** _(2026-10-08 first pass, thinking off, numbers from OpenRouter usage — `deploy/study-api/bench.sh` / `bench.py`, results in `/opt/study-api/bench/results`:
+  | run | material | lessons | build $ | time |
+  |---|---|---|---|---|
+  | Flash Lite, 1 PDF (9 p, 31k chars) | | 7 | 0.0276 (fixed 0.0072 + 7×0.0029) | 17 s |
+  | GLM 5.3 Flash, same | | 19 | 0.0349 (fixed 0.0045 + 19×0.0016) | 373 s |
+  | Flash Lite, 2 PDFs + JPG + PPTX (63 p, 186k chars) | | 10 | 0.0438 (fixed 0.0165 + 10×0.0027) | 22 s |
+  | GLM 5.3 Flash, same | | 17 | 0.0385 (fixed 0.0101 + 17×0.0017) | 416 s |
+  Ask AI (Sonnet 4.6) $0.0087–0.0097 an answer; recall grading $0.00004–0.00007. GLM's thinking can't be turned off (400 "Reasoning is mandatory"): the client falls back to `effort: minimal` → ~0 thinking tokens. Found: the 120k-char outline cap left part of chapter 2 without lessons; OCR of a photo can come back empty while the box is busy (now retried); one Flash Lite scenario reply couldn't be parsed (now logged))_ — build ~20 studios of different sizes, run each feature;
   per-feature average and worst-case cost from `llm_usage`.
 - [ ] **P3. Re-base the credit** — e.g. 1,000 credits = $1 of AI cost, a ×2–3
   markup; round up to the next credit, not the next dollar; recompute plan
   allowances and packs from P2.
-- [ ] **P4. Deduction** — small actions (Ask AI, concept map, regenerate quiz):
+- [x] **P4. Deduction** _(2026-10-07 mechanism live, free until priced. Admin sets `system_settings`: `study_price_<feature>` (fixed: ask, concepts, connections, build, grade) or `study_credits_per_usd` (real OpenRouter cost × rate, rounded up, ≥1). Short → 402 `insufficient_credits` before any AI call; charged once per call (`credit_ledger.source_ref` `study:<feature>:…`); builds charged the sum of their calls only when they succeed, never on failure; the app shows the server's message. e2e: `credits_e2e.sh`)_ — small actions (Ask AI, concept map, regenerate quiz):
   fixed prices; big ones (studio build, PDF analysis, transcription): quote
   before starting (pages / characters) → **hold** → settle at the real cost,
   never above the quote; refund on failure. Reuse the OctoCredits hold/settle
@@ -184,8 +219,7 @@ quality-vs-cost trade-off of switching models, to set P3/P4.
   `usage.cost` (USD), latency, retries, JSON-parse failures, `build_id`,
   feature, user. Cross-check a sample against `GET /api/v1/generation?id=`.
 - [ ] **S2. Fixed corpus** (same files for every model): 5-, 20-, 40- and
-  100-page PDFs; a slide deck; a scanned PDF (OCR); a DOCX of notes; a
-  Burmese document.
+  100-page PDFs; a slide deck; a scanned PDF (OCR); a DOCX of notes.
 - [ ] **S3. Fixed workload** per studio: full build; concept map for every
   lesson; connections; 20 Ask AI questions (incl. follow-ups and one off-topic).
 - [ ] **S4. Model matrix**
@@ -195,7 +229,7 @@ quality-vs-cost trade-off of switching models, to set P3/P4.
     gemini-3-flash, gpt-5-mini, deepseek-v3.2
 - [ ] **S5. Quality** — rubric 1–5: faithful to the source (no invented
   facts), covers the source's key points, clear, quiz answers correct, valid
-  JSON, handles Burmese. Scored blind by a strong judge model (random order)
+  JSON. Scored blind by a strong judge model (random order)
   on everything, plus a human spot-check of 10% (IT + a student / teacher).
 - [ ] **S6. Report** — per feature × model: average and p90 cost, latency,
   quality score, failure rate; build cost as *fixed + per page*; the model to
@@ -222,7 +256,7 @@ In Rust, the "candidates" go behind a repository trait so a Scylla store can
 replace the Postgres one without touching the API.
 
 **Plan:**
-- [ ] **D1. Off-site backups first** _(2026-10-07: all 9 databases dumped to `/opt/backups/db-20261007-093320` + IT PC copy; **nightly dumps of octo-pg at 03:15**, kept 14 days in `/opt/backups/nightly`; cloud copy + WAL still to do)_: pgBackRest or WAL-G →
+- [x] **D1. Backups** _(2026-10-07: no cloud — the user's call. `tools/backup/pull-snapshot.sh` makes a zip on the server (every DB in octo-pg + labs/mbr/legacy/gw-staging, MinIO files, configs; dumps checked) and downloads it to `H:/Backups/octopilot`, checksum compared. First: `snapshot-20261007-1453.zip`, 125 MB. Nightly server dumps of octo-pg stay as they were)_  _(2026-10-07: all 9 databases dumped to `/opt/backups/db-20261007-093320` + IT PC copy; **nightly dumps of octo-pg at 03:15**, kept 14 days in `/opt/backups/nightly`; cloud copy + WAL still to do)_: pgBackRest or WAL-G →
   Cloudflare R2 / Backblaze B2 — continuous WAL + weekly full, point-in-time
   restore; MinIO → R2 nightly with `rclone`. **Test a restore monthly.**
 - [x] **D2. One Postgres 17 cluster (+ pgvector)** — `octo-pg`, `127.0.0.1:5440`
@@ -238,7 +272,7 @@ replace the Postgres one without touching the API.
   `DATABASE_URL` from `/opt/octopilot-api/runtime.env` (old container kept as
   `octopilot-api-pre-octopg`). Old instances read-only until **2026-10-21**,
   then last dump and remove. Labs, MBR and octopilot-legacy were not moved.
-- [ ] **D5. Retention:** (OctoNotes `jobs` is already ~31k rows and growing — clean up finished jobs.) monthly partitions for `study_events`, notifications,
+- [ ] **D5. Retention:** _(OctoNotes `jobs` done 2026-10-07: daily cron `/etc/cron.d/octo-retention` (`deploy/octo-pg/retention.sh`) keeps finished jobs 3 days, failed 30; first run deleted 23,005 of 31,646)_ monthly partitions for `study_events`, notifications,
   LLM usage; after 12 months keep daily rollups, drop raw partitions.
 - [ ] **D6. Vectors:** HNSW must fit in RAM (~5 GB per 1M bge-m3 chunks);
   past ~1M chunks use `halfvec` or a separate server.
@@ -279,11 +313,11 @@ replace the Postgres one without touching the API.
 
 ## Follow-ups
 
-- [ ] Push notification when a build finishes; "Building x%" on the home row
-- [ ] Server AI grading for spoken Lightning recall answers
-- [ ] Cap Quiz me at ~10 questions
-- [ ] Study plan reminders (notifications)
-- [ ] One name per concept across a studio (merge near-duplicates)
+- [x] Push notification when a build finishes; "Building x%" on the home row _(2026-10-07: push in R6 (FCM key on the server); the studio row shows "Building 40%" and refreshes every 5 s while a build runs)_
+- [x] Server AI grading for spoken Lightning recall answers _(2026-10-07: `POST /studios/{id}/grade` on the cheap model, asked only when the app's word check misses; paid as `grade`)_
+- [x] Cap Quiz me at ~10 questions _(2026-10-07: 10 a round, weakest topics first, one per topic in turn)_
+- [x] Study plan reminders (notifications) _(R6)_
+- [x] One name per concept across a studio _(2026-10-07: same idea = same name (case, article, plural ignored) after every build and for each new concept map)_(merge near-duplicates)
 - [x] **Rebuild keeps too few ids** _(fixed in Rust R5, 2026-10-07)_ — ids carried over
   only on an exact title (two builds of the same files: 3/8 lessons, 8/50
   cards kept). Now the outline is shown the old titles ("reuse where it
@@ -293,7 +327,7 @@ replace the Postgres one without touching the API.
   two parts: **8/8 and 7/7 lessons kept**, cards still 14/53 — the card-front
   part is unit-tested but not yet run against the model (OpenRouter credit
   ran out mid-test, 402). Re-run `build_e2e.sh` after the top-up.
-- [ ] Burmese font in the PDF export
+- [~] Burmese font in the PDF export **Dropped: US launch**
 - [ ] Desktop pages still on the old design (several show mock data:
   Analytics, Ask AI, Manage, Welcome back, Study plan)
 

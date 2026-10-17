@@ -24,17 +24,29 @@ class UploadApi {
     required Uint8List bytes,
   }) async {
     final headers = await _sse.authHeaders()
-      ..remove('Accept'); // the upload response is JSON, not an event stream
-    final req = http.MultipartRequest(
-      'POST',
-      Uri.parse('${_sse.baseUrl}/studios/$studioId/documents'),
-    )
-      ..headers.addAll(headers)
-      ..files.add(
-        http.MultipartFile.fromBytes('file', bytes, filename: filename),
-      );
+      ..remove('Accept') // the upload response is JSON, not an event stream
+      // One key per picked file: a retry after a lost response gets the
+      // first upload's job instead of a second copy.
+      ..['Idempotency-Key'] = newRequestId();
+    Future<http.Response> send() async {
+      final req =
+          http.MultipartRequest(
+              'POST',
+              Uri.parse('${_sse.baseUrl}/studios/$studioId/documents'),
+            )
+            ..headers.addAll(headers)
+            ..files.add(
+              http.MultipartFile.fromBytes('file', bytes, filename: filename),
+            );
+      return http.Response.fromStream(await req.send());
+    }
 
-    final resp = await http.Response.fromStream(await req.send());
+    http.Response resp;
+    try {
+      resp = await send();
+    } on http.ClientException {
+      resp = await send();
+    }
     if (resp.statusCode >= 400) {
       throw SseException('Upload failed: HTTP ${resp.statusCode}');
     }
@@ -78,7 +90,8 @@ class UploadApi {
     final status = d['status'] as String? ?? 'queued';
     final lessonsDone = (d['lessonsDone'] as num?)?.toInt() ?? 0;
     final lessonsTotal = (d['lessonsTotal'] as num?)?.toInt() ?? 0;
-    final pct = (d['progressPct'] as num?)?.toDouble() ??
+    final pct =
+        (d['progressPct'] as num?)?.toDouble() ??
         BuildSnapshot.estimateProgress(
           status: status,
           lessonsDone: lessonsDone,

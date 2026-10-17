@@ -24,6 +24,13 @@ impl FromRequestParts<AppState> for Caller {
 
     async fn from_request_parts(parts: &mut Parts, st: &AppState) -> Result<Self, Self::Rejection> {
         let user = st.firebase.authenticate(&parts.headers).await?;
+        if let Some(access) = &st.access {
+            // Test environment: the allowlist, and the GhostWriter flag for
+            // its own routes (the main chat checks its flag in octo::ask).
+            let path = parts.uri.path();
+            let gw = ["/v1/projects", "/v1/runs", "/v1/folders"].iter().any(|p| path.starts_with(p));
+            access.admit(&user, gw.then_some("ghostwriter")).await?;
+        }
         let user_id = match &st.octopilot {
             Some(pool) => {
                 let mut id = st.user_ids.user_id(pool, &user.uid).await?;
@@ -63,6 +70,10 @@ pub async fn provision(
     pool: &sqlx::PgPool,
     user: &octo_common::auth::AuthedUser,
 ) -> Result<bool, ApiError> {
+    // Behind the access gate every caller here was already let in.
+    if st.access.is_some() {
+        return octo_common::access::provision(pool, user, st.config.starting_credits).await;
+    }
     let allowed = &st.config.account_allowlist;
     let Some(email) = user.email.as_deref().map(str::to_lowercase) else {
         return Ok(false);

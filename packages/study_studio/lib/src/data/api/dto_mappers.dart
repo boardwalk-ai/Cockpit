@@ -43,6 +43,14 @@ Studio studioFromJson(Map<String, dynamic> j) {
     scenarios: (j['scenarios'] as List? ?? [])
         .map((e) => scenarioFromJson(e as Map<String, dynamic>))
         .toList(),
+    build: switch (j['build']) {
+      final Map<String, dynamic> b => StudioBuild(
+        lessonsDone: (b['lessonsDone'] as num?)?.toInt() ?? 0,
+        lessonsTotal: (b['lessonsTotal'] as num?)?.toInt() ?? 0,
+      ),
+      _ => null,
+    },
+    sharedBy: j['sharedBy'] as String?,
   );
 }
 
@@ -58,17 +66,21 @@ Scenario scenarioFromJson(Map<String, dynamic> j) {
     problem: j['problem'] as String? ?? '',
     question: j['question'] as String? ?? '',
     clues: (j['clues'] as List? ?? [])
-        .map((e) => ScenarioClue(
-              id: (e as Map)['id'] as String? ?? '',
-              label: e['label'] as String? ?? '',
-              detail: e['detail'] as String? ?? '',
-            ))
+        .map(
+          (e) => ScenarioClue(
+            id: (e as Map)['id'] as String? ?? '',
+            label: e['label'] as String? ?? '',
+            detail: e['detail'] as String? ?? '',
+          ),
+        )
         .toList(),
     options: (j['options'] as List? ?? [])
-        .map((e) => ScenarioOption(
-              id: (e as Map)['id'] as String? ?? '',
-              label: e['label'] as String? ?? '',
-            ))
+        .map(
+          (e) => ScenarioOption(
+            id: (e as Map)['id'] as String? ?? '',
+            label: e['label'] as String? ?? '',
+          ),
+        )
         .toList(),
     correctOptionId: j['correctOptionId'] as String? ?? '',
     reasoning: j['reasoning'] as String? ?? '',
@@ -136,10 +148,17 @@ Flashcard flashcardFromJson(Map<String, dynamic> j) {
     topicId: j['topicId'] as String? ?? '',
     front: j['front'] as String? ?? '',
     back: j['back'] as String? ?? '',
-    type: _enumByName(FlashcardType.values, j['type'], FlashcardType.definition),
+    type: _enumByName(
+      FlashcardType.values,
+      j['type'],
+      FlashcardType.definition,
+    ),
     difficulty: (j['difficulty'] as num?)?.toInt() ?? 2,
-    status:
-        _enumByName(FlashcardStatus.values, j['status'], FlashcardStatus.fresh),
+    status: _enumByName(
+      FlashcardStatus.values,
+      j['status'],
+      FlashcardStatus.fresh,
+    ),
     dueDate: _dateOrNull(j['dueDate']),
     reps: (j['reps'] as num?)?.toInt() ?? 0,
     intervalDays: (j['intervalDays'] as num?)?.toDouble() ?? 0,
@@ -175,8 +194,9 @@ Me meFromJson(Map<String, dynamic> j) {
   return Me(
     id: j['id'] as String,
     email: j['email'] as String?,
-    displayName: j['displayName'] as String?,
+    displayName: (j['displayName'] ?? j['name']) as String?,
     credits: (j['credits'] as num?)?.toInt(),
+    photoUrl: j['photoUrl'] as String?,
   );
 }
 

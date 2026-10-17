@@ -20,6 +20,12 @@ async fn main() {
         study_api::llm::ensure_schema(&state.cockpit).await.expect("llm_usage schema");
         study_api::build::ensure_schema(&state).await.expect("studio_builds schema");
         study_api::notify::ensure_schema(&state.cockpit).await.expect("notification tables");
+        study_api::studios::ensure_schema(&state.cockpit).await.expect("idempotency columns");
+        study_api::share::ensure_schema(&state.cockpit).await.expect("share tables");
+    }
+    if let Some(access) = &state.access {
+        access.ensure_schema().await.expect("access tables");
+        tracing::info!("access gate on");
     }
     if state.config.ingest_worker {
         study_api::ingest::spawn(&state);
@@ -35,9 +41,26 @@ async fn main() {
     let listener = TcpListener::bind((bind.as_str(), port)).await.expect("bind");
     tracing::info!("study-api listening on http://{bind}:{port}");
     axum::serve(listener, app(state))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
+        .with_graceful_shutdown(shutdown())
         .await
         .expect("serve");
+}
+
+/// Ctrl-C or SIGTERM (systemd stop): stop accepting, finish in-flight requests.
+/// Builds and ingests left mid-way resume from the DB on the next start.
+async fn shutdown() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let term = async {
+        if let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            s.recv().await;
+        }
+    };
+    #[cfg(not(unix))]
+    let term = std::future::pending::<()>();
+    tokio::select! { _ = ctrl_c => {}, _ = term => {} }
+    tracing::info!("shutting down");
 }

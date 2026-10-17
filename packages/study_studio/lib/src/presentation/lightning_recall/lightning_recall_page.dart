@@ -83,6 +83,14 @@ Widget _phone(BuildContext context, WidgetRef ref, AsyncValue<Studio> async) {
         topicTitles: {for (final t in studio.topics) t.id: t.title},
         onClose: () => context.go('/study/${studio.id}'),
         onReview: (id) => context.go('/study/${studio.id}/topics/$id'),
+        judge: (item, said) => ref
+            .read(studioRepositoryProvider)
+            .gradeRecall(
+              studioId: studio.id,
+              question: item.question,
+              answer: item.answer,
+              said: said,
+            ),
         onAnswer: (item, correct) => unawaited(
           ref
               .read(studioRepositoryProvider)
@@ -116,7 +124,10 @@ List<RecallItem> recallItems(Studio studio) {
       for (final q in t.quizQuestions)
         if (q.answer.trim().isNotEmpty) (t, q),
   ];
-  final quick = [for (final (t, q) in all) if (short(q)) item(t, q)];
+  final quick = [
+    for (final (t, q) in all)
+      if (short(q)) item(t, q),
+  ];
   if (quick.length >= 5) return quick;
   return [
     ...quick,
@@ -540,7 +551,9 @@ class _LightningRecallBody extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: CockpitSpacing.xl),
           children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.lg),
+              padding: const EdgeInsets.symmetric(
+                horizontal: CockpitSpacing.lg,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -632,10 +645,7 @@ class _LightningRecallBody extends StatelessWidget {
           ),
           const SizedBox(width: 24),
           // Right — session summary + weak topics.
-          Expanded(
-            flex: 4,
-            child: SingleChildScrollView(child: summary),
-          ),
+          Expanded(flex: 4, child: SingleChildScrollView(child: summary)),
         ],
       ),
     );

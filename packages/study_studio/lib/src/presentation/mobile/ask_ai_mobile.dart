@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../application/study_voice.dart';
+import '../../data/api/sse_client.dart' show SseException;
 import '../../domain/ask.dart';
 import '../../domain/entities/topic.dart';
 import 'mobile_header.dart';
@@ -61,6 +62,9 @@ class _Turn {
   List<AskSource> sources = const [];
   var done = false;
   var failed = false;
+
+  /// Shown instead of the generic failure (e.g. out of OctoCredits).
+  String? problem;
   StreamSubscription<AskEvent>? sub;
 }
 
@@ -160,10 +164,13 @@ class _AskAiMobileState extends State<AskAiMobile> {
             });
             _toEnd();
           },
-          onError: (Object _) {
+          onError: (Object e) {
             if (!mounted) return;
             SmHaptics.error();
             setState(() {
+              turn.problem = e is SseException && e.outOfCredits
+                  ? e.message
+                  : null;
               turn.failed = true;
               turn.done = true;
             });
@@ -190,6 +197,7 @@ class _AskAiMobileState extends State<AskAiMobile> {
       turn.text.clear();
       turn.sources = const [];
       turn.failed = false;
+      turn.problem = null;
       turn.done = false;
     });
     _run(turn, history);
@@ -618,7 +626,7 @@ class _TurnView extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           if (turn.failed)
-            _Failed(onRetry: onRetry)
+            _Failed(onRetry: onRetry, message: turn.problem)
           else if (text.isEmpty)
             const Align(alignment: Alignment.centerLeft, child: _Thinking())
           else
@@ -854,9 +862,10 @@ class _ThinkingState extends State<_Thinking>
 }
 
 class _Failed extends StatelessWidget {
-  const _Failed({required this.onRetry});
+  const _Failed({required this.onRetry, this.message});
 
   final VoidCallback onRetry;
+  final String? message;
 
   @override
   Widget build(BuildContext context) {
@@ -866,7 +875,7 @@ class _Failed extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            'Couldn’t get an answer just now.',
+            message ?? 'Couldn’t get an answer just now.',
             style: t.body.copyWith(fontSize: 14, color: c.muted),
           ),
         ),

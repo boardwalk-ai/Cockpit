@@ -29,12 +29,16 @@ final studyPushImplProvider = Provider<StudyPush?>(
   },
 );
 
-/// Where a tapped notification asks to go (`data.link`, e.g. `/study/<id>`).
+/// Where a tapped notification asks to go (`data.link`, e.g. `/study/<id>`;
+/// an announcement from the admin app opens Home).
 Stream<String> notificationLinks(GwPush? push) => push == null
     ? const Stream.empty()
     : push.opened
-          .map((data) => data['link'] ?? '')
-          .where((link) => link.startsWith('/study/'));
+          .map(
+            (data) =>
+                data['type'] == 'announcement' ? '/' : (data['link'] ?? ''),
+          )
+          .where((link) => link == '/' || link.startsWith('/study/'));
 
 class FirebaseGwPush implements GwPush, StudyPush {
   FirebaseGwPush(this.platform);

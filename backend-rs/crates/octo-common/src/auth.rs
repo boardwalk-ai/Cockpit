@@ -165,10 +165,12 @@ impl FirebaseAuth {
                 .and_then(|v| v.to_str().ok())
                 .unwrap_or("dev-user")
                 .to_string();
+            // Dev only: who the caller is, for the access gate's tests.
+            let email = headers.get("x-user-email").and_then(|v| v.to_str().ok()).map(str::to_string);
             return Ok(AuthedUser {
                 uid,
-                email: None,
-                email_verified: false,
+                email_verified: email.is_some(),
+                email,
                 name: None,
             });
         }

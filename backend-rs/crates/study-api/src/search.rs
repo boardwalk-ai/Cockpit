@@ -28,20 +28,7 @@ pub async fn embed_query(state: &AppState, q: &str) -> Option<Vec<f32>> {
 
 /// The same with a longer wait (a build can afford one; a question can't).
 pub async fn embed_query_within(state: &AppState, q: &str, wait: Duration) -> Option<Vec<f32>> {
-    let url = format!("{}/embed", state.config.embed_service_url.trim_end_matches('/'));
-    let r = state
-        .http
-        .post(url)
-        .timeout(wait)
-        .json(&serde_json::json!({ "texts": [q] }))
-        .send()
-        .await
-        .ok()?;
-    if !r.status().is_success() {
-        return None;
-    }
-    let v: serde_json::Value = r.json().await.ok()?;
-    serde_json::from_value::<Vec<Vec<f32>>>(v["vectors"].clone()).ok()?.into_iter().next()
+    crate::embedder::embed_once(state, &[q.to_string()], wait).await.ok()?.into_iter().next()
 }
 
 /// Top `k` passages. With no vector (embedder down) it is lexical only.
@@ -88,4 +75,33 @@ pub async fn hybrid(
             page: r.try_get("page").ok().flatten(),
         })
         .collect())
+}
+
+#[derive(serde::Deserialize)]
+pub struct SearchQ {
+    user_id: Uuid,
+    studio_id: Uuid,
+    q: String,
+    k: Option<i64>,
+}
+
+/// `GET /search?user_id&studio_id&q&k` — the passages Ask AI would get, for
+/// measuring retrieval (F9). From the server itself only, like `/metrics`.
+pub async fn debug(
+    axum::extract::State(state): axum::extract::State<AppState>,
+    headers: axum::http::HeaderMap,
+    axum::extract::Query(p): axum::extract::Query<SearchQ>,
+) -> Result<axum::Json<serde_json::Value>, axum::http::StatusCode> {
+    if headers.contains_key("x-forwarded-for") {
+        return Err(axum::http::StatusCode::FORBIDDEN);
+    }
+    let qvec = embed_query(&state, &p.q).await;
+    let degraded = qvec.is_none();
+    let hits = hybrid(&state.vector, p.user_id, p.studio_id, &p.q, qvec, p.k.unwrap_or(5).clamp(1, 50))
+        .await
+        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(axum::Json(serde_json::json!({
+        "degraded": degraded,
+        "hits": hits.iter().map(|h| serde_json::json!({ "id": h.chunk_id, "page": h.page, "score": h.score })).collect::<Vec<_>>(),
+    })))
 }

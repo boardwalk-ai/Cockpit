@@ -160,6 +160,14 @@ class InMemoryStudioRepository implements StudioRepository {
   }
 
   @override
+  Future<bool?> gradeRecall({
+    required String studioId,
+    required String question,
+    required String answer,
+    required String said,
+  }) async => null;
+
+  @override
   Future<void> markReviewed(String studioId, String topicId) async {
     _adjustMastery(studioId, topicId, 0.03);
   }

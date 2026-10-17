@@ -29,11 +29,21 @@ impl FromRequestParts<AppState> for UserId {
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
         let user = AuthedUser::from_request_parts(parts, state).await?;
+        // Test environment: the allowlist and the Study Studio flag.
+        if let Some(access) = &state.access {
+            access.admit(&user, Some("study_studio")).await?;
+        }
         if !state.firebase.enabled() {
             // Dev: X-User-Id carries the id itself.
             return Uuid::parse_str(&user.uid)
                 .map(UserId)
                 .map_err(|_| ApiError::bad_request("Invalid X-User-Id"));
+        }
+        if let (Some(_), Some(shared)) = (&state.access, &state.shared) {
+            // A tester's first sign-in gets an account with starting credits.
+            if state.user_ids.user_id(shared, &user.uid).await?.is_none() {
+                octo_common::access::provision(shared, &user, state.config.starting_credits).await?;
+            }
         }
         if let Some(shared) = &state.shared {
             if let Ok(Some(id)) = state.user_ids.user_id(shared, &user.uid).await {

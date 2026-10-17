@@ -28,6 +28,7 @@ dependencies:
   google_sign_in: ^7.2.0
   pdf: ^3.11.1
   share_plus: ^12.0.2
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:
@@ -37,3 +38,5 @@ dev_dependencies:
 flutter:
   assets:
     - assets/images/ai_study_companion.png
+    - assets/images/octocredits.png
+    - assets/images/octocredits_large.png

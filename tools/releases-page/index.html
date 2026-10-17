@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0b0c">
+<title>Octopilot Releases</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23ff343c'/%3E%3Cstop offset='1' stop-color='%23ff8a5b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='30' fill='url(%23g)'/%3E%3Cpath d='M32 16v22m-9-9 9 9 9-9M20 46h24' stroke='white' stroke-width='5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0b0b0c;
+  --surface: #141416;
+  --surface-2: #1b1b1e;
+  --line: #2a2a2f;
+  --text: #f5f5f6;
+  --muted: #a3a3ab;
+  --faint: #6e6e78;
+  --accent: #ff343c;
+  --accent-2: #ff8a5b;
+  --glow: rgba(255, 52, 60, .35);
+  --radius: 20px;
+  --font: "Outfit", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+body { min-height: 100vh; overflow-x: hidden; }
+a { color: inherit; }
+.wrap { width: min(1120px, 100% - 32px); margin-inline: auto; }
+
+/* ------------------------------------------------------------ top bar */
+.top { position: fixed; inset: 0 0 auto; z-index: 20; padding: 14px 0; backdrop-filter: blur(14px) saturate(140%); -webkit-backdrop-filter: blur(14px) saturate(140%); background: linear-gradient(to bottom, rgba(11,11,12,.75), rgba(11,11,12,.35)); border-bottom: 1px solid rgba(255,255,255,.05); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; font-size: 18px; text-decoration: none; }
+.mark { width: 28px; height: 28px; border-radius: 50%; background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent)); box-shadow: 0 0 22px var(--glow); position: relative; }
+.mark::after { content: ""; position: absolute; inset: 7px; border-radius: 50%; background: var(--bg); }
+.pill { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--line); padding: 6px 10px; border-radius: 999px; white-space: nowrap; }
+
+/* ------------------------------------------------------------ hero */
+.hero { position: relative; height: min(92vh, 860px); min-height: 560px; display: grid; align-items: end; perspective: 1400px; isolation: isolate; overflow: hidden; }
+.stage { position: absolute; inset: 0; z-index: -2; transform-style: preserve-3d; will-change: transform; }
+.stage canvas, .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.stage img { opacity: 0; transition: opacity .6s; }
+.stage.fallback img { opacity: 1; }
+.glare { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(600px circle at var(--gx, 70%) var(--gy, 30%), rgba(255,255,255,.10), transparent 60%); mix-blend-mode: soft-light; }
+.shade { position: absolute; inset: 0; z-index: -1; pointer-events: none; background:
+  linear-gradient(to top, var(--bg) 2%, rgba(11,11,12,.85) 22%, rgba(11,11,12,.15) 55%, rgba(11,11,12,.35) 100%),
+  linear-gradient(to right, rgba(11,11,12,.75), transparent 55%); }
+.hero-copy { padding: 0 0 clamp(36px, 8vh, 84px); }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-2); }
+.eyebrow i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 0 var(--glow); animation: ping 2.2s infinite; }
+@keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(255,52,60,.6); } 80%,100% { box-shadow: 0 0 0 12px rgba(255,52,60,0); } }
+h1 { font-size: clamp(42px, 8.4vw, 104px); line-height: .94; letter-spacing: -.035em; margin: 14px 0 16px; font-weight: 800; }
+h1 .grad { background: linear-gradient(100deg, var(--text) 10%, var(--accent-2) 55%, var(--accent) 90%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lede { max-width: 540px; color: var(--muted); font-size: clamp(16px, 2.1vw, 19px); line-height: 1.5; margin: 0 0 28px; }
+.cta-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+
+.btn { --b: var(--accent); position: relative; display: inline-flex; align-items: center; gap: 10px; padding: 15px 22px; border-radius: 14px; font: 600 16px/1 var(--font); text-decoration: none; color: #fff; border: 0; cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), #d5121b 60%, var(--accent-2)); box-shadow: 0 10px 30px -8px var(--glow), inset 0 1px 0 rgba(255,255,255,.25); transition: transform .2s, box-shadow .2s; overflow: hidden; }
+.btn::before { content: ""; position: absolute; inset: 0; background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,.35), transparent 70%); transform: translateX(-120%); transition: transform .7s; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 16px 40px -8px var(--glow), inset 0 1px 0 rgba(255,255,255,.3); }
+.btn:hover::before { transform: translateX(120%); }
+.btn:active { transform: translateY(0) scale(.98); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn.ghost { background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px var(--line); color: var(--text); }
+.btn.ghost:hover { box-shadow: inset 0 0 0 1px #3a3a42; }
+.meta { color: var(--faint); font-size: 14px; }
+
+/* ------------------------------------------------------------ releases */
+section { padding: 56px 0; }
+.head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 22px; flex-wrap: wrap; }
+h2 { font-size: clamp(26px, 4vw, 36px); letter-spacing: -.02em; margin: 0; }
+.sub { color: var(--muted); margin: 6px 0 0; }
+.list { display: grid; gap: 14px; }
+.rel { position: relative; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; padding: 22px 24px; border-radius: var(--radius);
+  background: linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(135deg, #2a2a2f, #1c1c20) border-box; border: 1px solid transparent;
+  transform: translateY(16px); opacity: 0; transition: transform .6s cubic-bezier(.2,.8,.2,1), opacity .6s, box-shadow .3s; }
+.rel.in { transform: none; opacity: 1; }
+.rel.latest { background: linear-gradient(var(--surface-2), var(--surface-2)) padding-box, linear-gradient(135deg, var(--accent), var(--accent-2) 40%, #2a2a2f 75%) border-box; box-shadow: 0 30px 60px -30px var(--glow); }
+.rel:hover { box-shadow: 0 30px 60px -34px rgba(255,52,60,.45); }
+.title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ver { font-size: clamp(22px, 3vw, 28px); font-weight: 700; letter-spacing: -.02em; }
+.badge { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; padding: 5px 9px; border-radius: 999px; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+.badge.old { background: transparent; color: var(--faint); box-shadow: inset 0 0 0 1px var(--line); }
+.facts { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; color: var(--muted); font-size: 14px; }
+.facts b { color: var(--text); font-weight: 600; }
+.sha { font-family: var(--mono); font-size: 12px; color: var(--faint); background: none; border: 0; padding: 0; cursor: pointer; }
+.sha:hover { color: var(--muted); }
+.notes { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.size { text-align: right; }
+.size .mb { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+.size .mb small { font-size: 14px; color: var(--muted); font-weight: 500; }
+.size .btn { margin-top: 10px; }
+.empty { color: var(--muted); padding: 24px; border: 1px dashed var(--line); border-radius: var(--radius); text-align: center; }
+
+/* ------------------------------------------------------------ install */
+.steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; counter-reset: s; }
+.step { padding: 22px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--line); }
+.step::before { counter-increment: s; content: counter(s, decimal-leading-zero); display: block; font-weight: 800; font-size: 28px; letter-spacing: -.02em; background: linear-gradient(135deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; margin-bottom: 8px; }
+.step h3 { margin: 0 0 6px; font-size: 17px; }
+.step p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.callout { margin-top: 14px; padding: 16px 18px; border-radius: 14px; background: rgba(255,52,60,.07); border: 1px solid rgba(255,52,60,.25); color: #ffd3d0; font-size: 14px; line-height: 1.5; }
+footer { padding: 36px 0 48px; color: var(--faint); font-size: 13px; border-top: 1px solid var(--line); }
+footer .wrap { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); opacity: 0; background: var(--surface-2); border: 1px solid var(--line); padding: 10px 14px; border-radius: 12px; font-size: 14px; transition: .3s; z-index: 30; }
+.toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (max-width: 760px) {
+  .rel { grid-template-columns: 1fr; padding: 20px; }
+  .size { text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .size .btn { margin-top: 0; }
+  .steps { grid-template-columns: 1fr; }
+  .hero { height: 92svh; min-height: 640px; max-height: 900px; }
+  .stage { bottom: auto; height: 68%; }
+  .shade { background: linear-gradient(to top, var(--bg) 34%, rgba(11,11,12,.55) 50%, rgba(11,11,12,0) 66%, rgba(11,11,12,.35) 100%); }
+  .pill.hide-sm { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+  .rel { transform: none; opacity: 1; }
+}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="./"><span class="mark" aria-hidden="true"></span>Octopilot</a>
+    <div style="display:flex;gap:8px">
+      <span class="pill hide-sm">Internal builds</span>
+      <span class="pill">Android</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="hero" id="hero">
+    <div class="stage" id="stage">
+      <img id="heroImg" src="hero.jpg" alt="" decoding="async">
+      <canvas id="gl" aria-hidden="true"></canvas>
+    </div>
+    <div class="glare" id="glare"></div>
+    <div class="shade"></div>
+    <div class="wrap hero-copy">
+      <span class="eyebrow"><i></i><span id="latestLabel">Releases</span></span>
+      <h1>Every build.<br><span class="grad">One tap away.</span></h1>
+      <p class="lede">Study Studio, GhostWriter and the main chat in one app. Every version stays here — if one misbehaves, step back to the last good one.</p>
+      <div class="cta-row">
+        <a class="btn" id="heroDl" href="#releases">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>
+          <span>Download latest</span>
+        </a>
+        <span class="meta" id="heroMeta"></span>
+      </div>
+    </div>
+  </div>
+
+  <section id="releases">
+    <div class="wrap">
+      <div class="head">
+        <div>
+          <h2>Releases</h2>
+          <p class="sub">Newest first. Older builds stay for rollbacks.</p>
+        </div>
+      </div>
+      <div class="list" id="list"><div class="empty">Loading releases…</div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="head"><div><h2>Install</h2><p class="sub">Android 8 or newer.</p></div></div>
+      <div class="steps">
+        <div class="step"><h3>Download</h3><p>Tap Download on the build you want. Your browser may warn about APK files — keep the file.</p></div>
+        <div class="step"><h3>Allow the install</h3><p>Open the file. Android asks to allow installs from your browser once — allow it, then tap Install.</p></div>
+        <div class="step"><h3>Sign in</h3><p>Sign in with your Google account. Only accounts on the test list get in; ask the team if you're not.</p></div>
+      </div>
+      <div class="callout"><b>Going back to an older version?</b> Android won't install an older build over a newer one. Uninstall Octopilot first, then install the older build. Your studios, essays and credits live on the server and come back when you sign in.</div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Octopilot · internal test builds · please don't share this page</span>
+    <span>Voice: Pocket TTS by Kyutai (CC BY 4.0)</span>
+  </div>
+</footer>
+<div class="toast" id="toast">Copied</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- releases
+const fmtMB = b => (b / 1048576).toFixed(b < 10485760 ? 1 : 0);
+const fmtDate = d => new Date(d + "T00:00:00").toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dlIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></svg>';
+
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("on");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("on"), 1400);
+}
+
+async function loadReleases() {
+  const list = document.getElementById("list");
+  try {
+    const r = await fetch("releases.json", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    const rels = (data.releases || []).slice().sort((a, b) => (b.build || 0) - (a.build || 0));
+    if (!rels.length) { list.innerHTML = '<div class="empty">No builds yet.</div>'; return; }
+    list.innerHTML = rels.map((x, i) => `
+      <article class="rel ${i === 0 ? "latest" : ""}">
+        <div>
+          <div class="title">
+            <span class="ver">Octopilot v${esc(x.version)}</span>
+            <span class="badge ${i === 0 ? "" : "old"}">${i === 0 ? "Latest" : "Previous"}</span>
+          </div>
+          <div class="facts">
+            <span>Released <b>${esc(fmtDate(x.date))}</b></span>
+            <span>Build <b>${esc(x.build)}</b></span>
+            <button class="sha" data-sha="${esc(x.sha256)}" title="Copy SHA-256">SHA-256 ${esc(x.sha256.slice(0, 12))}…</button>
+          </div>
+          ${x.notes && x.notes.length ? `<ul class="notes">${x.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
+        </div>
+        <div class="size">
+          <div class="mb">${fmtMB(x.bytes)} <small>MB</small></div>
+          <a class="btn ${i === 0 ? "" : "ghost"}" href="${esc(x.file)}" download>${dlIcon}<span>Download</span></a>
+        </div>
+      </article>`).join("");
+    const top = rels[0];
+    document.getElementById("latestLabel").textContent = `Octopilot v${top.version} is out`;
+    const hero = document.getElementById("heroDl");
+    hero.href = top.file; hero.setAttribute("download", "");
+    hero.querySelector("span").textContent = `Download v${top.version}`;
+    document.getElementById("heroMeta").textContent = `${fmtMB(top.bytes)} MB · Android APK`;
+    const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .15 });
+    list.querySelectorAll(".rel").forEach((el, i) => { el.style.transitionDelay = `${i * 70}ms`; io.observe(el); });
+    // Never leave a card hidden if the observer doesn't fire.
+    setTimeout(() => list.querySelectorAll(".rel").forEach(el => el.classList.add("in")), 1200);
+    list.addEventListener("click", e => {
+      const b = e.target.closest(".sha"); if (!b) return;
+      navigator.clipboard?.writeText(b.dataset.sha).then(() => toast("SHA-256 copied"), () => {});
+    });
+  } catch (e) {
+    list.innerHTML = '<div class="empty">Couldn\'t load the releases. Try again in a moment.</div>';
+  }
+}
+loadReleases();
+
+// ---------------------------------------------------------------- 3D hero
+// The image is drawn by a fragment shader that shifts each pixel by its
+// depth (depth.jpg: near = light) against the pointer or the phone's tilt —
+// near things move more than far ones, so the picture reads as 3D.
+(function hero() {
+  const stage = document.getElementById("stage");
+  const canvas = document.getElementById("gl");
+  const glare = document.getElementById("glare");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const gl = canvas.getContext("webgl", { antialias: false, premultipliedAlpha: false });
+  if (!gl) { stage.classList.add("fallback"); return; }
+
+  const vs = `attribute vec2 p; varying vec2 uv; void main(){ uv = p*.5+.5; uv.y = 1.-uv.y; gl_Position = vec4(p,0.,1.); }`;
+  const fs = `precision mediump float;
+    varying vec2 uv; uniform sampler2D img; uniform sampler2D dep;
+    uniform vec2 mouse; uniform vec2 scale; uniform float t;
+    void main(){
+      // cover-fit, cropping toward the octopus (right of centre)
+      vec2 c = (uv - .5) * scale + .5 + (1. - scale) * (vec2(.68, .5) - .5);
+      float d = texture2D(dep, c).r;
+      vec2 off = mouse * (d - .45) * .045;        // parallax by depth
+      off += vec2(sin(t*.6 + c.y*3.), cos(t*.5 + c.x*3.)) * .0012 * d; // a slow breath
+      vec2 q = clamp(c + off, .001, .999);
+      vec3 col = texture2D(img, q).rgb;
+      float edge = smoothstep(.0, .35, d);
+      col += vec3(1., .2, .22) * .06 * edge * (mouse.x * .5 + .5); // red rim as it turns
+      gl_FragColor = vec4(col, 1.);
+    }`;
+  function sh(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, fs));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) { stage.classList.add("fallback"); return; }
+  gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = n => gl.getUniformLocation(prog, n);
+
+  function tex(unit, src) {
+    return new Promise((ok, bad) => {
+      const im = new Image(); im.decoding = "async";
+      im.onload = () => {
+        const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, im); ok(im);
+      };
+      im.onerror = bad; im.src = src;
+    });
+  }
+
+  let aspect = 1672 / 941, target = [0, 0], cur = [0, 0], t0 = performance.now();
+  function size() {
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    const view = w / h;
+    // Fill the hero: crop the long side, a touch of overscan for the shift.
+    const s = view > aspect ? [1, aspect / view] : [view / aspect, 1];
+    gl.uniform2f(U("scale"), s[0] * .94, s[1] * .94);
+  }
+
+  Promise.all([tex(0, "hero.jpg"), tex(1, "depth.jpg")]).then(([im]) => {
+    aspect = im.naturalWidth / im.naturalHeight;
+    gl.uniform1i(U("img"), 0); gl.uniform1i(U("dep"), 1);
+    size(); addEventListener("resize", size);
+    requestAnimationFrame(frame);
+  }, () => stage.classList.add("fallback"));
+
+  function frame(now) {
+    const k = reduce ? 1 : .07;
+    cur[0] += (target[0] - cur[0]) * k; cur[1] += (target[1] - cur[1]) * k;
+    gl.uniform2f(U("mouse"), cur[0], cur[1]);
+    gl.uniform1f(U("t"), reduce ? 0 : (now - t0) / 1000);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (!reduce) stage.style.transform = `rotateY(${cur[0] * 3.5}deg) rotateX(${-cur[1] * 2.5}deg) scale(1.04)`;
+    glare.style.setProperty("--gx", `${50 + cur[0] * 40}%`); glare.style.setProperty("--gy", `${40 + cur[1] * 30}%`);
+    requestAnimationFrame(frame);
+  }
+
+  if (reduce) return;
+  addEventListener("pointermove", e => {
+    target = [(e.clientX / innerWidth) * 2 - 1, (e.clientY / innerHeight) * 2 - 1];
+  }, { passive: true });
+  // Phones: tilt the phone to look around (iOS asks once, on a tap).
+  let tilted = false;
+  function tilt(e) {
+    if (e.gamma == null) return;
+    tilted = true;
+    target = [Math.max(-1, Math.min(1, e.gamma / 25)), Math.max(-1, Math.min(1, (e.beta - 40) / 25))];
+  }
+  if (typeof DeviceOrientationEvent !== "undefined") {
+    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+      addEventListener("touchend", function ask() {
+        DeviceOrientationEvent.requestPermission().then(s => { if (s === "granted") addEventListener("deviceorientation", tilt); }).catch(() => {});
+        removeEventListener("touchend", ask);
+      }, { once: true });
+    } else {
+      addEventListener("deviceorientation", tilt);
+    }
+  }
+  // A phone that sends no tilt: drift by itself.
+  (function drift(now) {
+    if (!tilted && matchMedia("(hover: none)").matches) {
+      const s = now / 4000; target = [Math.sin(s) * .5, Math.cos(s * .8) * .3];
+    }
+    requestAnimationFrame(drift);
+  })(0);
+})();
+</script>
+</body>
+</html>

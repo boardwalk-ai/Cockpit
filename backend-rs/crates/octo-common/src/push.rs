@@ -13,12 +13,16 @@ use serde_json::{json, Value};
 const SCOPE: &str = "https://www.googleapis.com/auth/firebase.messaging";
 const DEFAULT_TOKEN_URI: &str = "https://oauth2.googleapis.com/token";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Notice {
     pub title: String,
     pub body: String,
     /// What the app needs to open the right screen. FCM data is all strings.
     pub data: BTreeMap<String, String>,
+    /// A picture shown with it (a public https URL).
+    pub image: Option<String>,
+    /// Another Android channel than the sender's own.
+    pub channel: Option<String>,
 }
 
 #[derive(Debug)]
@@ -154,6 +158,11 @@ impl FcmPusher {
 impl Pusher for FcmPusher {
     async fn send(&self, token: &str, notice: &Notice) -> Result<(), PushError> {
         let access = self.access_token().await?;
+        let mut shown = json!({ "title": notice.title, "body": notice.body });
+        if let Some(image) = &notice.image {
+            shown["image"] = json!(image);
+        }
+        let channel = notice.channel.as_deref().unwrap_or(&self.channel);
         let response = self
             .http
             .post(format!(
@@ -164,13 +173,13 @@ impl Pusher for FcmPusher {
             .timeout(Duration::from_secs(20))
             .json(&json!({ "message": {
                 "token": token,
-                "notification": { "title": notice.title, "body": notice.body },
+                "notification": shown,
                 "data": notice.data,
                 "android": {
                     "priority": "HIGH",
-                    "notification": { "channel_id": self.channel },
+                    "notification": { "channel_id": channel },
                 },
-                "apns": { "payload": { "aps": { "sound": "default" } } },
+                "apns": { "payload": { "aps": { "sound": "default", "mutable-content": 1 } } },
             }}))
             .send()
             .await

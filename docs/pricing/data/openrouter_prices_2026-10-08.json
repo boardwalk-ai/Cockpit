@@ -1,0 +1,101 @@
+{
+ "anthropic/claude-haiku-5.5": {
+  "name": "Anthropic: Claude Haiku 5.5",
+  "in": 0.09999999999999999,
+  "out": 0.5,
+  "cache": 0.01,
+  "max_out": 128000,
+  "ctx": 1000000,
+  "reasoning": true
+ },
+ "openai/gpt-6-luna": {
+  "name": "OpenAI: GPT-6 Luna",
+  "in": 0.09999999999999999,
+  "out": 0.5,
+  "cache": 0.01,
+  "max_out": 128000,
+  "ctx": 1050000,
+  "reasoning": true
+ },
+ "xiaomi/mimo-v2.6-flash": {
+  "name": "Xiaomi: MiMo-V2.6-Flash",
+  "in": 0.14,
+  "out": 0.28,
+  "cache": 0.0028,
+  "max_out": 131072,
+  "ctx": 1050000,
+  "reasoning": true
+ },
+ "google/gemini-3.8-flash": {
+  "name": "Google: Gemini 3.8 Flash",
+  "in": 0.75,
+  "out": 3.75,
+  "cache": 0.075,
+  "max_out": 65536,
+  "ctx": 1048576,
+  "reasoning": true
+ },
+ "qwen/qwen3.8-flash": {
+  "name": "Qwen: Qwen3.8 Flash",
+  "in": 0.15,
+  "out": 0.47,
+  "cache": 0.016,
+  "max_out": 131072,
+  "ctx": 1000000,
+  "reasoning": true
+ },
+ "z-ai/glm-5.3-flash": {
+  "name": "Z.ai: GLM 5.3 Flash",
+  "in": 0.15,
+  "out": 0.5,
+  "cache": 0.03,
+  "max_out": 943717,
+  "ctx": 1048576,
+  "reasoning": true
+ },
+ "qwen/qwen3.7-flash": {
+  "name": "Qwen: Qwen3.7 Flash",
+  "in": 0.03,
+  "out": 0.13,
+  "cache": 0.006,
+  "max_out": 65536,
+  "ctx": 1000000,
+  "reasoning": true
+ },
+ "deepseek/deepseek-v4-pro": {
+  "name": "DeepSeek: DeepSeek V4 Pro 0423",
+  "in": 0.29232,
+  "out": 0.58464,
+  "cache": 0.02436,
+  "max_out": 384000,
+  "ctx": 1048576,
+  "reasoning": true
+ },
+ "google/gemini-3.1-flash-lite-preview": {
+  "name": "Google: Gemini 3.1 Flash Lite Preview",
+  "in": 0.25,
+  "out": 1.5,
+  "cache": 0.024999999999999998,
+  "max_out": 65536,
+  "ctx": 1048576,
+  "reasoning": true
+ },
+ "openai/gpt-oss-120b": {
+  "name": "OpenAI: gpt-oss-120b",
+  "in": 0.037,
+  "out": 0.16999999999999998,
+  "cache": 0.0,
+  "max_out": 117964,
+  "ctx": 131072,
+  "reasoning": true
+ },
+ "google/gemini-2.5-flash-lite": {
+  "name": "Google: Gemini 2.5 Flash Lite",
+  "in": 0.09999999999999999,
+  "out": 0.39999999999999997,
+  "cache": 0.01,
+  "max_out": 65535,
+  "ctx": 1048576,
+  "reasoning": true
+ }
+}

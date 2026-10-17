@@ -1,0 +1,95 @@
+{
+ "label": "b1-flashlite",
+ "files": [
+  {
+   "file": "EBSCO-FullText-09_08_2026.pdf",
+   "bytes": 2572871,
+   "ingest": "done",
+   "error": "",
+   "seconds": 38.2,
+   "passages": 32,
+   "chars": 30886
+  }
+ ],
+ "steps": {
+  "ask": {
+   "promptTokens": 6278,
+   "completionTokens": 667,
+   "reasoningTokens": 0,
+   "costUsd": 0.028838999999999997,
+   "calls": 3,
+   "model": "anthropic/claude-sonnet-4-6",
+   "avgCostUsd": 0.009613
+  },
+  "concepts": {
+   "promptTokens": 0,
+   "completionTokens": 0,
+   "reasoningTokens": 0,
+   "costUsd": 0,
+   "calls": 0,
+   "model": null,
+   "avgCostUsd": null
+  },
+  "grade": {
+   "promptTokens": 399,
+   "completionTokens": 60,
+   "reasoningTokens": 0,
+   "costUsd": 0.00019,
+   "calls": 3,
+   "model": "google/gemini-3.1-flash-lite-preview",
+   "avgCostUsd": 6.3e-05
+  }
+ },
+ "build": {
+  "seconds": 16.8,
+  "error": null,
+  "usage": {
+   "byFeature": {
+    "build_lesson": {
+     "calls": 7,
+     "completionTokens": 10501,
+     "costUsd": 0.02035,
+     "model": "google/gemini-3.1-flash-lite-preview",
+     "promptTokens": 18389,
+     "reasoningTokens": 0
+    },
+    "build_outline": {
+     "calls": 1,
+     "completionTokens": 480,
+     "costUsd": 0.002526,
+     "model": "google/gemini-3.1-flash-lite-preview",
+     "promptTokens": 7225,
+     "reasoningTokens": 0
+    },
+    "build_scenarios": {
+     "calls": 1,
+     "completionTokens": 1920,
+     "costUsd": 0.004709,
+     "model": "google/gemini-3.1-flash-lite-preview",
+     "promptTokens": 7317,
+     "reasoningTokens": 0
+    }
+   },
+   "calls": 9,
+   "completionTokens": 12901,
+   "costUsd": 0.027585,
+   "promptTokens": 32931,
+   "reasoningTokens": 0
+  },
+  "lessons": 7,
+  "cards": 49,
+  "quiz": 28,
+  "scenarios": 5,
+  "lessonChars": 7146,
+  "titles": [
+   "Defining Corporate Leadership",
+   "The Transparency Imperative",
+   "Candor and Performance",
+   "Barriers to Candor",
+   "The Inevitability of Transparency",
+   "Building a Culture",
+   "Institutionalizing Transparency"
+  ]
+ },
+ "wallSeconds": 76.7
+}

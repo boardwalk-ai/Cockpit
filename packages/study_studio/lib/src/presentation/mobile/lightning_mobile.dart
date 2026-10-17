@@ -71,6 +71,7 @@ class LightningMobile extends StatefulWidget {
     required this.onReview,
     this.voice,
     this.seconds = 7,
+    this.judge,
   });
 
   final List<RecallItem> items;
@@ -78,6 +79,10 @@ class LightningMobile extends StatefulWidget {
   final VoidCallback onClose;
   final void Function(RecallItem item, bool correct) onAnswer;
   final void Function(String topicId) onReview;
+
+  /// A second opinion on an answer the word check missed (the server's AI);
+  /// null, or a null result, keeps the word check's verdict.
+  final Future<bool?> Function(RecallItem item, String said)? judge;
 
   /// The app's microphone and speaker; without it, typing only.
   final StudyVoice? voice;
@@ -107,7 +112,7 @@ class _LightningMobileState extends State<LightningMobile> {
       );
       if (_remaining <= Duration.zero) {
         _stopClock();
-        if (_phase == _Phase.answering) _grade(null);
+        if (_phase == _Phase.answering) unawaited(_grade(null));
       }
     });
   }
@@ -222,11 +227,28 @@ class _LightningMobileState extends State<LightningMobile> {
     if (_typing) _focus.requestFocus();
   }
 
-  void _grade(String? said) {
+  var _checking = false;
+
+  Future<void> _grade(String? said) async {
     if (_phase != _Phase.answering && _phase != _Phase.reading) return;
+    if (_checking) return;
     _stopClock();
     _voice?.stop();
-    final right = said != null && _item.matches(said);
+    var right = said != null && _item.matches(said);
+    final judge = widget.judge;
+    if (!right && judge != null && said != null && said.trim().isNotEmpty) {
+      final asked = _index;
+      setState(() => _checking = true);
+      bool? verdict;
+      try {
+        verdict = await judge(_item, said).timeout(const Duration(seconds: 6));
+      } on Object {
+        verdict = null;
+      }
+      if (!mounted || asked != _index) return;
+      _checking = false;
+      right = verdict ?? false;
+    }
     widget.onAnswer(_item, right);
     setState(() {
       _given = said;
@@ -346,7 +368,7 @@ class _LightningMobileState extends State<LightningMobile> {
       if (!_paused) _runClock();
       return;
     }
-    _grade(words);
+    unawaited(_grade(words));
   }
 
   void _holdEnd() {
@@ -463,7 +485,7 @@ class _LightningMobileState extends State<LightningMobile> {
                                       _phase == _Phase.reading,
                                   onSubmit: () {
                                     final v = _input.text.trim();
-                                    if (v.isNotEmpty) _grade(v);
+                                    if (v.isNotEmpty) unawaited(_grade(v));
                                   },
                                 ),
                               ),

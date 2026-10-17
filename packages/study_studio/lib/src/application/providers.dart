@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/ai/ai_service.dart';
@@ -5,6 +7,8 @@ import '../data/ai/stub_ai_service.dart';
 import '../data/api/api_account.dart';
 import '../data/api/api_ai_service.dart';
 import '../data/api/api_studio_repository.dart';
+import '../data/api/billing_api.dart';
+import '../data/api/share_api.dart';
 import '../data/api/sse_client.dart';
 import '../data/api/upload_api.dart';
 import '../data/auth/auth_service.dart';
@@ -66,9 +70,15 @@ final uploadApiProvider = Provider<UploadApi?>((ref) {
 });
 
 /// All studios (Study Studio Home).
-final studioListProvider = FutureProvider<List<Studio>>((ref) {
+final studioListProvider = FutureProvider<List<Studio>>((ref) async {
   ref.watch(authStateProvider); // refetch on sign in/out
-  return ref.watch(studioRepositoryProvider).listStudios();
+  final list = await ref.watch(studioRepositoryProvider).listStudios();
+  // While a studio builds, follow it ("Building 40%" on its row).
+  if (list.any((s) => s.build != null)) {
+    final t = Timer(const Duration(seconds: 5), ref.invalidateSelf);
+    ref.onDispose(t.cancel);
+  }
+  return list;
 });
 
 /// One studio by id (Dashboard, Topic Library, Progress).
@@ -91,6 +101,18 @@ final meProvider = FutureProvider<Me>((ref) async {
     displayName: 'Guest',
     credits: null,
   );
+});
+
+/// Buying OctoCredits (null in offline/mock mode).
+final billingProvider = Provider<BillingApi?>((ref) {
+  if (!StudioConfig.hasApiBackend) return null;
+  return BillingApi(sse: ref.watch(_sseClientProvider));
+});
+
+/// Share links (null in offline/mock mode).
+final shareApiProvider = Provider<ShareApi?>((ref) {
+  if (!StudioConfig.hasApiBackend) return null;
+  return ShareApi(sse: ref.watch(_sseClientProvider));
 });
 
 typedef TopicKey = ({String studioId, String topicId});

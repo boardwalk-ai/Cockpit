@@ -1,0 +1,2 @@
+# releases.json lives on the server (publish.sh writes it).
+releases.json

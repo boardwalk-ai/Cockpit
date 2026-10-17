@@ -8,6 +8,7 @@ environment:
 
 workspace:
   - apps/cockpit
+  - apps/octopilot_admin
   - packages/cockpit_core
   - packages/cockpit_ui
   - packages/cockpit_module

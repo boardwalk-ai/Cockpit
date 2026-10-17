@@ -17,7 +17,7 @@ void main() {
 
     await pumpTestApp(
       tester,
-      child: QuizMePage(studioId: studio.id),
+      child: QuizMePage(studioId: studio.id, seed: 3),
       studios: [studio],
     );
 

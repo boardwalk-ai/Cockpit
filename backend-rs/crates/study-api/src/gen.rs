@@ -514,6 +514,54 @@ pub fn shape_concepts(raw: &Value, topic_id: &str) -> (Vec<Value>, Vec<Value>) {
     (concepts, links)
 }
 
+/// What makes two concept names the same idea: case, punctuation, a
+/// leading article and a plural "s" don't count ("The Ribosomes" = "ribosome").
+pub fn concept_key(name: &str) -> String {
+    let words: Vec<String> = name
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .map(str::to_string)
+        .collect();
+    let start = usize::from(words.len() > 1 && matches!(words[0].as_str(), "the" | "a" | "an"));
+    words[start..]
+        .iter()
+        .map(|w| {
+            if w.chars().count() > 3 && w.ends_with('s') && !w.ends_with("ss") {
+                w[..w.len() - 1].to_string()
+            } else {
+                w.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// One name per concept across a studio: each concept in `topic` takes the
+/// name already used for the same idea in `known` (key → first name seen),
+/// and adds the new ones. Ids and links are untouched. True if renamed.
+pub fn unify_concepts(known: &mut HashMap<String, String>, topic: &mut Value) -> bool {
+    let mut changed = false;
+    for c in topic.get_mut("concepts").and_then(Value::as_array_mut).into_iter().flatten() {
+        let name = text(c.get("name"));
+        let key = concept_key(&name);
+        if key.is_empty() {
+            continue;
+        }
+        match known.get(&key) {
+            Some(first) if *first != name => {
+                c["name"] = json!(first);
+                changed = true;
+            }
+            Some(_) => {}
+            None => {
+                known.insert(key, name);
+            }
+        }
+    }
+    changed
+}
+
 /// A scenario reply → the stored payload (ScenarioDTO). Option ids keep
 /// their position in the reply, as Python numbers them before filtering.
 pub fn shape_scenario(raw: &Value, studio_id: &str) -> Value {
@@ -844,6 +892,21 @@ mod tests {
         let topic = json!({"id": "gen_abc", "title": "TCP congestion control", "definition": "Def.", "simpleExplanation": "",
             "detailedExplanation": "Long.", "whyItMatters": "Matters.", "examples": ["e1", "e2"]});
         assert_eq!(concept_context(&topic), s(&f["concept_context"]));
+    }
+
+    #[test]
+    fn one_name_per_concept() {
+        assert_eq!(concept_key("The Ribosomes"), concept_key("ribosome"));
+        assert_eq!(concept_key("TCP/IP"), "tcp ip");
+        assert_ne!(concept_key("Class"), concept_key("Cla"));
+        let mut known = HashMap::new();
+        let mut a = json!({"concepts": [{"id": "a_c0", "name": "Ribosome"}, {"id": "a_c1", "name": "mRNA"}]});
+        let mut b = json!({"concepts": [{"id": "b_c0", "name": "the ribosomes"}, {"id": "b_c1", "name": "tRNA"}]});
+        assert!(!unify_concepts(&mut known, &mut a));
+        assert!(unify_concepts(&mut known, &mut b));
+        assert_eq!(b["concepts"][0]["name"], "Ribosome");
+        assert_eq!(b["concepts"][0]["id"], "b_c0");
+        assert_eq!(b["concepts"][1]["name"], "tRNA");
     }
 
     #[test]

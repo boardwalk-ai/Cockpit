@@ -1,0 +1,125 @@
+{
+ "label": "b2-flashlite",
+ "files": [
+  {
+   "file": "marketing-ch1.pdf",
+   "bytes": 1436500,
+   "ingest": "done",
+   "error": "",
+   "seconds": 67.6,
+   "passages": 90,
+   "chars": 76873
+  },
+  {
+   "file": "marketing-ch2.pdf",
+   "bytes": 1817919,
+   "ingest": "done",
+   "error": "",
+   "seconds": 71.4,
+   "passages": 118,
+   "chars": 107456
+  },
+  {
+   "file": "marketing-ch3-page.jpg",
+   "bytes": 316804,
+   "ingest": "failed",
+   "error": "No readable text in this file.",
+   "seconds": 121.6,
+   "passages": 0,
+   "chars": 0
+  },
+  {
+   "file": "marketing-ch3-slides.pptx",
+   "bytes": 32590,
+   "ingest": "done",
+   "error": "",
+   "seconds": 2.7,
+   "passages": 2,
+   "chars": 1966
+  }
+ ],
+ "steps": {
+  "ask": {
+   "promptTokens": 5390,
+   "completionTokens": 663,
+   "reasoningTokens": 0,
+   "costUsd": 0.026115,
+   "calls": 3,
+   "model": "anthropic/claude-sonnet-4-6",
+   "avgCostUsd": 0.008705
+  },
+  "concepts": {
+   "promptTokens": 0,
+   "completionTokens": 0,
+   "reasoningTokens": 0,
+   "costUsd": 0,
+   "calls": 0,
+   "model": null,
+   "avgCostUsd": null
+  },
+  "grade": {
+   "promptTokens": 425,
+   "completionTokens": 61,
+   "reasoningTokens": 0,
+   "costUsd": 0.000198,
+   "calls": 3,
+   "model": "google/gemini-3.1-flash-lite-preview",
+   "avgCostUsd": 6.6e-05
+  }
+ },
+ "build": {
+  "seconds": 21.9,
+  "error": null,
+  "usage": {
+   "byFeature": {
+    "build_lesson": {
+     "calls": 10,
+     "completionTokens": 14618,
+     "costUsd": 0.027353,
+     "model": "google/gemini-3.1-flash-lite-preview",
+     "promptTokens": 21703,
+     "reasoningTokens": 0
+    },
+    "build_outline": {
+     "calls": 1,
+     "completionTokens": 649,
+     "costUsd": 0.007203,
+     "model": "google/gemini-3.1-flash-lite-preview",
+     "promptTokens": 24918,
+     "reasoningTokens": 0
+    },
+    "build_scenarios": {
+     "calls": 1,
+     "completionTokens": 2015,
+     "costUsd": 0.009275,
+     "model": "google/gemini-3.1-flash-lite-preview",
+     "promptTokens": 25010,
+     "reasoningTokens": 0
+    }
+   },
+   "calls": 12,
+   "completionTokens": 17282,
+   "costUsd": 0.043831,
+   "promptTokens": 71631,
+   "reasoningTokens": 0
+  },
+  "lessons": 10,
+  "cards": 72,
+  "quiz": 40,
+  "scenarios": 0,
+  "lessonChars": 10123,
+  "titles": [
+   "Marketing and Process",
+   "Marketing Mix Fundamentals",
+   "Marketing Environment Factors",
+   "Evolution of Marketing",
+   "Consumer Needs and Wants",
+   "Customer Relationship Management",
+   "Ethical Marketing",
+   "Strategic Planning Process",
+   "Marketing Strategic Role",
+   "Marketing Strategy Analytics"
+  ]
+ },
+ "wallSeconds": 306.0
+}

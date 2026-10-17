@@ -1,0 +1,132 @@
+{
+ "label": "b2-glm",
+ "files": [
+  {
+   "file": "marketing-ch1.pdf",
+   "bytes": 1436500,
+   "ingest": "done",
+   "error": "",
+   "seconds": 47.3,
+   "passages": 90,
+   "chars": 76873
+  },
+  {
+   "file": "marketing-ch2.pdf",
+   "bytes": 1817919,
+   "ingest": "done",
+   "error": "",
+   "seconds": 57.9,
+   "passages": 118,
+   "chars": 107456
+  },
+  {
+   "file": "marketing-ch3-page.jpg",
+   "bytes": 316804,
+   "ingest": "done",
+   "error": "",
+   "seconds": 8.6,
+   "passages": 2,
+   "chars": 3138
+  },
+  {
+   "file": "marketing-ch3-slides.pptx",
+   "bytes": 32590,
+   "ingest": "done",
+   "error": "",
+   "seconds": 2.3,
+   "passages": 2,
+   "chars": 1966
+  }
+ ],
+ "steps": {
+  "ask": {
+   "promptTokens": 5390,
+   "completionTokens": 654,
+   "reasoningTokens": 0,
+   "costUsd": 0.02598,
+   "calls": 3,
+   "model": "anthropic/claude-sonnet-4-6",
+   "avgCostUsd": 0.00866
+  },
+  "concepts": {
+   "promptTokens": 0,
+   "completionTokens": 0,
+   "reasoningTokens": 0,
+   "costUsd": 0,
+   "calls": 0,
+   "model": null,
+   "avgCostUsd": null
+  },
+  "grade": {
+   "promptTokens": 473,
+   "completionTokens": 98,
+   "reasoningTokens": 3,
+   "costUsd": 0.00012,
+   "calls": 3,
+   "model": "z-ai/glm-5.3-flash",
+   "avgCostUsd": 4e-05
+  }
+ },
+ "build": {
+  "seconds": 416.3,
+  "error": null,
+  "usage": {
+   "byFeature": {
+    "build_lesson": {
+     "calls": 17,
+     "completionTokens": 46220,
+     "costUsd": 0.028403,
+     "model": "z-ai/glm-5.3-flash",
+     "promptTokens": 36967,
+     "reasoningTokens": 140
+    },
+    "build_outline": {
+     "calls": 1,
+     "completionTokens": 1158,
+     "costUsd": 0.004219,
+     "model": "z-ai/glm-5.3-flash",
+     "promptTokens": 24269,
+     "reasoningTokens": 11
+    },
+    "build_scenarios": {
+     "calls": 1,
+     "completionTokens": 4471,
+     "costUsd": 0.00589,
+     "model": "z-ai/glm-5.3-flash",
+     "promptTokens": 24362,
+     "reasoningTokens": 8
+    }
+   },
+   "calls": 19,
+   "completionTokens": 51849,
+   "costUsd": 0.038512,
+   "promptTokens": 85598,
+   "reasoningTokens": 159
+  },
+  "lessons": 17,
+  "cards": 168,
+  "quiz": 102,
+  "scenarios": 9,
+  "lessonChars": 53533,
+  "titles": [
+   "Defining Marketing",
+   "Marketing benefits and utility",
+   "The Marketing Process",
+   "Customer value and value proposition",
+   "The Marketing Mix and 4Ps",
+   "Internal Marketing Environment",
+   "Microenvironment Factors",
+   "Macroenvironment and PESTLE",
+   "Evolution of Marketing Concepts",
+   "Determining Consumer Needs and Wants",
+   "Customer Relationship Management",
+   "Ethical Marketing",
+   "Strategic Planning Fundamentals",
+   "Gap Analysis and SMART Goals",
+   "Marketing in Strategic Planning",
+   "SWOT Analysis",
+   "Consumer Buying Behavior"
+  ]
+ },
+ "wallSeconds": 555.6
+}

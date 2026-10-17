@@ -24,6 +24,12 @@ class StudioConfig {
 
   static bool get hasApiBackend => apiBaseUrl.isNotEmpty;
 
+  /// Octopilot's API, which sells OctoCredits (Stripe Checkout).
+  static const String billingBaseUrl = String.fromEnvironment(
+    'BILLING_API_BASE_URL',
+    defaultValue: 'https://octopilotai.app/backend/api/v1',
+  );
+
   // --- Firebase (reuse Octopilot's Firebase project) -----------------------
   // Copy these from Octopilot's Firebase Web app config and pass as
   // --dart-define=FIREBASE_API_KEY=… etc. When unset, the app stays in the
