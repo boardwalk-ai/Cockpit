@@ -537,3 +537,38 @@ async fn real_audio_is_joined_and_compressed() {
     let _ = std::fs::remove_dir_all(dir);
     t.cleanup().await;
 }
+
+#[tokio::test]
+async fn phone_captions_are_the_transcript_when_the_server_does_not_transcribe() {
+    let t = TestApp::with(|c| c.server_asr = false).await;
+    let sid = t.session("alice").await;
+    let phone = device(&t, "alice", "Alice's Pixel").await;
+    let (s, rec) = t
+        .post(&format!("/v1/sessions/{sid}/recordings"), "alice", json!({ "id": Uuid::new_v4(), "deviceId": phone }))
+        .await;
+    assert_eq!(s, StatusCode::CREATED, "{rec}");
+    let base = serve(t.state.clone()).await;
+    let (mut ws, _) = tokio_tungstenite::connect_async(format!("{base}/v1/sessions/{sid}/live")).await.unwrap();
+    ws.send(Message::Text(json!({ "type": "auth", "userId": "alice", "deviceId": phone }).to_string()))
+        .await
+        .unwrap();
+    next_of_type(&mut ws, "ready").await;
+
+    // A partial is relayed only; the final one is kept.
+    for (text, fin) in [("glycolysis happens", false), ("Glycolysis happens in the cytoplasm", true)] {
+        ws.send(Message::Text(
+            json!({ "type": "caption", "data": { "segId": "d0", "text": text, "final": fin, "startMs": 0, "endMs": 3200 } }).to_string(),
+        ))
+        .await
+        .unwrap();
+        let ev = next_of_type(&mut ws, "transcript.live").await;
+        assert_eq!(ev["data"]["text"], text);
+    }
+    next_of_type(&mut ws, "transcript.stable").await;
+    let (_, page) = t.get(&format!("/v1/sessions/{sid}/transcript"), "alice").await;
+    let segs = page["segments"].as_array().unwrap();
+    assert_eq!(segs.len(), 1, "{page}");
+    assert_eq!(segs[0]["displayText"], "Glycolysis happens in the cytoplasm");
+    assert_eq!(segs[0]["endMs"], 3200);
+    t.cleanup().await;
+}

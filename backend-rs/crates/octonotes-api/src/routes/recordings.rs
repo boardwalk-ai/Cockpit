@@ -385,14 +385,16 @@ pub async fn put_chunk(
         .bind(q.start_ms + q.duration_ms as i64)
         .execute(&mut *tx)
         .await?;
-    jobs::enqueue_tx(
-        &mut tx,
-        Some(caller.user_id),
-        "asr.chunk",
-        json!({ "recordingId": id, "seq": seq, "sessionId": rec.session_id }),
-        Some(&format!("asr:{id}:{seq}")),
-    )
-    .await?;
+    if st.config.server_asr {
+        jobs::enqueue_tx(
+            &mut tx,
+            Some(caller.user_id),
+            "asr.chunk",
+            json!({ "recordingId": id, "seq": seq, "sessionId": rec.session_id }),
+            Some(&format!("asr:{id}:{seq}")),
+        )
+        .await?;
+    }
     tx.commit().await?;
     st.hub
         .session(
@@ -573,15 +575,17 @@ pub async fn job_assemble(st: AppState, job: Job) -> JobResult {
     .execute(&st.notes)
     .await
     .map_err(|e| e.to_string())?;
-    jobs::enqueue(
-        &st.notes,
-        Some(user_id),
-        "transcript.faithful",
-        json!({ "recordingId": id, "sessionId": session_id }),
-        Some(&format!("faithful:{id}")),
-    )
-    .await
-    .map_err(|e| e.to_string())?;
+    if st.config.server_asr {
+        jobs::enqueue(
+            &st.notes,
+            Some(user_id),
+            "transcript.faithful",
+            json!({ "recordingId": id, "sessionId": session_id }),
+            Some(&format!("faithful:{id}")),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     st.hub
         .session(
             session_id,

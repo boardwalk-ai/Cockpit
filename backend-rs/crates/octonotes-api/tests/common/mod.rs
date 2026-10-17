@@ -76,6 +76,8 @@ impl TestApp {
         config.redis_url = None;
         config.s3_endpoint = None;
         config.embed_url = None;
+        // The capture tests exercise the server transcription (offline stand-in).
+        config.server_asr = true;
         config.study_studio_api_url = None;
         config.public_base_url = "http://test".into();
         tweak(&mut config);

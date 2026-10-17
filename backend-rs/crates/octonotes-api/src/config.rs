@@ -48,6 +48,9 @@ pub struct Config {
     pub credits_ledger_type: String,
     /// Disable charging (dev without the shared DB).
     pub credits_enabled: bool,
+    /// Transcribe recordings on the server (OpenRouter). Off: the recording
+    /// phone's on-device captions are the transcript.
+    pub server_asr: bool,
     /// Bearer token for `/metrics` from outside loopback.
     pub metrics_token: Option<String>,
     /// `json` for structured logs (production), anything else for text.
@@ -96,6 +99,7 @@ impl Config {
             credits_ledger_type: std::env::var("CREDITS_LEDGER_TYPE")
                 .unwrap_or_else(|_| "octo".into()),
             credits_enabled: flag("CREDITS_ENABLED", true),
+            server_asr: flag("SERVER_ASR", false),
             metrics_token: env_opt("METRICS_TOKEN"),
             log_format: std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".into()),
         }

@@ -24,7 +24,7 @@ use crate::realtime::Event;
 use crate::routes::devices;
 use crate::routes::recordings::join_device;
 use crate::routes::sessions::{self, Session};
-use crate::{access, AppState};
+use crate::{access, revs, AppState};
 
 pub async fn ws(
     State(st): State<AppState>,
@@ -80,6 +80,54 @@ fn caption(d: &Value) -> Option<(String, String, bool, i64, i64)> {
     let start = d["startMs"].as_i64().filter(|v| *v >= 0)?;
     let end = d["endMs"].as_i64().filter(|v| *v >= start)?;
     Some((seg.to_string(), text, d["final"].as_bool().unwrap_or(false), start, end))
+}
+
+/// A finished caption as a transcript segment of the device's recording,
+/// announced like the server's own (`transcript.stable`).
+async fn keep_caption(
+    st: &AppState,
+    session_id: Uuid,
+    user_id: Uuid,
+    device: Uuid,
+    c: &(String, String, bool, i64, i64),
+) -> Result<(), sqlx::Error> {
+    let mut tx = st.notes.begin().await?;
+    let Some(rid) = sqlx::query_scalar::<_, Uuid>(
+        "SELECT id FROM recordings WHERE session_id = $1 AND device_id = $2 ORDER BY started_at DESC LIMIT 1",
+    )
+    .bind(session_id)
+    .bind(device)
+    .fetch_optional(&mut *tx)
+    .await?
+    else {
+        return Ok(()); // not recording here
+    };
+    revs::lock(&mut tx, session_id, revs::TRANSCRIPT).await?;
+    let rev = revs::bump(&mut tx, session_id, revs::TRANSCRIPT).await?;
+    // Captions sit at chunk_seq -1, numbered in arrival order.
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO transcript_segments (session_id, recording_id, user_id, chunk_seq, ordinal, start_ms, end_ms, \
+             raw_text, asr_conf, status, language, layer_rev) \
+         VALUES ($1, $2, $3, -1, (SELECT COALESCE(max(ordinal) + 1, 0) FROM transcript_segments WHERE recording_id = $2 AND chunk_seq = -1), \
+                 $4, $5, $6, 0.7, 'stable', 'en', $7) RETURNING id",
+    )
+    .bind(session_id)
+    .bind(rid)
+    .bind(user_id)
+    .bind(c.3)
+    .bind(c.4.max(c.3 + 1))
+    .bind(c.1.trim())
+    .bind(rev)
+    .fetch_one(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    st.hub
+        .session(
+            session_id,
+            Event::new("transcript.stable", json!({ "segmentIds": [id], "recordingId": rid, "chunkSeq": -1 }), Some(rev)),
+        )
+        .await;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -213,6 +261,11 @@ async fn run(st: AppState, session_id: Uuid, mut socket: WebSocket) -> Result<()
                         Some("caption") => if let Some(d) = device {
                             if let Some(c) = caption(&v["data"]) {
                                 st.hub.session(session_id, Event::new("transcript.live", json!({ "deviceId": d, "segId": c.0, "text": c.1, "final": c.2, "startMs": c.3, "endMs": c.4 }), None)).await;
+                                if c.2 && !st.config.server_asr && !c.1.trim().is_empty() {
+                                    if let Err(e) = keep_caption(&st, session_id, caller.user_id, d, &c).await {
+                                        tracing::warn!(error = %e, "caption not kept");
+                                    }
+                                }
                             }
                         },
                         Some("follow") => {
