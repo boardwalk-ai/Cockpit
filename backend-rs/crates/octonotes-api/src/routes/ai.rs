@@ -863,8 +863,11 @@ pub async fn build_summary(
     caller: &Caller,
     session_id: Uuid,
 ) -> Result<(Value, Usage, String), ApiError> {
-    let notes: Vec<(String, String)> = sqlx::query_as("SELECT type, text FROM blocks WHERE session_id = $1 AND deleted_at IS NULL ORDER BY position")
+    let rows: Vec<(Uuid, String, String, Option<i64>)> = sqlx::query_as("SELECT id, type, text, audio_ts_ms FROM blocks WHERE session_id = $1 AND deleted_at IS NULL ORDER BY position")
         .bind(session_id).fetch_all(&st.notes).await?;
+    let notes: Vec<(String, String)> = rows.iter().map(|(_, k, t, _)| (k.clone(), t.clone())).collect();
+    let duration_ms: i64 = sqlx::query_scalar("SELECT GREATEST(COALESCE((SELECT max(duration_ms) FROM recordings WHERE session_id = $1), 0), COALESCE((SELECT duration_ms FROM sessions WHERE id = $1), 0))")
+        .bind(session_id).fetch_one(&st.notes).await?;
     let lecture: Option<String> = sqlx::query_scalar("SELECT string_agg(COALESCE(corrected_text, faithful_text, raw_text), ' ' ORDER BY start_ms) FROM transcript_segments WHERE session_id = $1")
         .bind(session_id).fetch_one(&st.notes).await?;
     let notes_text = notes
@@ -873,7 +876,7 @@ pub async fn build_summary(
         .collect::<Vec<_>>()
         .join("\n");
     let messages = vec![
-        Message::system("Summarize a lecture session for a student. Reply with JSON only: {\"topics\": [{\"title\": string, \"gist\": string, \"points\": [string], \"sources\": [\"notes\"|\"transcript\"|\"slides\"]}]}. 2–6 topics in lecture order; gist is 1–2 sentences; 2–4 points each; use only the given material."),
+        Message::system("Summarize a lecture session for a student. Reply with JSON only: {\"topics\": [{\"title\": string, \"gist\": string, \"points\": [string], \"sources\": [\"notes\"|\"transcript\"|\"slides\"]}]}. 2–6 topics in lecture order; gist is 1–2 sentences; 2–4 points each; use only the given material. When the notes have [h1] or [h2] headings, make one topic per heading and use the heading's exact text as its title."),
         Message::user(format!("Student notes:\n{}\n\nLecture transcript:\n{}", clip(&notes_text, 12_000), clip(lecture.as_deref().unwrap_or(""), 16_000))),
     ];
     let llm = Llm::for_role(st, Role::Fast).await;
@@ -890,9 +893,62 @@ pub async fn build_summary(
             offline,
         )
         .await?;
-    let v = parse_json_loose(&text).unwrap_or_else(|| json!({ "topics": [] }));
+    let mut v = parse_json_loose(&text).unwrap_or_else(|| json!({ "topics": [] }));
     let _ = caller;
+    anchor_topics(&mut v["topics"], &rows, duration_ms);
     Ok((json!({ "topics": v["topics"] }), usage, model))
+}
+
+fn norm(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).collect::<String>().split_whitespace().collect::<Vec<_>>().join(" ").to_lowercase()
+}
+
+/// Ties each topic to its heading in the notes (`heading`, `blockId`) and its
+/// span of the lecture (`fromMs`, `toMs`): from the heading's time (or the
+/// first timed block under it) to the next topic's. Finalize includes topics
+/// by `heading`; a topic without one can't be left out.
+fn anchor_topics(topics: &mut Value, blocks: &[(Uuid, String, String, Option<i64>)], duration_ms: i64) {
+    // Headings with the first time found in their section.
+    let mut heads: Vec<(Uuid, String, Option<i64>)> = Vec::new();
+    for (id, kind, text, at) in blocks {
+        if matches!(kind.as_str(), "h1" | "h2") {
+            heads.push((*id, text.clone(), *at));
+        } else if let Some(h) = heads.last_mut() {
+            if h.2.is_none() {
+                h.2 = *at;
+            }
+        }
+    }
+    let Some(list) = topics.as_array_mut() else { return };
+    let mut used = vec![false; heads.len()];
+    for t in list.iter_mut() {
+        let title = norm(t["title"].as_str().unwrap_or(""));
+        if title.is_empty() {
+            continue;
+        }
+        let pick = (0..heads.len())
+            .find(|&i| !used[i] && norm(&heads[i].1) == title)
+            .or_else(|| (0..heads.len()).find(|&i| {
+                let h = norm(&heads[i].1);
+                !used[i] && !h.is_empty() && (h.contains(&title) || title.contains(&h))
+            }));
+        if let Some(i) = pick {
+            used[i] = true;
+            t["heading"] = json!(heads[i].1);
+            t["blockId"] = json!(heads[i].0);
+            if let Some(at) = heads[i].2 {
+                t["fromMs"] = json!(at);
+            }
+        }
+    }
+    let mut starts: Vec<i64> = list.iter().filter_map(|t| t["fromMs"].as_i64()).collect();
+    starts.sort_unstable();
+    for t in list.iter_mut() {
+        if let Some(from) = t["fromMs"].as_i64() {
+            let to = starts.iter().copied().find(|&s| s > from).unwrap_or(duration_ms.max(from + 1));
+            t["toMs"] = json!(to);
+        }
+    }
 }
 
 /// Offline summary: one topic per heading, gist from the text under it.
@@ -960,6 +1016,25 @@ pub async fn summarize(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn topics_get_their_heading_and_span() {
+        let (a, b, c) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let blocks = vec![
+            (Uuid::new_v4(), "paragraph".into(), "intro".into(), Some(5_000)),
+            (a, "h2".into(), "Glycolysis".into(), None),
+            (Uuid::new_v4(), "paragraph".into(), "x".into(), Some(60_000)),
+            (b, "h2".into(), "The Krebs cycle!".into(), Some(600_000)),
+            (c, "h2".into(), "Untimed".into(), None),
+        ];
+        let mut t = json!([{ "title": "glycolysis" }, { "title": "Krebs cycle" }, { "title": "Something else" }]);
+        anchor_topics(&mut t, &blocks, 1_000_000);
+        assert_eq!(t[0]["blockId"], json!(a));
+        assert_eq!((t[0]["fromMs"].as_i64(), t[0]["toMs"].as_i64()), (Some(60_000), Some(600_000)));
+        assert_eq!(t[1]["heading"], "The Krebs cycle!");
+        assert_eq!(t[1]["toMs"].as_i64(), Some(1_000_000));
+        assert!(t[2].get("heading").is_none(), "{t}");
+    }
 
     #[test]
     fn sources_line() {

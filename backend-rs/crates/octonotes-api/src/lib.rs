@@ -175,6 +175,10 @@ pub fn app(state: AppState) -> Router {
             patch(courses::update).delete(courses::delete),
         )
         .route("/v1/devices", get(devices::list).post(devices::register))
+        .route("/v1/pairings", post(pairings::create))
+        .route("/v1/pairings/claim", post(pairings::claim))
+        .route("/v1/pairings/:id", get(pairings::get).delete(pairings::cancel))
+        .route("/v1/pairings/:id/start", post(pairings::start))
         .route("/v1/deck/destinations", get(deck::destinations))
         // Typewriter blocks
         .route("/v1/sessions/:id/blocks", get(blocks::list))

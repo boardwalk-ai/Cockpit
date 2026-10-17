@@ -11,6 +11,7 @@ pub mod ink_ai;
 pub mod live;
 pub mod materials;
 pub mod organize;
+pub mod pairings;
 pub mod recommendations;
 pub mod recordings;
 pub mod research;

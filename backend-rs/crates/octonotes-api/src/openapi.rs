@@ -15,6 +15,7 @@ use crate::routes::*;
         sessions::list, sessions::create, sessions::get, sessions::update, sessions::delete,
         courses::list, courses::create, courses::update, courses::delete,
         devices::list, devices::register,
+        pairings::create, pairings::claim, pairings::get, pairings::start, pairings::cancel,
         deck::destinations,
         blocks::list, blocks::ops, blocks::history, blocks::restore,
         ink::list_pages, ink::create_page, ink::update_page, ink::delete_page,

@@ -127,6 +127,35 @@ pub async fn join_device(
     role: &str,
     recording: bool,
 ) -> Result<(), ApiError> {
+    // A session has at most two devices: one records (a phone, unless it's
+    // alone), the other works the session.
+    // shortcut: a device counts while recording or seen in the last 10 min; a closed tab frees its seat after that.
+    let others: Vec<bool> = sqlx::query_scalar(
+        "SELECT sd.is_recording FROM session_devices sd \
+         WHERE sd.session_id = $1 AND sd.device_id <> $2 \
+           AND (sd.is_recording OR sd.last_seen_at > now() - interval '10 minutes')",
+    )
+    .bind(session_id)
+    .bind(device_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    if others.len() >= 2 {
+        return Err(ApiError::new(StatusCode::CONFLICT, "This session already has two devices.").with_code("session_full"));
+    }
+    if recording && others.iter().any(|rec| *rec) {
+        return Err(ApiError::new(StatusCode::CONFLICT, "Another device is already recording this session.")
+            .with_code("has_recorder"));
+    }
+    if role == "recorder" && !others.is_empty() {
+        let platform: Option<String> = sqlx::query_scalar("SELECT platform FROM devices WHERE id = $1")
+            .bind(device_id)
+            .fetch_optional(&mut *conn)
+            .await?;
+        if !matches!(platform.as_deref(), Some("android" | "ios")) {
+            return Err(ApiError::new(StatusCode::CONFLICT, "With two devices, the phone records.")
+                .with_code("recorder_not_phone"));
+        }
+    }
     sqlx::query(
         "INSERT INTO session_devices (session_id, device_id, user_id, role, is_recording, last_seen_at) VALUES ($1,$2,$3,$4,$5,now()) \
          ON CONFLICT (session_id, device_id) DO UPDATE SET role = EXCLUDED.role, \
