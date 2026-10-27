@@ -74,26 +74,49 @@ async fn owned_block(
 }
 
 /// Transcript around a moment (± 60 s), as display text.
+/// The lecture leading up to a note: five minutes before it, one after. With
+/// no time, or nothing said then, the latest five minutes of the lecture.
 async fn transcript_near(
     st: &AppState,
     session_id: Uuid,
-    at_ms: i64,
+    at_ms: Option<i64>,
 ) -> Result<Option<Passage>, ApiError> {
-    let text: Option<String> = sqlx::query_scalar(
-        "SELECT string_agg(COALESCE(corrected_text, faithful_text, raw_text), ' ' ORDER BY start_ms) FROM transcript_segments \
-         WHERE session_id = $1 AND end_ms > $2 AND start_ms < $3",
-    )
-    .bind(session_id)
-    .bind(at_ms - 60_000)
-    .bind(at_ms + 60_000)
-    .fetch_one(&st.notes)
-    .await?;
-    Ok(text.filter(|t| !t.is_empty()).map(|t| Passage {
-        kind: "transcript".into(),
-        source_id: format!("t{at_ms}"),
-        content: t,
-        locator: json!({ "fromMs": (at_ms - 60_000).max(0), "toMs": at_ms + 60_000 }),
-        score: 1.0,
+    let window = |at: i64| {
+        sqlx::query_scalar::<_, Option<String>>(
+            "SELECT string_agg(COALESCE(corrected_text, faithful_text, raw_text), ' ' ORDER BY start_ms) FROM transcript_segments \
+             WHERE session_id = $1 AND end_ms > $2 AND start_ms < $3",
+        )
+        .bind(session_id)
+        .bind(at - 300_000)
+        .bind(at + 60_000)
+        .fetch_one(&st.notes)
+    };
+    let mut at = at_ms;
+    let mut text = match at {
+        Some(a) => window(a).await?.filter(|t| !t.trim().is_empty()),
+        None => None,
+    };
+    if text.is_none() {
+        let last: Option<i64> = sqlx::query_scalar("SELECT max(end_ms) FROM transcript_segments WHERE session_id = $1")
+            .bind(session_id)
+            .fetch_one(&st.notes)
+            .await?;
+        if let Some(l) = last {
+            at = Some(l);
+            text = window(l).await?.filter(|t| !t.trim().is_empty());
+        }
+    }
+    let at = at.unwrap_or(0);
+    Ok(text.map(|t| {
+        // Keep the part nearest the note.
+        let n = t.chars().count();
+        Passage {
+            kind: "transcript".into(),
+            source_id: format!("t{at}"),
+            content: if n > 6000 { t.chars().skip(n - 6000).collect() } else { t },
+            locator: json!({ "fromMs": (at - 300_000).max(0), "toMs": at + 60_000 }),
+            score: 1.0,
+        }
     }))
 }
 
@@ -122,13 +145,15 @@ pub async fn suggest(
     let price = pricing::price(&st, "suggest").await;
     ai::guard(&st, &caller, price).await?;
 
+    // Search helps when it works; the transcript alone is enough when it doesn't.
     let mut passages = retrieval::search(&st, caller.user_id, session_id, &block.text, 4)
         .await
-        .map_err(ApiError::internal)?;
-    if let Some(at) = block.audio_ts_ms {
-        if let Some(p) = transcript_near(&st, session_id, at).await? {
-            passages.insert(0, p);
-        }
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "suggest: search failed");
+            Vec::new()
+        });
+    if let Some(p) = transcript_near(&st, session_id, block.audio_ts_ms).await? {
+        passages.insert(0, p);
     }
     let context_label = match (
         block.audio_ts_ms,
@@ -149,7 +174,7 @@ pub async fn suggest(
     };
     let task = match req.action.as_str() {
         "explain" => "Explain the student's note in 2–4 sentences.",
-        "expand" => "Add 2–4 bullet points of detail the lecture gave that the note leaves out.",
+        "expand" => "The note is what the student wants to know more about: a topic, a half-written line or a question. Answer it from what the lecture said, as 2–4 short bullet points that add what the note leaves out. Don't repeat the note.",
         "simplify" => "Rewrite the note in simpler words (one short paragraph).",
         "keyword" => "Define the note's key term in 1–2 sentences.",
         _ => "Summarize the note in one sentence.",
@@ -875,6 +900,19 @@ pub async fn build_summary(
         .map(|(k, t)| format!("[{k}] {t}"))
         .collect::<Vec<_>>()
         .join("\n");
+    // Handwriting read on the phone or by the vision model, while its ink is left.
+    let handwriting: Option<String> = sqlx::query_scalar(
+        "SELECT string_agg(r.text, E'\\n' ORDER BY p.ordinal, r.created_at) FROM ink_recognitions r JOIN ink_pages p ON p.id = r.page_id \
+         WHERE r.session_id = $1 AND p.deleted_at IS NULL \
+         AND EXISTS (SELECT 1 FROM ink_strokes s WHERE s.id = ANY(r.stroke_ids) AND s.deleted_at IS NULL)",
+    )
+    .bind(session_id)
+    .fetch_one(&st.notes)
+    .await?;
+    let notes_text = match handwriting.filter(|h| !h.trim().is_empty()) {
+        Some(h) => format!("{notes_text}\n[handwritten]\n{h}"),
+        None => notes_text,
+    };
     let messages = vec![
         Message::system("Summarize a lecture session for a student. Reply with JSON only: {\"topics\": [{\"title\": string, \"gist\": string, \"points\": [string], \"sources\": [\"notes\"|\"transcript\"|\"slides\"]}]}. 2–6 topics in lecture order; gist is 1–2 sentences; 2–4 points each; use only the given material. When the notes have [h1] or [h2] headings, make one topic per heading and use the heading's exact text as its title."),
         Message::user(format!("Student notes:\n{}\n\nLecture transcript:\n{}", clip(&notes_text, 12_000), clip(lecture.as_deref().unwrap_or(""), 16_000))),

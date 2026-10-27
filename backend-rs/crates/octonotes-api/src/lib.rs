@@ -116,7 +116,7 @@ impl AppState {
                     access_key: config.s3_access_key.clone(),
                     secret_key: config.s3_secret_key.clone(),
                     region: config.s3_region.clone(),
-                })
+                }, &config.public_base_url, config.storage_signing_key.as_bytes().to_vec())
                 .await?
             }
             None => Storage::fs(
@@ -283,6 +283,8 @@ pub fn app(state: AppState) -> Router {
         .route("/v1/organize/:id/undo", post(organize::undo))
         .route("/v1/organize/:id/dismiss", post(organize::dismiss))
         .route("/v1/ink/pages/:id/recognize", post(ink_ai::recognize))
+        .route("/v1/ink/pages/:id/recognitions", get(ink_ai::list_recognitions).post(ink_ai::add_recognition))
+        .route("/v1/ink/pages/:id/formula", post(ink_ai::formula))
         .route("/v1/ink/recognitions/:id", patch(ink_ai::review))
         // Review, finalize, Study Studio, The Deck (Phase 4)
         .route("/v1/sessions/:id/review", get(review::latest))

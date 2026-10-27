@@ -241,3 +241,151 @@ mod tests {
         assert!(render_png(&Vec::new()).is_none());
     }
 }
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceRecognition {
+    pub stroke_ids: Vec<Uuid>,
+    pub text: String,
+    #[serde(default)]
+    pub confidence: f32,
+}
+
+/// The page's session, when the caller may use it.
+async fn page_session(st: &AppState, caller: &Caller, page_id: Uuid) -> Result<Uuid, ApiError> {
+    let mut conn = st.notes.acquire().await?;
+    let session_id: Uuid = sqlx::query_scalar("SELECT session_id FROM ink_pages WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL")
+        .bind(page_id)
+        .bind(caller.user_id)
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or_else(|| ApiError::not_found("page not found"))?;
+    access::session(&mut conn, caller, session_id).await?;
+    Ok(session_id)
+}
+
+/// Text the phone read from a line of handwriting itself (on-device, free).
+/// Kept as confirmed: the student wrote it and sees it in the page's notes.
+#[utoipa::path(post, path = "/v1/ink/pages/{id}/recognitions", tag = "ink", params(("id" = Uuid, Path)),
+    request_body = DeviceRecognition, responses((status = 201)))]
+pub async fn add_recognition(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(page_id): Path<Uuid>,
+    Json(req): Json<DeviceRecognition>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let text = req.text.trim();
+    if text.is_empty() || text.len() > 2000 || req.stroke_ids.is_empty() || req.stroke_ids.len() > 500 {
+        return Err(ApiError::bad_request("needs text (≤2000) and 1..500 strokes"));
+    }
+    let session_id = page_session(&st, &caller, page_id).await?;
+    let confidence = req.confidence.clamp(0.0, 1.0);
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO ink_recognitions (page_id, session_id, user_id, stroke_ids, text, confidence, status) \
+         VALUES ($1,$2,$3,$4,$5,$6,'confirmed') RETURNING id",
+    )
+    .bind(page_id)
+    .bind(session_id)
+    .bind(caller.user_id)
+    .bind(&req.stroke_ids)
+    .bind(text)
+    .bind(confidence)
+    .fetch_one(&st.notes)
+    .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "id": id, "pageId": page_id, "text": text, "confidence": confidence, "status": "confirmed", "strokeIds": req.stroke_ids })),
+    ))
+}
+
+/// A page's handwriting as text, oldest first, while any of its ink is left.
+#[utoipa::path(get, path = "/v1/ink/pages/{id}/recognitions", tag = "ink", params(("id" = Uuid, Path)), responses((status = 200)))]
+pub async fn list_recognitions(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(page_id): Path<Uuid>,
+) -> Result<Json<Value>, ApiError> {
+    page_session(&st, &caller, page_id).await?;
+    let items: Value = sqlx::query_scalar(
+        "SELECT COALESCE(json_agg(json_build_object('id', r.id, 'text', r.text, 'status', r.status, 'strokeIds', r.stroke_ids, \
+             'createdAt', r.created_at) ORDER BY r.created_at), '[]') \
+         FROM ink_recognitions r WHERE r.page_id = $1 \
+         AND EXISTS (SELECT 1 FROM ink_strokes s WHERE s.id = ANY(r.stroke_ids) AND s.deleted_at IS NULL)",
+    )
+    .bind(page_id)
+    .fetch_one(&st.notes)
+    .await?;
+    Ok(Json(json!({ "items": items })))
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FormulaRequest {
+    pub stroke_ids: Vec<Uuid>,
+}
+
+/// Reads the selected ink as a formula (LaTeX) with the formula reader on
+/// this server: free, no AI run. Kept as the page's text as `$$…$$`.
+#[utoipa::path(post, path = "/v1/ink/pages/{id}/formula", tag = "ink", params(("id" = Uuid, Path)),
+    request_body = FormulaRequest, responses((status = 201)))]
+pub async fn formula(
+    State(st): State<AppState>,
+    caller: Caller,
+    Path(page_id): Path<Uuid>,
+    Json(req): Json<FormulaRequest>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    if req.stroke_ids.is_empty() || req.stroke_ids.len() > 2000 {
+        return Err(ApiError::bad_request("select 1..2000 strokes"));
+    }
+    let session_id = page_session(&st, &caller, page_id).await?;
+    let strokes = {
+        let mut conn = st.notes.acquire().await?;
+        ink::strokes_for_render(&mut conn, page_id, &req.stroke_ids).await?
+    };
+    let png = render_png(&strokes).ok_or_else(|| ApiError::bad_request("no strokes to read"))?;
+    let res = st
+        .http
+        .post(format!("{}/formula", st.config.formula_url.trim_end_matches('/')))
+        .header("content-type", "image/png")
+        .body(png)
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "formula reader unreachable");
+            ApiError::unavailable("formula reading isn't available right now")
+        })?;
+    if !res.status().is_success() {
+        tracing::warn!(status = %res.status(), "formula reader failed");
+        return Err(ApiError::unavailable("couldn't read that formula"));
+    }
+    let v: Value = res.json().await.map_err(|_| ApiError::unavailable("couldn't read that formula"))?;
+    let latex = v["latex"].as_str().unwrap_or("").trim().to_string();
+    if latex.is_empty() {
+        return Err(ApiError::bad_request("no formula found in that ink"));
+    }
+    let confidence = v["score"].as_f64().unwrap_or(0.5).clamp(0.0, 1.0) as f32;
+    let text = format!("$${latex}$$");
+    // The formula replaces any plain-text reading of the same ink.
+    sqlx::query("DELETE FROM ink_recognitions WHERE page_id = $1 AND stroke_ids <@ $2")
+        .bind(page_id)
+        .bind(&req.stroke_ids)
+        .execute(&st.notes)
+        .await?;
+    let id: Uuid = sqlx::query_scalar(
+        "INSERT INTO ink_recognitions (page_id, session_id, user_id, stroke_ids, text, confidence, status) \
+         VALUES ($1,$2,$3,$4,$5,$6,'confirmed') RETURNING id",
+    )
+    .bind(page_id)
+    .bind(session_id)
+    .bind(caller.user_id)
+    .bind(&req.stroke_ids)
+    .bind(&text)
+    .bind(confidence)
+    .fetch_one(&st.notes)
+    .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(json!({ "id": id, "pageId": page_id, "text": text, "latex": latex, "confidence": confidence, "status": "confirmed", "strokeIds": req.stroke_ids })),
+    ))
+}

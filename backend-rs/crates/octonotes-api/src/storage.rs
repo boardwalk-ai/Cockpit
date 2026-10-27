@@ -1,8 +1,9 @@
 //! Object storage for binaries (audio, materials, page renders, exports).
 //!
-//! Production: MinIO/S3 (`S3_*` env), clients download through presigned
-//! URLs. Dev/tests: a local folder, served by `GET /v1/blobs/{key}` with an
-//! HMAC-signed, expiring link — the same contract as a presigned URL.
+//! Production: MinIO/S3 (`S3_*` env); dev/tests: a local folder. Either way
+//! clients download through `GET /v1/blobs/{key}` on this API with an
+//! HMAC-signed, expiring link: MinIO listens on loopback only, so its own
+//! presigned links can't be opened from a phone.
 //! Keys are always `{user_id}/{session_id}/…`, so a user's data is one prefix.
 
 use std::path::{Component, Path, PathBuf};
@@ -16,12 +17,18 @@ use sha2::Sha256;
 #[derive(Clone)]
 pub enum Storage {
     Fs(FsStore),
-    S3(Box<Bucket>),
+    S3(Box<Bucket>, Links),
 }
 
 #[derive(Clone)]
 pub struct FsStore {
     root: PathBuf,
+    links: Links,
+}
+
+/// Expiring download links served by this API.
+#[derive(Clone)]
+pub struct Links {
     public_base: String,
     signing_key: Vec<u8>,
 }
@@ -42,12 +49,14 @@ impl Storage {
     ) -> Self {
         Storage::Fs(FsStore {
             root: root.into(),
-            public_base: public_base.into(),
-            signing_key,
+            links: Links {
+                public_base: public_base.into(),
+                signing_key,
+            },
         })
     }
 
-    pub async fn s3(c: S3Config) -> Result<Self, String> {
+    pub async fn s3(c: S3Config, public_base: impl Into<String>, signing_key: Vec<u8>) -> Result<Self, String> {
         let region = Region::Custom {
             region: c.region,
             endpoint: c.endpoint,
@@ -67,7 +76,20 @@ impl Storage {
             )
             .await;
         }
-        Ok(Storage::S3(bucket))
+        Ok(Storage::S3(
+            bucket,
+            Links {
+                public_base: public_base.into(),
+                signing_key,
+            },
+        ))
+    }
+
+    fn links(&self) -> &Links {
+        match self {
+            Storage::Fs(fs) => &fs.links,
+            Storage::S3(_, l) => l,
+        }
     }
 
     pub async fn put(&self, key: &str, bytes: &[u8], content_type: &str) -> Result<(), String> {
@@ -84,7 +106,7 @@ impl Storage {
                     .await
                     .map_err(|e| e.to_string())
             }
-            Storage::S3(b) => b
+            Storage::S3(b, _) => b
                 .put_object_with_content_type(key, bytes, content_type)
                 .await
                 .map(|_| ())
@@ -98,7 +120,7 @@ impl Storage {
             Storage::Fs(fs) => tokio::fs::read(fs.path(key)?)
                 .await
                 .map_err(|e| e.to_string()),
-            Storage::S3(b) => b
+            Storage::S3(b, _) => b
                 .get_object(key)
                 .await
                 .map(|r| r.to_vec())
@@ -109,7 +131,7 @@ impl Storage {
     pub async fn exists(&self, key: &str) -> bool {
         match self {
             Storage::Fs(fs) => fs.path(key).map(|p| p.exists()).unwrap_or(false),
-            Storage::S3(b) => b.head_object(key).await.is_ok(),
+            Storage::S3(b, _) => b.head_object(key).await.is_ok(),
         }
     }
 
@@ -124,7 +146,7 @@ impl Storage {
                     Err(e) => Err(e.to_string()),
                 }
             }
-            Storage::S3(b) => {
+            Storage::S3(b, _) => {
                 let pages = b
                     .list(prefix.to_string(), None)
                     .await
@@ -142,20 +164,10 @@ impl Storage {
     /// A time-limited download URL.
     pub async fn url(&self, key: &str, ttl_secs: u32) -> Result<String, String> {
         check_key(key)?;
-        match self {
-            Storage::Fs(fs) => {
-                let exp = now() + ttl_secs as u64;
-                let sig = fs.sign(key, exp);
-                Ok(format!(
-                    "{}/v1/blobs/{key}?exp={exp}&sig={sig}",
-                    fs.public_base.trim_end_matches('/')
-                ))
-            }
-            Storage::S3(b) => b
-                .presign_get(key, ttl_secs, None)
-                .await
-                .map_err(|e| e.to_string()),
-        }
+        let l = self.links();
+        let exp = now() + ttl_secs as u64;
+        let sig = l.sign(key, exp);
+        Ok(format!("{}/v1/blobs/{key}?exp={exp}&sig={sig}", l.public_base.trim_end_matches('/')))
     }
 
     /// A time-limited direct-upload URL (S3 only; the local store takes
@@ -164,7 +176,7 @@ impl Storage {
         check_key(key)?;
         match self {
             Storage::Fs(_) => Ok(None),
-            Storage::S3(b) => b
+            Storage::S3(b, _) => b
                 .presign_put(key, ttl_secs, None, None)
                 .await
                 .map(Some)
@@ -172,12 +184,14 @@ impl Storage {
         }
     }
 
-    /// Verifies a local-store signed link; returns the file path to serve.
-    pub fn verify_local(&self, key: &str, exp: u64, sig: &str) -> Option<PathBuf> {
+    /// Checks a signed link (not expired, made for this key).
+    pub fn verify(&self, key: &str, exp: u64, sig: &str) -> bool {
+        check_key(key).is_ok() && exp >= now() && self.links().sign(key, exp) == sig
+    }
+
+    /// The local file behind a key (local store only).
+    pub fn local_path(&self, key: &str) -> Option<PathBuf> {
         let Storage::Fs(fs) = self else { return None };
-        if exp < now() || fs.sign(key, exp) != sig {
-            return None;
-        }
         fs.path(key).ok()
     }
 }
@@ -188,6 +202,9 @@ impl FsStore {
         Ok(self.root.join(key))
     }
 
+}
+
+impl Links {
     fn sign(&self, key: &str, exp: u64) -> String {
         let mut mac = Hmac::<Sha256>::new_from_slice(&self.signing_key).expect("hmac key");
         mac.update(format!("{key}\n{exp}").as_bytes());
@@ -232,13 +249,10 @@ mod tests {
     #[test]
     fn signed_links_expire_and_bind_the_key() {
         let st = Storage::fs("/tmp/x", "http://api", b"k".to_vec());
-        let Storage::Fs(fs) = &st else { unreachable!() };
         let exp = now() + 60;
-        let sig = fs.sign("u/s/a", exp);
-        assert!(st.verify_local("u/s/a", exp, &sig).is_some());
-        assert!(st.verify_local("u/s/b", exp, &sig).is_none());
-        assert!(st
-            .verify_local("u/s/a", now() - 1, &fs.sign("u/s/a", now() - 1))
-            .is_none());
+        let sig = st.links().sign("u/s/a", exp);
+        assert!(st.verify("u/s/a", exp, &sig));
+        assert!(!st.verify("u/s/b", exp, &sig));
+        assert!(!st.verify("u/s/a", now() - 1, &st.links().sign("u/s/a", now() - 1)));
     }
 }

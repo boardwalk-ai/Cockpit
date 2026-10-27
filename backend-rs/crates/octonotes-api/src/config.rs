@@ -51,6 +51,8 @@ pub struct Config {
     /// Transcribe recordings on the server (OpenRouter). Off: the recording
     /// phone's on-device captions are the transcript.
     pub server_asr: bool,
+    /// The handwritten-formula reader (deploy/formula), loopback.
+    pub formula_url: String,
     /// Bearer token for `/metrics` from outside loopback.
     pub metrics_token: Option<String>,
     /// `json` for structured logs (production), anything else for text.
@@ -100,6 +102,7 @@ impl Config {
                 .unwrap_or_else(|_| "octo".into()),
             credits_enabled: flag("CREDITS_ENABLED", true),
             server_asr: flag("SERVER_ASR", false),
+            formula_url: std::env::var("FORMULA_URL").unwrap_or_else(|_| "http://127.0.0.1:8096".into()),
             metrics_token: env_opt("METRICS_TOKEN"),
             log_format: std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".into()),
         }

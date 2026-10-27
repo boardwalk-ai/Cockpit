@@ -130,9 +130,17 @@ async fn keep_caption(
     Ok(())
 }
 
+/// Mic levels a recording phone sends, `{v: [0..1, …], ms}` (ms: audio
+/// recorded so far): at most 16 levels per message, clamped, for the other
+/// device's waveform and clock.
+fn levels(d: &Value) -> Option<Vec<f64>> {
+    let v: Vec<f64> = d["v"].as_array()?.iter().take(16).filter_map(|x| x.as_f64()).map(|x| (x * 1000.0).round().clamp(0.0, 1000.0) / 1000.0).collect();
+    (!v.is_empty()).then_some(v)
+}
+
 #[cfg(test)]
 mod caption_tests {
-    use super::caption;
+    use super::{caption, levels};
     use serde_json::json;
 
     #[test]
@@ -143,6 +151,14 @@ mod caption_tests {
         assert!(caption(&json!({ "segId": "a", "text": "x", "startMs": 5, "endMs": 1 })).is_none());
         let long = caption(&json!({ "segId": "a", "text": "y".repeat(5000), "startMs": 0, "endMs": 0 })).unwrap();
         assert_eq!(long.1.len(), 1000);
+    }
+
+    #[test]
+    fn levels_are_clamped_and_capped() {
+        assert_eq!(levels(&json!({ "v": [0.5, 2, -1, "x"] })).unwrap(), vec![0.5, 1.0, 0.0]);
+        assert_eq!(levels(&json!({ "v": vec![0.1; 40] })).unwrap().len(), 16);
+        assert!(levels(&json!({ "v": [] })).is_none());
+        assert!(levels(&json!({})).is_none());
     }
 }
 
@@ -267,6 +283,10 @@ async fn run(st: AppState, session_id: Uuid, mut socket: WebSocket) -> Result<()
                                     }
                                 }
                             }
+                        },
+                        // Not stored: only the live waveform on the other device.
+                        Some("level") => if let (Some(d), Some(l)) = (device, levels(&v["data"])) {
+                            st.hub.session(session_id, Event::new("audio.level", json!({ "deviceId": d, "v": l, "ms": v["data"]["ms"].as_i64().filter(|m| *m >= 0) }), None)).await;
                         },
                         Some("follow") => {
                             st.hub.session(session_id, Event::new("slide.follow", json!({ "deviceId": device, "following": v["data"]["following"] }), None)).await;
