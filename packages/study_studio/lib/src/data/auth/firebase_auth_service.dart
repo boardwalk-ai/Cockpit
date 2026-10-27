@@ -25,6 +25,19 @@ class FirebaseAuthService implements AuthService {
   bool get isSignedIn => _auth.currentUser != null;
 
   @override
+  AuthProfile? get profile {
+    final u = _auth.currentUser;
+    if (u == null) return null;
+    // Google's provider data has the photo when the user record hasn't yet.
+    final google = u.providerData.where((p) => p.photoURL != null).firstOrNull;
+    return AuthProfile(
+      name: u.displayName ?? google?.displayName,
+      email: u.email ?? google?.email,
+      photoUrl: u.photoURL ?? google?.photoURL,
+    );
+  }
+
+  @override
   Stream<bool> authStateChanges() =>
       _auth.authStateChanges().map((user) => user != null);
 

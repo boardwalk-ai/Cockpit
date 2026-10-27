@@ -22,9 +22,13 @@ class GhostWriterMobileApp extends StatefulWidget {
     super.key,
     required this.session,
     this.onSignOut,
+    this.photoUrl,
   });
 
   final GwSession session;
+
+  /// The signed-in person's photo for the account row.
+  final String? photoUrl;
 
   /// Null hides sign-out (dev builds without a real sign-in).
   final VoidCallback? onSignOut;
@@ -106,6 +110,7 @@ class _GhostWriterMobileAppState extends State<GhostWriterMobileApp>
             loading: session.loadingLibrary,
             selectedId: session.projectId,
             sessionName: name ?? 'GUEST',
+            photoUrl: widget.photoUrl,
             credits: session.credits ?? 0,
             onNewChat: session.newChat,
             onOpenProject: session.openProject,

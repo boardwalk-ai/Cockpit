@@ -340,6 +340,15 @@ class _PhoneFinalNotesState extends ConsumerState<PhoneFinalNotes> {
                           const SizedBox(width: 5),
                           Text('Final · version $_version', style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
                           const Spacer(),
+                          if (_sessionId != null)
+                            IconButton(
+                              tooltip: 'Open in notebook',
+                              icon: const Icon(Icons.auto_stories_outlined),
+                              onPressed: () {
+                                HapticFeedback.selectionClick();
+                                context.push('/notes/notebook?session=$_sessionId');
+                              },
+                            ),
                           IconButton(tooltip: 'Download PDF', icon: const Icon(Icons.file_download_outlined), onPressed: _pdf),
                         ],
                       ),

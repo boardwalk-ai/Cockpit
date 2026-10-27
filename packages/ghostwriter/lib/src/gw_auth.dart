@@ -8,6 +8,9 @@ abstract interface class GwAuth {
 
   bool get isSignedIn;
 
+  /// The signed-in person's photo, or null.
+  String? get photoUrl;
+
   /// `true` when signed in; emits on every sign-in and sign-out.
   Stream<bool> authStateChanges();
 

@@ -9,8 +9,31 @@ import 'ink_models.dart';
 /// layer and never rewrite, flatten, move, or clean up ink without explicit
 /// approval. Stroke rendering/saving is immediate and never networked.
 class InkController extends ChangeNotifier {
-  InkController() {
+  /// [newId] makes page and stroke ids (the server wants UUIDs).
+  InkController({String Function()? newId}) : _makeId = newId {
     _seed();
+  }
+
+  final String Function()? _makeId;
+
+  /// Saved to the server and read on the device: no sample recognition,
+  /// AI or source chips.
+  bool live = false;
+
+  /// An id for a new stroke.
+  String newStrokeId() => _newId('k');
+
+  /// Replaces the notebook with pages from the server.
+  void load(List<InkPage> pages) {
+    _pages
+      ..clear()
+      ..addAll(pages);
+    if (_pages.isEmpty) _seed();
+    _current = 0;
+    _undo.clear();
+    _redo.clear();
+    _selected.clear();
+    notifyListeners();
   }
 
   // --- pages ---------------------------------------------------------------
@@ -141,6 +164,10 @@ class InkController extends ChangeNotifier {
         if (s.bounds.overlaps(r)) _selected.add(s.id);
       }
     }
+    if (_selected.isNotEmpty && live) {
+      notifyListeners();
+      return;
+    }
     if (_selected.isNotEmpty) {
       recognitionComplete = false;
       notifyListeners();
@@ -257,6 +284,9 @@ class InkController extends ChangeNotifier {
   void setPage(int i) {
     if (i < 0 || i >= _pages.length || i == _current) return;
     _current = i;
+    // Undo works on the page you're on.
+    _undo.clear();
+    _redo.clear();
     clearSelection();
     notifyListeners();
   }
@@ -267,6 +297,8 @@ class InkController extends ChangeNotifier {
       title: 'Page ${_pages.length + 1}',
     ));
     _current = _pages.length - 1;
+    _undo.clear();
+    _redo.clear();
     notifyListeners();
   }
 
@@ -305,7 +337,7 @@ class InkController extends ChangeNotifier {
   }
 
   static int _seq = 0;
-  String _newId(String p) => '$p${_seq++}';
+  String _newId(String p) => _makeId?.call() ?? '$p${_seq++}';
 
   String? nextAudioTime() => recording ? audioTime : null;
 
@@ -341,53 +373,7 @@ class InkController extends ChangeNotifier {
     return inside;
   }
 
-  void _seed() {
-    for (var i = 1; i <= 5; i++) {
-      _pages.add(InkPage(id: _newId('p'), title: _pageTitles[i - 1]));
-    }
-    _current = 2; // "Page 3 of 5"
-    // A light seed on page 3 so the recognition demo has content.
-    final p = _pages[2];
-    p.strokes.add(Stroke(
-      id: _newId('k'),
-      tool: InkTool.text,
-      points: const [Offset(40, 40)],
-      pressures: const [1],
-      color: const Color(0xFF16213E),
-      width: 2,
-      pageId: p.id,
-      text: 'Electron Transport Chain',
-      audioTimestamp: '18:20',
-    ));
-    p.strokes.add(Stroke(
-      id: _newId('k'),
-      tool: InkTool.text,
-      points: const [Offset(56, 96)],
-      pressures: const [1],
-      color: const Color(0xFF16213E),
-      width: 2,
-      pageId: p.id,
-      text: '• inner mitochondrial membrane',
-      audioTimestamp: '18:24',
-    ));
-    p.strokes.add(Stroke(
-      id: _newId('k'),
-      tool: InkTool.text,
-      points: const [Offset(56, 132)],
-      pressures: const [1],
-      color: const Color(0xFF16213E),
-      width: 2,
-      pageId: p.id,
-      text: '• H⁺ gradient   • O₂ final electron acceptor',
-      audioTimestamp: '18:28',
-    ));
-  }
+  /// A new notebook starts on one empty page.
+  void _seed() => _pages.add(InkPage(id: _newId('p'), title: 'Page 1'));
 
-  static const _pageTitles = [
-    'Glycolysis',
-    'Pyruvate Oxidation',
-    'Electron Transport Chain',
-    'Citric Acid Cycle',
-    'Summary',
-  ];
 }

@@ -141,7 +141,7 @@ class InkPage {
   InkPage({
     required this.id,
     required this.title,
-    this.background = PaperBackground.dotted,
+    this.background = PaperBackground.blank,
     List<Stroke>? strokes,
   }) : strokes = strokes ?? [];
 

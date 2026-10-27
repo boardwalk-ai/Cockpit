@@ -110,6 +110,7 @@ class _GhostWriterRootState extends State<GhostWriterRoot>
         key: const ValueKey('app'),
         session: _session,
         onSignOut: auth == null ? null : _signOut,
+        photoUrl: auth?.photoUrl,
       );
     }
 

@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show PointMode;
 
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
+import '../../application/ink_sync.dart';
+import '../../data/api/notes_api_client.dart';
 import '../../domain/ink_controller.dart';
 import '../../domain/ink_models.dart';
 import '../../domain/notes_controller.dart';
@@ -401,8 +405,12 @@ class _InkCanvas extends StatefulWidget {
     required this.ink,
     required this.notes,
     required this.onSwitchToTypewriter,
+    this.onFormula,
   });
   final InkController ink;
+
+  /// Reads the selection as a formula (a saved page only).
+  final ValueChanged<List<Stroke>>? onFormula;
   final NotesController notes;
   final VoidCallback onSwitchToTypewriter;
 
@@ -411,6 +419,9 @@ class _InkCanvas extends StatefulWidget {
 }
 
 class _InkCanvasState extends State<_InkCanvas> {
+  // The finger that draws; a second finger means a pinch, not a stroke.
+  final Set<int> _fingers = {};
+  int? _drawer;
   List<Offset> _current = [];
   List<double> _pressures = [];
   List<Offset> _lasso = [];
@@ -420,6 +431,46 @@ class _InkCanvasState extends State<_InkCanvas> {
   InkController get ink => widget.ink;
 
   double _pressure(double raw) => raw <= 0 ? 1.0 : raw.clamp(0.1, 1.0);
+
+  void _pointerDown(PointerDownEvent e) {
+    _fingers.add(e.pointer);
+    if (_fingers.length > 1) {
+      // Pinch: drop the stroke the first finger began.
+      _drawer = null;
+      setState(() {
+        _current = [];
+        _pressures = [];
+        _lasso = [];
+        _shapeStart = null;
+      });
+      return;
+    }
+    _drawer = e.pointer;
+    _down(e);
+  }
+
+  void _pointerMove(PointerMoveEvent e) {
+    if (e.pointer == _drawer) _move(e);
+  }
+
+  void _pointerUp(PointerUpEvent e) {
+    _fingers.remove(e.pointer);
+    if (e.pointer != _drawer) return;
+    _drawer = null;
+    _up(e);
+  }
+
+  void _pointerCancel(PointerCancelEvent e) {
+    _fingers.remove(e.pointer);
+    if (e.pointer != _drawer) return;
+    _drawer = null;
+    setState(() {
+      _current = [];
+      _pressures = [];
+      _lasso = [];
+      _shapeStart = null;
+    });
+  }
 
   void _down(PointerDownEvent e) {
     final p = e.localPosition;
@@ -522,7 +573,7 @@ class _InkCanvasState extends State<_InkCanvas> {
   }
 
   Stroke _stroke(List<Offset> pts, List<double> pr, InkTool t) => Stroke(
-        id: 'k${DateTime.now().microsecondsSinceEpoch}',
+        id: ink.newStrokeId(),
         tool: t,
         points: List.of(pts),
         pressures: List.of(pr),
@@ -567,9 +618,10 @@ class _InkCanvasState extends State<_InkCanvas> {
           Positioned.fill(
             child: Listener(
               behavior: HitTestBehavior.opaque,
-              onPointerDown: _down,
-              onPointerMove: _move,
-              onPointerUp: _up,
+              onPointerDown: _pointerDown,
+              onPointerMove: _pointerMove,
+              onPointerUp: _pointerUp,
+              onPointerCancel: _pointerCancel,
               child: MouseRegion(
                 cursor: ink.tool == InkTool.pointer
                     ? SystemMouseCursors.grab
@@ -594,7 +646,13 @@ class _InkCanvasState extends State<_InkCanvas> {
             ),
           ),
           // Lasso context menu + source chips (spec §8).
-          if (sel != null) ...[
+          if (sel != null && ink.live)
+            Positioned(
+              left: sel.left.clamp(0, 10000),
+              top: (sel.top - 52).clamp(0, 10000),
+              child: _LiveLassoMenu(ink: ink, onFormula: widget.onFormula),
+            ),
+          if (sel != null && !ink.live) ...[
             Positioned(
               left: sel.left.clamp(0, 10000),
               top: (sel.top - 52).clamp(0, 10000),
@@ -611,6 +669,7 @@ class _InkCanvasState extends State<_InkCanvas> {
             ),
           ],
           // "Original Ink Preserved" (spec §3).
+          if (!ink.live)
           Positioned(
             left: CockpitSpacing.md,
             bottom: CockpitSpacing.md,
@@ -635,6 +694,52 @@ class _InkCanvasState extends State<_InkCanvas> {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The lasso on a saved page: what's real for a selection.
+class _LiveLassoMenu extends StatelessWidget {
+  const _LiveLassoMenu({required this.ink, this.onFormula});
+  final InkController ink;
+  final ValueChanged<List<Stroke>>? onFormula;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    Widget action(IconData icon, String tip, VoidCallback onTap) => IconButton(
+          tooltip: tip,
+          visualDensity: VisualDensity.compact,
+          icon: Icon(icon, size: 19),
+          onPressed: () {
+            HapticFeedback.selectionClick();
+            onTap();
+          },
+        );
+    return Material(
+      elevation: 3,
+      borderRadius: BorderRadius.circular(CockpitRadii.pill),
+      color: scheme.surface,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (onFormula != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: TextButton.icon(
+                onPressed: () {
+                  HapticFeedback.selectionClick();
+                  onFormula!(ink.selectedStrokes);
+                },
+                icon: const Icon(Icons.functions_rounded, size: 18),
+                label: const Text('Read as formula'),
+              ),
+            ),
+          action(Icons.copy_rounded, 'Duplicate', ink.duplicateSelection),
+          action(Icons.delete_outline_rounded, 'Delete', ink.deleteSelection),
+          action(Icons.close_rounded, 'Done', ink.clearSelection),
         ],
       ),
     );
@@ -1259,9 +1364,13 @@ class PhoneMagicPencil extends StatefulWidget {
     required this.notes,
     required this.onClose,
     this.top,
+    this.sync,
   });
 
   final InkController ink;
+
+  /// Saves the pages and reads each line; null without a server.
+  final InkSync? sync;
   final NotesController notes;
   final VoidCallback onClose;
   final Widget? top;
@@ -1272,10 +1381,43 @@ class PhoneMagicPencil extends StatefulWidget {
 
 class _PhoneMagicPencilState extends State<PhoneMagicPencil> {
   InkController get ink => widget.ink;
+  final _zoom = TransformationController();
+  int _fingers = 0;
+  bool _notesOpen = false;
+  int _lineCount = 0;
+
+  void _synced() {
+    final n = widget.sync == null ? 0 : widget.sync!.linesOf(ink.page).length;
+    // A new line read: a light tap, and the tab's count bumps.
+    if (n > _lineCount) HapticFeedback.lightImpact();
+    if (mounted) setState(() => _lineCount = n);
+  }
+
+  Future<void> _formula(List<Stroke> strokes) async {
+    if (strokes.isEmpty) return;
+    ink.clearSelection();
+    setState(() => _notesOpen = true);
+    try {
+      await widget.sync!.readFormula(strokes);
+      unawaited(HapticFeedback.mediumImpact());
+    } on Object catch (e) {
+      if (!mounted) return;
+      unawaited(HapticFeedback.heavyImpact());
+      final msg = e is NotesApiException ? e.message : "Couldn't read that formula.";
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(behavior: SnackBarBehavior.floating, content: Text(msg)));
+    }
+  }
+
+  void _fitPage() {
+    HapticFeedback.selectionClick();
+    _zoom.value = Matrix4.identity();
+  }
 
   @override
   void initState() {
     super.initState();
+    widget.sync?.addListener(_synced);
+    ink.addListener(_synced);
     // Turned sideways: a firm tap says "ready to draw".
     HapticFeedback.mediumImpact();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
@@ -1283,6 +1425,9 @@ class _PhoneMagicPencilState extends State<PhoneMagicPencil> {
 
   @override
   void dispose() {
+    widget.sync?.removeListener(_synced);
+    ink.removeListener(_synced);
+    _zoom.dispose();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
@@ -1322,13 +1467,41 @@ class _PhoneMagicPencilState extends State<PhoneMagicPencil> {
                   child: Stack(
                     children: [
                       Positioned.fill(
-                        child: Material(
-                          color: scheme.surfaceContainerLow,
-                          child: _InkCanvas(ink: ink, notes: widget.notes, onSwitchToTypewriter: widget.onClose),
+                        // One finger draws; two pinch to zoom and move the page.
+                        child: Listener(
+                          onPointerDown: (_) => setState(() => _fingers++),
+                          onPointerUp: (_) => setState(() => _fingers = math.max(0, _fingers - 1)),
+                          onPointerCancel: (_) => setState(() => _fingers = math.max(0, _fingers - 1)),
+                          child: InteractiveViewer(
+                            transformationController: _zoom,
+                            minScale: 1,
+                            maxScale: 4,
+                            panEnabled: _fingers >= 2,
+                            child: Material(
+                              color: scheme.surfaceContainerLow,
+                              child: _InkCanvas(
+                                ink: ink,
+                                notes: widget.notes,
+                                onSwitchToTypewriter: widget.onClose,
+                                onFormula: widget.sync == null ? null : _formula,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                       if (widget.top != null)
                         Positioned(left: CockpitSpacing.sm, right: CockpitSpacing.sm, top: CockpitSpacing.sm, child: widget.top!),
+                      Positioned(left: CockpitSpacing.sm, bottom: CockpitSpacing.sm, child: _ZoomPill(zoom: _zoom, onFit: _fitPage)),
+                      if (widget.sync != null)
+                        _NotesDrawer(
+                          sync: widget.sync!,
+                          page: ink.page,
+                          open: _notesOpen,
+                          onToggle: () {
+                            HapticFeedback.selectionClick();
+                            setState(() => _notesOpen = !_notesOpen);
+                          },
+                        ),
                     ],
                   ),
                 ),
@@ -1372,7 +1545,27 @@ class _PhoneMagicPencilState extends State<PhoneMagicPencil> {
                       ink.addPage();
                     },
                   ),
+                  _RailButton(
+                    icon: Icons.keyboard_arrow_up_rounded,
+                    tooltip: 'Previous page',
+                    onTap: ink.pageIndex > 0
+                        ? () {
+                            HapticFeedback.selectionClick();
+                            ink.setPage(ink.pageIndex - 1);
+                          }
+                        : null,
+                  ),
                   _PageBadge(ink: ink),
+                  _RailButton(
+                    icon: Icons.keyboard_arrow_down_rounded,
+                    tooltip: 'Next page',
+                    onTap: ink.pageIndex < ink.pageCount - 1
+                        ? () {
+                            HapticFeedback.selectionClick();
+                            ink.setPage(ink.pageIndex + 1);
+                          }
+                        : null,
+                  ),
                 ],
               ),
             ],
@@ -1390,9 +1583,15 @@ class _Rail extends StatelessWidget {
   @override
   Widget build(BuildContext context) => SizedBox(
         width: 56,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: CockpitSpacing.sm),
-          child: Column(children: children),
+        // A phone on its side is short: the rail scrolls when it doesn't fit.
+        child: LayoutBuilder(
+          builder: (_, c) => SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(vertical: CockpitSpacing.sm),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: c.maxHeight - 2 * CockpitSpacing.sm),
+              child: IntrinsicHeight(child: Column(children: children)),
+            ),
+          ),
         ),
       );
 }
@@ -1577,6 +1776,206 @@ class _PageBadge extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: CockpitSpacing.xs),
         child: Text('${ink.pageIndex + 1}/${ink.pageCount}',
             style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
+}
+
+
+/// "150%" while zoomed in; a tap fits the page again.
+class _ZoomPill extends StatelessWidget {
+  const _ZoomPill({required this.zoom, required this.onFit});
+  final TransformationController zoom;
+  final VoidCallback onFit;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ValueListenableBuilder<Matrix4>(
+      valueListenable: zoom,
+      builder: (_, m, _) {
+        final z = m.getMaxScaleOnAxis();
+        return AnimatedScale(
+          scale: z > 1.02 ? 1 : 0,
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          child: Semantics(
+            button: true,
+            label: 'Fit the page',
+            child: GestureDetector(
+              onTap: onFit,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(color: const Color(0xEE1D1E20), borderRadius: BorderRadius.circular(99)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.zoom_out_map_rounded, size: 14, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Text('${(z * 100).round()}%', style: theme.textTheme.labelSmall?.copyWith(color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// The page's handwriting as text: a gold tab on the right edge with the
+/// count; it slides open into a list, newest last.
+class _NotesDrawer extends StatelessWidget {
+  const _NotesDrawer({required this.sync, required this.page, required this.open, required this.onToggle});
+  final InkSync sync;
+  final InkPage page;
+  final bool open;
+  final VoidCallback onToggle;
+
+  static const _w = 230.0;
+  static const _gold = Color(0xFFE8B84B);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final lines = sync.linesOf(page);
+    const curve = Curves.easeOutCubic;
+    const d = Duration(milliseconds: 420);
+    String time(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          AnimatedPositioned(
+            duration: d,
+            curve: curve,
+            top: 0,
+            bottom: 0,
+            right: open ? 0 : -_w,
+            width: _w,
+            child: Material(
+              color: scheme.surface,
+              elevation: 6,
+              child: SafeArea(
+                left: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: Text('This page, as text', style: theme.textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant))),
+                          if (sync.reading) const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.6)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: lines.isEmpty
+                            ? Text('Write a line. It lands here a moment after you lift the pen.',
+                                style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant))
+                            : ListView(
+                                padding: EdgeInsets.zero,
+                                reverse: true,
+                                children: [
+                                  for (final l in lines.reversed)
+                                    TweenAnimationBuilder<double>(
+                                      key: ValueKey(l),
+                                      tween: Tween(begin: 0, end: 1),
+                                      duration: const Duration(milliseconds: 420),
+                                      curve: curve,
+                                      builder: (_, t, child) => Opacity(
+                                        opacity: t,
+                                        child: Transform.translate(offset: Offset((1 - t) * 16, 0), child: child),
+                                      ),
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(vertical: 7),
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            _LineText(text: l.text, style: theme.textTheme.bodyMedium),
+                                            Text(time(l.at), style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          AnimatedPositioned(
+            duration: d,
+            curve: curve,
+            right: open ? _w : 0,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: Semantics(
+                button: true,
+                label: open ? 'Close the notes' : 'Open the notes, ${lines.length} lines',
+                child: GestureDetector(
+                  onTap: onToggle,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                    decoration: const BoxDecoration(
+                      color: _gold,
+                      borderRadius: BorderRadius.horizontal(left: Radius.circular(12)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const RotatedBox(
+                          quarterTurns: 1,
+                          child: Text('Notes', style: TextStyle(color: Color(0xFF412402), fontWeight: FontWeight.w700, fontSize: 12)),
+                        ),
+                        const SizedBox(height: 6),
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 380),
+                          transitionBuilder: (c, a) => ScaleTransition(scale: CurvedAnimation(parent: a, curve: Curves.easeOutBack), child: c),
+                          child: Container(
+                            key: ValueKey(lines.length),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(color: const Color(0xFFE11D2E), borderRadius: BorderRadius.circular(99)),
+                            child: Text('${lines.length}', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// A line of the page as text; a formula (`$$…$$`) is drawn as maths.
+class _LineText extends StatelessWidget {
+  const _LineText({required this.text, this.style});
+  final String text;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final formula = text.length > 4 && text.startsWith(r'$$') && text.endsWith(r'$$');
+    if (!formula) return Text(text, style: style);
+    final tex = text.substring(2, text.length - 2);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Math.tex(
+        tex,
+        textStyle: style?.copyWith(fontSize: (style?.fontSize ?? 14) + 2),
+        onErrorFallback: (_) => Text(tex, style: style?.copyWith(fontFamily: 'monospace')),
       ),
     );
   }

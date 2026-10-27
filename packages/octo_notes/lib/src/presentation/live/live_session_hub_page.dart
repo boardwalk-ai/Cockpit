@@ -3,12 +3,14 @@ import 'dart:math' as math;
 
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../application/account_providers.dart';
+import '../../application/ink_sync.dart';
 import '../../application/live_captioner.dart';
 import '../../application/live_session.dart';
 import '../../application/session_providers.dart';
@@ -27,6 +29,7 @@ import '../magic_pencil/magic_pencil_workspace.dart';
 import '../new_session/pairing_widgets.dart';
 import '../widgets/octo_widgets.dart';
 
+part 'phone_live_room.dart';
 part 'phone_session_views.dart';
 part 'phone_typewriter.dart';
 
@@ -82,6 +85,10 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
 
   // Controllers for the embedded Magic Pencil canvas.
   late final InkController _ink;
+
+  /// The pencil's pages on the server, each line read on the phone.
+  InkSync? _inkSync;
+  DeviceInkReader? _inkReader;
   late final NotesController _notes;
 
   late final LiveSession _live;
@@ -92,16 +99,23 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
 
   /// On-device English captions while this phone records (null: not bundled).
   LiveCaptioner? _captioner;
+  Timer? _levelTimer;
+  final _levels = <double>[];
 
   bool get _records => widget.role == SessionRole.recorder || (widget.role == SessionRole.solo && widget.record);
 
   @override
   void initState() {
     super.initState();
-    _ink = InkController();
+    _ink = InkController(newId: OctoNotesApi.newId);
     _notes = NotesController(sessionId: widget.sessionId ?? 'sess-bio101-w4');
     final api = ref.read(octoNotesApiProvider);
     final id = widget.sessionId;
+    if (api != null && id != null) {
+      final reader = _inkReader = DeviceInkReader();
+      _inkSync = InkSync(api: api, sessionId: id, ink: _ink, read: reader.call);
+      unawaited(_inkSync!.load().catchError((Object e) => debugPrint('ink load: $e')));
+    }
     _live = LiveSession(
       api: api,
       sessionId: id,
@@ -128,6 +142,8 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
       return;
     }
     _live.thisDeviceId = _device!.id;
+    // Without the device, the server drops this phone's captions and levels.
+    _live.socket?.identify(_device!.id);
     if (!mounted || !_records) return;
     final captioner = LiveCaptioner(onCaption: _caption);
     final captions = await captioner.start();
@@ -141,6 +157,15 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
       onAudio: _captioner?.accept,
     )..addListener(_changed);
     setState(() {});
+    // The mic level and recorded time for the other device's waveform and clock.
+    _levelTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      final r = _recorder;
+      if (r == null || !r.isActive) return;
+      _levels.add(r.isPaused ? 0 : r.level);
+      if (_levels.length < 4) return;
+      _live.socket?.send('level', {'v': [..._levels], 'ms': r.elapsedMs});
+      _levels.clear();
+    });
     await _recorder!.start();
   }
 
@@ -169,6 +194,9 @@ class _LiveSessionHubPageState extends ConsumerState<LiveSessionHubPage> {
       ?..removeListener(_changed)
       ..dispose();
     unawaited(_captioner?.stop());
+    _levelTimer?.cancel();
+    _inkSync?.dispose();
+    unawaited(_inkReader?.close());
     _ink.dispose();
     _notes.dispose();
     if (_phone) SystemChrome.setPreferredOrientations(DeviceOrientation.values);

@@ -41,6 +41,9 @@ class _SharedGhostWriterAuth implements GwAuth {
 
   final AuthService _auth;
 
+  @override
+  String? get photoUrl => _auth.profile?.photoUrl;
+
   /// Only a real Firebase sign-in needs the sign-in screen; the stub (no
   /// Firebase config on this build) runs as the dev user.
   @override

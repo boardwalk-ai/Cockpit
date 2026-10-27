@@ -18,6 +18,7 @@ class GhostWriterMobileDrawer extends StatefulWidget {
     required this.loading,
     required this.selectedId,
     required this.sessionName,
+    this.photoUrl,
     required this.credits,
     required this.onNewChat,
     required this.onOpenProject,
@@ -34,6 +35,7 @@ class GhostWriterMobileDrawer extends StatefulWidget {
   final String? selectedId;
 
   final String sessionName;
+  final String? photoUrl;
   final int credits;
   final VoidCallback onNewChat;
   final ValueChanged<String> onOpenProject;
@@ -220,6 +222,7 @@ class _GhostWriterMobileDrawerState extends State<GhostWriterMobileDrawer>
                 ),
                 _AccountRow(
                   name: widget.sessionName,
+                  photoUrl: widget.photoUrl,
                   credits: widget.credits,
                   onSettings: widget.onSettings == null
                       ? null
@@ -565,9 +568,11 @@ class _AccountRow extends StatelessWidget {
     required this.credits,
     required this.onSignOut,
     this.onSettings,
+    this.photoUrl,
   });
 
   final String name;
+  final String? photoUrl;
   final int credits;
   final VoidCallback? onSignOut;
   final VoidCallback? onSettings;
@@ -598,13 +603,29 @@ class _AccountRow extends StatelessWidget {
                 colors: [Color(0xFFFF4A4F), Color(0xFF8E1218)],
               ),
             ),
-            child: Text(
-              display[0],
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
+            clipBehavior: Clip.antiAlias,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Center(
+                  child: Text(
+                    display[0],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                // The photo over the initial; the initial shows while it loads.
+                if (photoUrl != null)
+                  Image.network(
+                    photoUrl!,
+                    fit: BoxFit.cover,
+                    excludeFromSemantics: true,
+                    errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                  ),
+              ],
             ),
           ),
           const SizedBox(width: 10),

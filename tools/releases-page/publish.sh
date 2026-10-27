@@ -3,6 +3,10 @@
 # refreshes the page itself). Run from your machine:
 #
 #   bash tools/releases-page/publish.sh APK VERSION BUILD "note" ["note" ...]
+#   bash tools/releases-page/publish.sh DRIVE_LINK VERSION BUILD "note" ...
+#
+# A Google Drive share link (from /drive-release:release, "anyone with the
+# link") is fetched by the server itself: nothing is uploaded from here.
 #   bash tools/releases-page/publish.sh --page-only
 #
 # Builds stay forever (rollbacks); the newest build is shown first. The
@@ -18,7 +22,16 @@ APK=$1; VERSION=$2; BUILD=$3; shift 3
 case "$APK" in *admin*) echo "refusing: the admin app is not published here"; exit 1;; esac
 FILE=octopilot-v$VERSION.apk
 ssh $HOST "test ! -e $DIR/files/$FILE" || { echo "$FILE is already published; use a new version"; exit 1; }
-scp -q "$APK" "$HOST:$DIR/files/$FILE.part"
+case "$APK" in
+  https://drive.google.com/*|https://drive.usercontent.google.com/*)
+    ID=$(printf '%s' "$APK" | sed -nE 's#.*(/d/|[?&]id=)([A-Za-z0-9_-]+).*#\2#p')
+    [ -n "$ID" ] || { echo "can't find the file id in $APK"; exit 1; }
+    # An APK is a zip; anything else is Drive's "can't download" page.
+    ssh $HOST "curl -fsSL --retry 3 -o $DIR/files/$FILE.part 'https://drive.usercontent.google.com/download?id=$ID&export=download&confirm=t' && head -c 2 $DIR/files/$FILE.part | grep -q PK" \
+      || { ssh $HOST "rm -f $DIR/files/$FILE.part"; echo "Drive download failed (is the link 'anyone with the link'?)"; exit 1; }
+    ;;
+  *) scp -q "$APK" "$HOST:$DIR/files/$FILE.part" ;;
+esac
 NOTES=$(printf '%s\n' "$@" | python -c 'import json,sys; print(json.dumps([l for l in sys.stdin.read().splitlines() if l.strip()]))' 2>/dev/null \
   || printf '%s\n' "$@" | /c/Users/USER/AppData/Local/Python/bin/python -c 'import json,sys; print(json.dumps([l for l in sys.stdin.read().splitlines() if l.strip()]))')
 ssh $HOST "cd $DIR && mv files/$FILE.part files/$FILE && python3 - '$VERSION' '$BUILD' 'files/$FILE' '$NOTES'" <<'PY'

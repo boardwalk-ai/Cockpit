@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:ghostwriter/ghostwriter.dart';
+import 'package:octo_notes/octo_notes.dart';
 import 'package:octopilot_shell/octopilot_shell.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:study_studio/study_studio.dart';
@@ -34,6 +35,8 @@ Future<void> main() async {
   runApp(
     ProviderScope(
       overrides: [
+        // OctoNotes signs in with the app's one Firebase account too.
+        ...moduleAuthOverrides,
         studyPushProvider.overrideWith(
           (ref) => ref.watch(studyPushImplProvider),
         ),
@@ -110,6 +113,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
         title: 'OctoNotes',
         description: 'Notes that organise themselves.',
         icon: Icons.sticky_note_2_outlined,
+        path: '/notes',
       ),
       null,
     ),
@@ -137,7 +141,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     onNotifications: _soon,
     onCredits: _soon,
     onAbout: _soon,
-    onSignIn: _auth.enabled ? _auth.signIn : null,
+    onSignIn: _auth.enabled ? _signIn : null,
     onSignOut: _auth.enabled ? _signOut : null,
     // Needs the account-deletion endpoint.
     onDeleteAccount: (context) async => _soon(context),
@@ -219,7 +223,14 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     }
   }
 
+  /// Bumped on every load; an older load that finishes late is dropped.
+  int _accountLoad = 0;
+
+  /// The account: shown at once from the sign-in itself (name, email, Google
+  /// photo), then the server adds the plan and the balance. A server that
+  /// doesn't answer is asked again; the account stays shown meanwhile.
   Future<void> _loadAccount() async {
+    final load = ++_accountLoad;
     if (_auth.enabled && !_auth.isSignedIn) {
       _account.value = null;
       _access.stop();
@@ -227,21 +238,43 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     }
     _access.start();
     _registrar.start();
-    try {
-      final me = await GhostWriterHost.me(auth: _auth);
-      // Signed in: this phone gets Study Studio notifications if allowed.
-      ref.read(studyPushLinkProvider)?.start();
+    final profile = ref.read(authServiceProvider).profile;
+    if (profile != null) {
+      final was = _account.value;
       _account.value = ShellAccount(
-        name: (me['name'] as String?) ?? (me['email'] as String?) ?? 'You',
-        email: me['email'] as String?,
-        photoUrl: me['photoUrl'] as String?,
-        plan: me['plan'] as String?,
-        credits: (me['octoCredits'] as num?)?.toInt(),
+        name: profile.name ?? profile.email ?? 'You',
+        email: profile.email,
+        photoUrl: profile.photoUrl ?? was?.photoUrl,
+        plan: was?.plan,
+        credits: was?.credits,
       );
-    } on Object {
-      // The server is unreachable: show the app without an account.
-      _account.value = null;
     }
+    Map<String, dynamic>? me;
+    for (var attempt = 0; me == null && attempt < 4; attempt++) {
+      try {
+        me = await GhostWriterHost.me(auth: _auth);
+      } on Object {
+        if (load != _accountLoad) return;
+        await Future<void>.delayed(Duration(seconds: 1 << attempt));
+      }
+      if (load != _accountLoad) return;
+    }
+    if (me == null) return; // the sign-in's profile stays
+    // Signed in: this phone gets Study Studio notifications if allowed.
+    ref.read(studyPushLinkProvider)?.start();
+    _account.value = ShellAccount(
+      name: (me['name'] as String?) ?? profile?.name ?? (me['email'] as String?) ?? 'You',
+      email: (me['email'] as String?) ?? profile?.email,
+      photoUrl: profile?.photoUrl ?? me['photoUrl'] as String?,
+      plan: me['plan'] as String?,
+      credits: (me['octoCredits'] as num?)?.toInt(),
+    );
+  }
+
+  /// Settings' "Sign in": the account picker, then the account at once.
+  Future<void> _signIn() async {
+    await _auth.signIn();
+    await _loadAccount();
   }
 
   /// The admin app changed something: show or hide modules, move the
@@ -311,7 +344,7 @@ class _OctopilotAppState extends ConsumerState<OctopilotApp> {
     overrides: [studyVoiceProvider.overrideWithValue(_studyVoice)],
     child: OctopilotShellApp(
       services: _services,
-      moduleRoutes: [..._ghostWriter.routes(), ..._studyStudio.routes()],
+      moduleRoutes: [..._ghostWriter.routes(), ..._studyStudio.routes(), ...const OctoNotesModule().routes()],
       links: _links.stream,
       overlay: (context, child) => NotificationPrompt(
         registrar: _registrar,

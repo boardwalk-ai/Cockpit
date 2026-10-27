@@ -12,6 +12,7 @@ class NotesSession {
     this.courseId,
     this.deckRef,
     this.durationMs = 0,
+    this.startedAt,
   });
 
   factory NotesSession.fromJson(Map<String, dynamic> j) => NotesSession(
@@ -23,6 +24,7 @@ class NotesSession {
         courseId: j['courseId'] as String?,
         deckRef: j['deckRef'] as String?,
         durationMs: (j['durationMs'] as num?)?.toInt() ?? 0,
+        startedAt: DateTime.tryParse((j['startedAt'] as String?) ?? ''),
       );
 
   final String id;
@@ -35,6 +37,7 @@ class NotesSession {
   final String? courseId;
   final String? deckRef;
   final int durationMs;
+  final DateTime? startedAt;
 
   bool get isFinalized => status == 'finalized';
 }

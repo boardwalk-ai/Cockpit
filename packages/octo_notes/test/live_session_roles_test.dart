@@ -123,7 +123,7 @@ void main() {
     await tester.tap(find.text('Type'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 600));
-    expect(find.text('Cellular respiration'), findsOneWidget);
+    expect(find.text('\u200BCellular respiration'), findsOneWidget);
     expect(find.byTooltip('Heading'), findsOneWidget);
     expect(find.text('Expand'), findsOneWidget);
 
@@ -138,7 +138,60 @@ void main() {
     await tester.enterText(find.byType(TextField).at(quotes + 1), 'Krebs cycle');
     await tester.tap(find.byTooltip('Heading'));
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Krebs cycle'), findsOneWidget);
+    expect(find.text('\u200BKrebs cycle'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('phone, typewriter: backspace takes formats and quotes off, undo brings them back', (tester) async {
+    await _open(tester, SessionRole.solo);
+    await tester.tap(find.text('Type'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    TextField field(int i) => tester.widget<TextField>(find.byType(TextField).at(i));
+    // Demo page: heading, bullet, quote, empty line.
+    expect(find.byType(TextField), findsNWidgets(4));
+    final bullet = field(1).controller!;
+    expect(bullet.text, '\u200BGlycolysis: cytoplasm, no oxygen');
+
+    // Backspace at the start of the bullet (the keyboard deletes the mark): plain text.
+    await tester.tap(find.byType(TextField).at(1));
+    await tester.enterText(find.byType(TextField).at(1), 'Glycolysis: cytoplasm, no oxygen');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(bullet.text, '\u200BGlycolysis: cytoplasm, no oxygen', reason: 'the mark comes back');
+    expect(find.byType(TextField), findsNWidgets(4));
+
+    // Backspace at the start of the empty line under the quote: the quote goes.
+    await tester.tap(find.byType(TextField).at(3));
+    await tester.enterText(find.byType(TextField).at(3), '');
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(TextField), findsNWidgets(3));
+    expect(find.textContaining('Pyruvate'), findsNothing);
+
+    // Undo twice: the quote, then the bullet.
+    await tester.tap(find.byTooltip('Undo'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(TextField), findsNWidgets(4));
+    expect(find.textContaining('Pyruvate'), findsOneWidget);
+    await tester.tap(find.byTooltip('Redo'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(TextField), findsNWidgets(3));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('phone, typewriter: a tap on the empty page types; the recording pill opens the recorder', (tester) async {
+    await _open(tester, SessionRole.solo);
+    await tester.tap(find.text('Type'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    final fields = find.byType(TextField);
+    await tester.tapAt(tester.getBottomLeft(fields.last) + const Offset(40, 120));
+    await tester.pump(const Duration(milliseconds: 300));
+    final last = tester.widget<TextField>(fields.last);
+    expect(last.focusNode!.hasFocus, isTrue);
+    await tester.tap(find.bySemanticsLabel(RegExp('Open the recording')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.byTooltip('Heading'), findsNothing, reason: 'back on the recording page');
     expect(tester.takeException(), isNull);
   });
 

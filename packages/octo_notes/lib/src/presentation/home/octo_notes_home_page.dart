@@ -1,18 +1,29 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:cockpit_ui/cockpit_ui.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../application/account_providers.dart';
+import '../../application/open_session.dart';
 import '../../application/session_providers.dart';
+import '../../data/api/live_socket.dart';
+import '../../data/api/octo_notes_config.dart';
 import '../../data/auth/notes_auth.dart';
 import '../../domain/account.dart';
 import '../../domain/notes_session.dart';
 import '../../theme/octo_notes_theme.dart';
 import '../new_session/new_session_dialog.dart';
 import '../new_session/new_session_sheet.dart';
+import '../notebooks/notebooks_page.dart';
 import '../widgets/octo_widgets.dart';
 import 'header_glow.dart';
+
+part 'phone_home.dart';
 
 /// Width at/above which OctoNotes uses the desktop layout. PC-first for now.
 const double kOctoDesktop = 900;
@@ -36,7 +47,7 @@ class OctoNotesHomePage extends StatelessWidget {
           final pad = desktop ? CockpitSpacing.xxxl : CockpitSpacing.lg;
           return Scaffold(
             backgroundColor: scheme.surface,
-            drawer: const _OctoDrawer(),
+            drawer: desktop ? const _OctoDrawer() : null,
             body: SafeArea(
               child: Stack(
                 children: [
@@ -57,29 +68,18 @@ class OctoNotesHomePage extends StatelessWidget {
                     // very short screen forces it. Mobile: normal page scroll.
                     child: desktop
                         ? _DesktopHome()
-                        : ListView(
-                            padding: EdgeInsets.zero,
-                            children: const [
-                              _HeaderBar(),
-                              SizedBox(height: CockpitSpacing.lg),
-                              _LiveSessionStrip(),
-                              SizedBox(height: CockpitSpacing.xl),
-                              _QuickStartSection(),
-                              SizedBox(height: CockpitSpacing.xl),
-                              _MainColumns(desktop: false),
-                              SizedBox(height: CockpitSpacing.xl),
-                              _SyncFooter(),
-                            ],
-                          ),
+                        : const _PhoneHome(),
                   ),
                 ),
                   ),
                   ),
-                  const Positioned(
-                    right: CockpitSpacing.xl,
-                    bottom: CockpitSpacing.xl,
-                    child: OctoThemeSwitcher(),
-                  ),
+                  // The phone follows the app's theme (its settings).
+                  if (desktop)
+                    const Positioned(
+                      right: CockpitSpacing.xl,
+                      bottom: CockpitSpacing.xl,
+                      child: OctoThemeSwitcher(),
+                    ),
                 ],
               ),
             ),
@@ -226,10 +226,13 @@ class _HeaderBar extends StatelessWidget {
 /// OctoNotes, Study Studio and OctopilotWeb. Borderless: icon + number +
 /// initial, no outlined chip.
 class _AccountPill extends ConsumerWidget {
-  const _AccountPill({this.showCredits = true});
+  const _AccountPill({this.showCredits = true, this.ring = false});
 
   /// The phone layout shows the balance as its own pill instead.
   final bool showCredits;
+
+  /// The phone layout turns a ring round the avatar.
+  final bool ring;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -273,7 +276,23 @@ class _AccountPill extends ConsumerWidget {
             ),
             const SizedBox(width: CockpitSpacing.md),
           ],
-          _Avatar(account: account),
+          // The phone opens the app's settings, as Study Studio does.
+          if (ring)
+            _SpinRing(
+              child: Semantics(
+                button: true,
+                label: 'Profile and settings',
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.selectionClick();
+                    context.push('/settings');
+                  },
+                  child: _Avatar(account: account, menu: false),
+                ),
+              ),
+            )
+          else
+            _Avatar(account: account),
         ],
       ),
     );
@@ -293,15 +312,28 @@ class _CreditsPill extends ConsumerWidget {
 }
 
 class _Avatar extends ConsumerWidget {
-  const _Avatar({required this.account});
+  const _Avatar({required this.account, this.menu = true});
 
   final NotesAccount account;
+
+  /// Off when a tap on the avatar does something else.
+  final bool menu;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final photo = account.photoUrl;
     final auth = ref.watch(notesAuthProvider);
+    final circle = CircleAvatar(
+      radius: 16,
+      backgroundColor: scheme.surfaceContainerHighest,
+      foregroundImage: photo == null ? null : NetworkImage(photo),
+      child: Text(
+        account.initial,
+        style: Theme.of(context).textTheme.labelLarge,
+      ),
+    );
+    if (!menu) return circle;
     return PopupMenuButton<String>(
       tooltip: account.email ?? account.displayName,
       position: PopupMenuPosition.under,
@@ -313,15 +345,7 @@ class _Avatar extends ConsumerWidget {
         PopupMenuItem<String>(enabled: false, child: Text(account.email ?? account.displayName)),
         const PopupMenuItem<String>(value: 'signOut', child: Text('Sign out')),
       ],
-      child: CircleAvatar(
-        radius: 16,
-        backgroundColor: scheme.surfaceContainerHighest,
-        foregroundImage: photo == null ? null : NetworkImage(photo),
-        child: Text(
-          account.initial,
-          style: Theme.of(context).textTheme.labelLarge,
-        ),
-      ),
+      child: circle,
     );
   }
 }
@@ -635,7 +659,7 @@ class _ContinueSection extends ConsumerWidget {
               title: s.title,
               subtitle: _statusLabel(s),
               ready: s.status == 'ended',
-              onTap: () => context.go('/notes/session?id=${s.id}'),
+              onTap: () => openSession(context, ref.read(octoNotesApiProvider), s),
             ),
             const SizedBox(height: CockpitSpacing.sm),
           ],
@@ -758,15 +782,22 @@ class _RecentNotesSection extends ConsumerWidget {
     final header = Row(
       children: [
         const Expanded(child: Eyebrow('Recent Notes')),
-        Wrap(
-          spacing: CockpitSpacing.xs,
-          children: const [
-            _FilterButton('Course'),
-            _FilterButton('Status'),
-            _FilterButton('Date'),
-            _FilterButton('Study Ready'),
-          ],
+        TextButton.icon(
+          onPressed: () => context.go('/notes/notebooks'),
+          icon: const Icon(Icons.auto_stories_outlined, size: 16),
+          label: const Text('Notebooks'),
         ),
+        // A phone has room for the Notebooks link only.
+        if (_isDesktop(context))
+          Wrap(
+            spacing: CockpitSpacing.xs,
+            children: const [
+              _FilterButton('Course'),
+              _FilterButton('Status'),
+              _FilterButton('Date'),
+              _FilterButton('Study Ready'),
+            ],
+          ),
       ],
     );
     final notes = home != null
@@ -780,6 +811,7 @@ class _RecentNotesSection extends ConsumerWidget {
                 duration: _duration(s.durationMs),
                 deck: s.deckRef == null ? 'Not saved to The Deck' : 'The Deck',
                 finalized: s.isFinalized,
+                onTap: () => openSession(context, ref.read(octoNotesApiProvider), s),
               ),
           ]
         : const [
@@ -862,6 +894,7 @@ class _NoteRow extends StatelessWidget {
     required this.duration,
     required this.deck,
     this.finalized = false,
+    this.onTap,
   });
 
   final IconData icon;
@@ -871,6 +904,7 @@ class _NoteRow extends StatelessWidget {
   final String duration;
   final String deck;
   final bool finalized;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -879,7 +913,7 @@ class _NoteRow extends StatelessWidget {
     final desktop = _isDesktop(context);
 
     return OctoHoverRow(
-      onTap: () {},
+      onTap: onTap ?? () {},
       child: Row(
         children: [
           Icon(icon, size: 20, color: scheme.onSurfaceVariant),

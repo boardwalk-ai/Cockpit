@@ -99,6 +99,16 @@ class OctoNotesApi {
       client.postJson('/v1/sessions/$sessionId/ink/pages', {'id': id ?? newId(), 'background': background});
   Future<Map<String, dynamic>> strokeOps(String pageId, List<Map<String, dynamic>> ops, {String? deviceId}) =>
       client.postJson('/v1/ink/pages/$pageId/ops', {'deviceId': ?deviceId, 'ops': ops});
+  Future<Map<String, dynamic>> inkStrokes(String pageId) => client.getJson('/v1/ink/pages/$pageId/strokes');
+  Future<Map<String, dynamic>> inkRecognitions(String pageId) => client.getJson('/v1/ink/pages/$pageId/recognitions');
+
+  /// Reads the strokes as a formula on the server; returns its LaTeX.
+  Future<Map<String, dynamic>> inkFormula(String pageId, List<String> strokeIds) =>
+      client.postJson('/v1/ink/pages/$pageId/formula', {'strokeIds': strokeIds});
+
+  /// Text the phone read itself from a line of handwriting.
+  Future<Map<String, dynamic>> addInkRecognition(String pageId, List<String> strokeIds, String text, double confidence) =>
+      client.postJson('/v1/ink/pages/$pageId/recognitions', {'strokeIds': strokeIds, 'text': text, 'confidence': confidence});
   Future<Map<String, dynamic>> recognizeInk(String pageId, List<String> strokeIds) =>
       client.postJson('/v1/ink/pages/$pageId/recognize', {'strokeIds': strokeIds});
 
@@ -177,6 +187,10 @@ class OctoNotesApi {
       client.postJson('/v1/final-notes/$finalNotesId/export', {'format': format});
   Future<Map<String, dynamic>> exportStatus(String exportId) => client.getJson('/v1/exports/$exportId');
   Future<Map<String, dynamic>> finalNotes(String id) => client.getJson('/v1/final-notes/$id');
+  /// A session's final notes, every version.
+  Future<List<dynamic>> finalNotesOf(String sessionId) => client.getList('/v1/final-notes?sessionId=$sessionId');
+  /// A page of a material (a board photo, a slide) as an image link.
+  Future<Map<String, dynamic>> materialImage(String materialId, int page) => client.getJson('/v1/materials/$materialId/pages/$page/image');
   Future<List<dynamic>> materials(String sessionId) => client.getList('/v1/sessions/$sessionId/materials');
   Future<Map<String, dynamic>> recommendations(String finalNotesId) => client.getJson('/v1/final-notes/$finalNotesId/recommendations');
   Future<Map<String, dynamic>> createConversion(String finalNotesId, {List<String>? topicIds}) =>

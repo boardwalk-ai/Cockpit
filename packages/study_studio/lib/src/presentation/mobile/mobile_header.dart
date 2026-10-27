@@ -309,7 +309,11 @@ class _Profile extends StatelessWidget {
     return Consumer(
       builder: (context, ref, _) {
         final me = ref.watch(meProvider).valueOrNull;
-        return button(me?.initials ?? '?', me?.photoUrl);
+        final profile = ref.watch(authServiceProvider).profile;
+        return button(
+          me?.initials ?? profile?.initials ?? '?',
+          me?.photoUrl ?? profile?.photoUrl,
+        );
       },
     );
   }

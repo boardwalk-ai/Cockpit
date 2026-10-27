@@ -19,7 +19,9 @@ class LiveSocket {
   final String baseUrl;
   final String sessionId;
   final Future<String?> Function() tokenProvider;
-  final String? deviceId;
+  /// This device; the server takes captions, levels and presence only from
+  /// a known device. Often known only after connecting: see [identify].
+  String? deviceId;
 
   /// Local dev only (backend auth disabled).
   final String? devUserId;
@@ -82,6 +84,16 @@ class LiveSocket {
     final delay = Duration(milliseconds: (500 * (1 << _attempt.clamp(0, 6))).clamp(500, 30000));
     _attempt++;
     Timer(delay, connect);
+  }
+
+  /// Names this device. The server reads it when the socket signs in, so a
+  /// new one reconnects (the reconnect sends it).
+  void identify(String id) {
+    if (id == deviceId) return;
+    deviceId = id;
+    final c = _channel;
+    _channel = null;
+    unawaited(c?.sink.close());
   }
 
   Future<void> close() async {

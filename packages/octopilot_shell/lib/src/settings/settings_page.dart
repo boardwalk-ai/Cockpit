@@ -149,11 +149,7 @@ class ShellSettingsPage extends StatelessWidget {
                                 ),
                                 if (account == null &&
                                     services.onSignIn != null)
-                                  _Row(
-                                    icon: Icons.login_rounded,
-                                    title: 'Sign in',
-                                    onTap: () => services.onSignIn!(),
-                                  ),
+                                  _SignInRow(signIn: services.onSignIn!),
                                 if (account != null &&
                                     services.onSignOut != null)
                                   _Row(
@@ -372,6 +368,56 @@ class _Appearance extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// "Sign in with Google": a spinner while the account picker and the server
+/// are busy, and a plain message if it didn't work.
+class _SignInRow extends StatefulWidget {
+  const _SignInRow({required this.signIn});
+
+  final Future<void> Function() signIn;
+
+  @override
+  State<_SignInRow> createState() => _SignInRowState();
+}
+
+class _SignInRowState extends State<_SignInRow> {
+  bool _busy = false;
+
+  Future<void> _go() async {
+    if (_busy) return;
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    setState(() => _busy = true);
+    try {
+      await widget.signIn();
+    } on Object catch (e) {
+      messenger?.showSnackBar(
+        SnackBar(content: Text("Couldn't sign in. Check your connection and try again. ($e)")),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = ShellColors.of(context);
+    return ListTile(
+      leading: Icon(Icons.login_rounded, color: c.muted),
+      title: Text(
+        _busy ? 'Signing in…' : 'Sign in with Google',
+        style: TextStyle(color: c.text, fontSize: 13),
+      ),
+      trailing: _busy
+          ? SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: c.accent),
+            )
+          : Icon(Icons.chevron_right_rounded, color: c.hint),
+      onTap: _busy ? null : _go,
     );
   }
 }

@@ -7,6 +7,8 @@ import 'presentation/home/octo_notes_home_page.dart';
 import 'presentation/live/live_session_hub_page.dart';
 import 'presentation/live/session_finalize_page.dart';
 import 'presentation/new_session/join_recorder_page.dart';
+import 'presentation/notebooks/notebook_reader_page.dart';
+import 'presentation/notebooks/notebooks_page.dart';
 import 'presentation/recommendations/final_notes_page.dart';
 import 'presentation/record/octo_notes_record_page.dart';
 import 'presentation/review/session_review_page.dart';
@@ -63,6 +65,25 @@ class OctoNotesModule extends CockpitModule {
               builder: (_, _) => const OctoNotesSessionPage(),
             ),
           ],
+        ),
+        // Every course as a notebook; its pages are the lectures.
+        GoRoute(
+          path: 'notebooks',
+          builder: (_, s) => NotebooksPage(manage: s.uri.queryParameters['manage']),
+        ),
+        // A notebook read like a book (`course=loose` for lectures without one;
+        // `session` opens at that lecture).
+        GoRoute(
+          path: 'notebook',
+          builder: (_, s) {
+            final course = s.uri.queryParameters['course'];
+            return NotebookReaderPage(
+              courseId: course == null || course == 'loose' ? null : course,
+              loose: course == 'loose',
+              sessionId: s.uri.queryParameters['session'],
+              cover: s.extra is Notebook ? s.extra! as Notebook : null,
+            );
+          },
         ),
         // The other phone joins a session as its recorder (pairing).
         GoRoute(

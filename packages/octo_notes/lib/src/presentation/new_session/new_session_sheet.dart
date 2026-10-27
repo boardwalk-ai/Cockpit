@@ -16,7 +16,8 @@ import 'pairing_widgets.dart';
 /// needs is up top (title, course, workspace, where to record), the rest
 /// folds under "More options", and Start stays at the bottom. The desktop
 /// keeps its modal (`showNewSessionDialog`).
-Future<void> showNewSessionSheet(BuildContext context) {
+/// [courseId] picks the notebook (course) up front, e.g. "New page in Biology 101".
+Future<void> showNewSessionSheet(BuildContext context, {String? courseId}) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -32,7 +33,7 @@ Future<void> showNewSessionSheet(BuildContext context) {
         maxChildSize: 1,
         snap: true,
         snapSizes: const [.84],
-        builder: (_, scroll) => NewSessionSheet(scroll: scroll),
+        builder: (_, scroll) => NewSessionSheet(scroll: scroll, courseId: courseId),
       ),
     ),
   );
@@ -54,9 +55,10 @@ class _Course {
 const _lastKey = 'octonotes.lastSession';
 
 class NewSessionSheet extends ConsumerStatefulWidget {
-  const NewSessionSheet({super.key, required this.scroll});
+  const NewSessionSheet({super.key, required this.scroll, this.courseId});
 
   final ScrollController scroll;
+  final String? courseId;
 
   @override
   ConsumerState<NewSessionSheet> createState() => _NewSessionSheetState();
@@ -118,7 +120,7 @@ class _NewSessionSheetState extends ConsumerState<NewSessionSheet> {
     if (!mounted) return;
     setState(() {
       _courses = list;
-      _course = list.isEmpty ? null : list.first;
+      _course = list.where((c) => c.id != null && c.id == widget.courseId).firstOrNull ?? (list.isEmpty ? null : list.first);
       if (!_titleEdited) _title.text = _autoTitle();
     });
   }
@@ -182,7 +184,7 @@ class _NewSessionSheetState extends ConsumerState<NewSessionSheet> {
     }
     setState(() {
       final course = _courses.where((c) => c.name == saved[0]).firstOrNull;
-      if (course != null) _course = course;
+      if (course != null && widget.courseId == null) _course = course;
       _workspace = int.tryParse(saved[1]) ?? _workspace;
       _otherPhone = saved[2] == '1';
       _liveTranscription = saved[3] == '1';
@@ -234,7 +236,6 @@ class _NewSessionSheetState extends ConsumerState<NewSessionSheet> {
             'liveTranscription': _liveTranscription,
             'smartOrganization': _smartOrganization,
             'liveSuggestions': _liveSuggestions,
-            'saveToDeck': _saveToDeck,
           },
         );
         if (_otherPhone) {

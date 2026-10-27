@@ -6,6 +6,11 @@ part of 'live_session_hub_page.dart';
 // becomes a quote with its time; AI can expand the block you're on.
 // ===========================================================================
 
+/// An invisible mark at the start of every line's text. A soft keyboard
+/// says nothing when Backspace has nothing to delete, so the mark is what it
+/// deletes: when it's gone, Backspace was pressed at the start of the line.
+const _mark = '\u200B';
+
 class _TwBlock {
   _TwBlock({
     required this.id,
@@ -16,7 +21,7 @@ class _TwBlock {
     this.revision = 0,
     this.origin = 'student',
     this.atMs,
-  }) : text = TextEditingController(text: text);
+  }) : text = TextEditingController(text: '$_mark$text');
 
   final String id;
   String type;
@@ -29,8 +34,15 @@ class _TwBlock {
   final int? atMs;
   bool important = false;
 
+  /// The text without the mark.
+  String get value => text.text.startsWith(_mark) ? text.text.substring(1) : text.text;
+
+  /// Sets the text, the caret [at] an offset into it.
+  void setValue(String v, int at) =>
+      text.value = TextEditingValue(text: '$_mark$v', selection: TextSelection.collapsed(offset: at + 1));
+
   /// The text last saved (the controller also fires on cursor moves).
-  late String saved = text.text;
+  late String saved = value;
 
   /// Quotes and AI text are kept as they came.
   bool get readOnly => type == 'quote' || type == 'transcriptExcerpt' || origin == 'aiInsertedByStudent';
@@ -70,6 +82,16 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
   /// The AI's text while it streams in, under [_aiFor].
   String? _aiText;
   _TwBlock? _aiFor;
+
+  // Undo / redo: whole-page snapshots. A typing run on one line is one step.
+  final List<List<_Snap>> _undo = [];
+  final List<List<_Snap>> _redo = [];
+  _TwBlock? _typingIn;
+  DateTime _typedAt = DateTime(0);
+  bool _restoring = false;
+
+  /// Blocks re-created by undo get new ids (the server keeps deleted ones).
+  final Map<String, String> _alias = {};
 
   _LiveSessionHubPageState get hub => widget.state;
 
@@ -139,6 +161,121 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
     if (save) _save(b, isNew: true);
   }
 
+  List<_Snap> _snapshot() => [for (final b in _blocks) _Snap.of(b)];
+
+  /// Call before a change, so undo comes back to here.
+  void _record() {
+    if (_restoring) return;
+    _undo.add(_snapshot());
+    if (_undo.length > 100) _undo.removeAt(0);
+    _redo.clear();
+    _typingIn = null;
+  }
+
+  void _undoRedo(bool undo) {
+    final from = undo ? _undo : _redo;
+    if (from.isEmpty) return;
+    HapticFeedback.lightImpact();
+    (undo ? _redo : _undo).add(_snapshot());
+    _restore(from.removeLast());
+    _typingIn = null;
+  }
+
+  String _idOf(String id) {
+    var x = id;
+    while (_alias[x] != null) {
+      x = _alias[x]!;
+    }
+    return x;
+  }
+
+  void _restore(List<_Snap> snap) {
+    _restoring = true;
+    final byId = {for (final b in _blocks) b.id: b};
+    final keep = <_TwBlock>[];
+    for (final x in snap) {
+      var b = byId.remove(_idOf(x.id));
+      if (b == null) {
+        // Deleted since: back as a new block in the same place.
+        b = _TwBlock(id: OctoNotesApi.newId(), type: x.type, text: x.text, position: x.position, checked: x.checked, origin: x.origin == 'aiInsertedByStudent' ? 'student' : x.origin, atMs: x.atMs);
+        _alias[_idOf(x.id)] = b.id;
+        _add(b, save: true);
+        _blocks.remove(b);
+      } else if (b.type != x.type || b.value != x.text || b.checked != x.checked) {
+        b
+          ..type = x.type
+          ..checked = x.checked
+          ..setValue(x.text, x.text.length)
+          ..saved = x.text;
+        _save(b);
+      }
+      b.important = x.important;
+      keep.add(b);
+    }
+    for (final gone in byId.values) {
+      unawaited(_sync?.delete(gone.id, baseRevision: gone.revision));
+      if (_focused == gone) _focused = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) => gone.dispose());
+    }
+    setState(() {
+      _blocks
+        ..clear()
+        ..addAll(keep);
+    });
+    _restoring = false;
+  }
+
+  /// Takes a line out; the caret goes to the end of [focus].
+  void _remove(_TwBlock b, {_TwBlock? focus}) {
+    setState(() => _blocks.remove(b));
+    unawaited(_sync?.delete(b.id, baseRevision: b.revision));
+    if (_focused == b) _focused = null;
+    if (focus != null) {
+      focus.focus.requestFocus();
+      focus.text.selection = TextSelection.collapsed(offset: focus.text.text.length);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => b.dispose());
+    if (_blocks.isEmpty) _insertAfter(null, 'paragraph', '');
+  }
+
+  /// Backspace at the start of a line: a heading or list item becomes plain
+  /// text; plain text joins the line above; a quote above is taken out.
+  void _backspaceAtStart(_TwBlock b) {
+    if (b.type != 'paragraph') {
+      _record();
+      HapticFeedback.selectionClick();
+      setState(() => b.type = 'paragraph');
+      _save(b);
+      return;
+    }
+    final i = _blocks.indexOf(b);
+    if (i <= 0) return;
+    final above = _blocks[i - 1];
+    _record();
+    HapticFeedback.selectionClick();
+    if (above.readOnly) {
+      _remove(above);
+      return;
+    }
+    final join = above.value.length;
+    final merged = above.value + b.value;
+    above.setValue(merged, join);
+    _remove(b);
+    above.focus.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) => above.text.selection = TextSelection.collapsed(offset: join + 1));
+  }
+
+  /// A tap below the last line: type there.
+  void _typeAtEnd() {
+    final last = _blocks.lastOrNull;
+    if (last == null || last.readOnly || last.type.startsWith('h')) {
+      _insertAfter(last, 'paragraph', '');
+      return;
+    }
+    last.focus.requestFocus();
+    last.text.selection = TextSelection.collapsed(offset: last.text.text.length);
+  }
+
   void _save(_TwBlock b, {bool isNew = false}) {
     final sync = _sync;
     if (sync == null) return;
@@ -146,7 +283,7 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
       b.id,
       {
         'type': b.type,
-        'text': b.text.text,
+        'text': b.value,
         'checked': b.checked,
         if (isNew) ...{'position': b.position, 'origin': b.origin == 'fromTranscript' ? 'fromTranscript' : 'student'},
         if (isNew && b.atMs != null) 'audioTsMs': b.atMs,
@@ -157,8 +294,33 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
 
   /// Enter splits the block; the new one continues a list.
   void _onText(_TwBlock b) {
-    final t = b.text.text;
+    final raw = b.text.text;
+    if (!raw.startsWith(_mark)) {
+      // The mark was deleted. Same text otherwise: Backspace at the start.
+      final atStart = raw == b.saved;
+      b.setValue(raw, atStart ? 0 : raw.length);
+      if (atStart) {
+        _backspaceAtStart(b);
+        return;
+      }
+    } else if (b.text.selection.isCollapsed && b.text.selection.baseOffset == 0) {
+      // The caret never sits before the mark.
+      b.text.selection = const TextSelection.collapsed(offset: 1);
+    }
+    final t = b.value;
     if (t == b.saved) return;
+    // One undo step per typing run on a line.
+    final now = DateTime.now();
+    if (!_restoring && (_typingIn != b || now.difference(_typedAt) > const Duration(seconds: 2))) {
+      final before = _snapshot();
+      final i = _blocks.indexOf(b);
+      if (i >= 0) before[i] = before[i].withText(b.saved);
+      _undo.add(before);
+      if (_undo.length > 100) _undo.removeAt(0);
+      _redo.clear();
+    }
+    _typingIn = b;
+    _typedAt = now;
     b.saved = t;
     final nl = t.indexOf('\n');
     if (nl < 0) {
@@ -171,13 +333,16 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
     if (list && before.isEmpty) {
       // Enter on an empty list item ends the list.
       b.type = 'paragraph';
-      b.text.value = TextEditingValue(text: after, selection: const TextSelection.collapsed(offset: 0));
+      b.setValue(after, 0);
+      b.saved = after;
       _save(b);
       setState(() {});
       return;
     }
-    b.text.value = TextEditingValue(text: before, selection: TextSelection.collapsed(offset: before.length));
+    b.setValue(before, before.length);
+    b.saved = before;
     _save(b);
+    _typingIn = null;
     _insertAfter(b, list ? b.type : 'paragraph', after);
   }
 
@@ -197,7 +362,7 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
     if (focus && !b.readOnly) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         b.focus.requestFocus();
-        b.text.selection = const TextSelection.collapsed(offset: 0);
+        b.text.selection = const TextSelection.collapsed(offset: 1);
       });
     }
     return b;
@@ -209,6 +374,7 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
     final b = _target;
     if (b == null || b.readOnly) return;
     HapticFeedback.selectionClick();
+    _record();
     setState(() => b.type = b.type == type ? 'paragraph' : type);
     _save(b);
   }
@@ -220,6 +386,7 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
       return;
     }
     HapticFeedback.mediumImpact();
+    _record();
     final b = _insertAfter(_target, 'quote', l.text, origin: 'fromTranscript', atMs: l.startMs, focus: false);
     // Keep typing under the quote.
     _insertAfter(b, 'paragraph', '');
@@ -243,7 +410,7 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
   Future<void> _expand() async {
     final b = _target;
     final api = hub.ref.read(octoNotesApiProvider);
-    if (b == null || b.text.text.trim().isEmpty) {
+    if (b == null || b.value.trim().isEmpty) {
       _snack(context, 'Write a line first, then AI adds detail from the lecture.');
       return;
     }
@@ -274,6 +441,7 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
       final block = await api.applySuggestion(suggestion, 'insertBelow');
       if (!mounted) return;
       final added = _TwBlock.fromJson(block);
+      _record();
       setState(() => _add(added, at: _blocks.indexOf(b) + 1));
       unawaited(HapticFeedback.mediumImpact());
     } on NotesApiException catch (e) {
@@ -292,6 +460,7 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
 
   void _toggleCheck(_TwBlock b) {
     HapticFeedback.selectionClick();
+    _record();
     setState(() => b.checked = !b.checked);
     _save(b);
   }
@@ -358,17 +527,37 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
-                  : ListView(
-                      padding: const EdgeInsets.fromLTRB(CockpitSpacing.lg, CockpitSpacing.sm, CockpitSpacing.lg, CockpitSpacing.xl),
-                      children: [
-                        for (final b in _blocks) ...[
-                          _BlockRow(
-                            key: ValueKey(b.id),
-                            block: b,
-                            onCheck: () => _toggleCheck(b),
+                  : CustomScrollView(
+                      slivers: [
+                        SliverPadding(
+                          padding: const EdgeInsets.fromLTRB(CockpitSpacing.lg, CockpitSpacing.sm, CockpitSpacing.lg, 0),
+                          sliver: SliverList.list(
+                            children: [
+                              for (final b in _blocks) ...[
+                                _BlockRow(
+                                  key: ValueKey(b.id),
+                                  block: b,
+                                  onCheck: () => _toggleCheck(b),
+                                  onRemove: () {
+                                    _record();
+                                    HapticFeedback.selectionClick();
+                                    _remove(b);
+                                  },
+                                ),
+                                if (_aiFor == b) _AiDraft(text: _aiText ?? ''),
+                              ],
+                            ],
                           ),
-                          if (_aiFor == b) _AiDraft(text: _aiText ?? ''),
-                        ],
+                        ),
+                        // The rest of the page: a tap anywhere types there.
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _typeAtEnd,
+                            child: const SizedBox(height: 160),
+                          ),
+                        ),
                       ],
                     ),
             ),
@@ -380,6 +569,10 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
                 type: _target?.type,
                 important: _target?.important ?? false,
                 aiBusy: _aiFor != null,
+                canUndo: _undo.isNotEmpty,
+                canRedo: _redo.isNotEmpty,
+                onUndo: () => _undoRedo(true),
+                onRedo: () => _undoRedo(false),
                 onType: _setType,
                 onStar: _star,
                 onQuote: _quote,
@@ -398,9 +591,10 @@ class _PhoneTypewriterState extends State<_PhoneTypewriter> {
 }
 
 class _BlockRow extends StatelessWidget {
-  const _BlockRow({super.key, required this.block, required this.onCheck});
+  const _BlockRow({super.key, required this.block, required this.onCheck, required this.onRemove});
   final _TwBlock block;
   final VoidCallback onCheck;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -427,10 +621,37 @@ class _BlockRow extends StatelessWidget {
       textCapitalization: TextCapitalization.sentences,
       style: style,
       cursorColor: scheme.primary,
-      decoration: InputDecoration.collapsed(
-        hintText: heading ? 'Heading' : (b.type == 'paragraph' ? 'Type your notes…' : ''),
-        hintStyle: style?.copyWith(color: scheme.onSurfaceVariant.withValues(alpha: 0.5)),
+      // No box of any kind, focused or not (the app theme draws one).
+      decoration: const InputDecoration(
+        isCollapsed: true,
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        disabledBorder: InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(vertical: 6),
       ),
+    );
+    // The hint sits over the field: the field always holds the mark.
+    final hint = heading ? 'Heading' : (b.type == 'paragraph' ? 'Type your notes…' : '');
+    field = Stack(
+      children: [
+        field,
+        if (hint.isNotEmpty)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ListenableBuilder(
+                listenable: b.text,
+                builder: (_, _) => b.value.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        child: Text(hint, style: style?.copyWith(color: scheme.onSurfaceVariant.withValues(alpha: 0.5))),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
+          ),
+      ],
     );
 
     Widget? lead;
@@ -471,7 +692,21 @@ class _BlockRow extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Tag(text: ai ? 'AI' : (b.atMs == null ? 'Lecture' : _clock(b.atMs!)), color: ai ? scheme.primary : gold),
+            Row(
+              children: [
+                _Tag(text: ai ? 'AI' : (b.atMs == null ? 'Lecture' : _clock(b.atMs!)), color: ai ? scheme.primary : gold),
+                const Spacer(),
+                Semantics(
+                  button: true,
+                  label: 'Remove',
+                  child: InkResponse(
+                    onTap: onRemove,
+                    radius: 18,
+                    child: Icon(Icons.close_rounded, size: 18, color: scheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
             row,
           ],
@@ -652,6 +887,10 @@ class _FormatBar extends StatelessWidget {
     required this.type,
     required this.important,
     required this.aiBusy,
+    required this.canUndo,
+    required this.canRedo,
+    required this.onUndo,
+    required this.onRedo,
     required this.onType,
     required this.onStar,
     required this.onQuote,
@@ -662,6 +901,10 @@ class _FormatBar extends StatelessWidget {
   final String? type;
   final bool important;
   final bool aiBusy;
+  final bool canUndo;
+  final bool canRedo;
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
   final ValueChanged<String> onType;
   final VoidCallback onStar;
   final VoidCallback onQuote;
@@ -672,7 +915,7 @@ class _FormatBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final gold = CockpitColors.brand.tertiary;
-    Widget b(IconData icon, String tip, VoidCallback onTap, {bool on = false, Color? color}) => Tooltip(
+    Widget b(IconData icon, String tip, VoidCallback? onTap, {bool on = false, Color? color}) => Tooltip(
           message: tip,
           child: Semantics(
             button: true,
@@ -689,7 +932,9 @@ class _FormatBar extends StatelessWidget {
                   color: on ? scheme.primary.withValues(alpha: 0.16) : Colors.transparent,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 21, color: color ?? (on ? scheme.primary : scheme.onSurface)),
+                child: Icon(icon,
+                    size: 21,
+                    color: onTap == null ? scheme.onSurface.withValues(alpha: 0.25) : color ?? (on ? scheme.primary : scheme.onSurface)),
               ),
             ),
           ),
@@ -704,6 +949,9 @@ class _FormatBar extends StatelessWidget {
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
+            b(Icons.undo_rounded, 'Undo', canUndo ? onUndo : null),
+            b(Icons.redo_rounded, 'Redo', canRedo ? onRedo : null),
+            Container(width: 1, height: 22, margin: const EdgeInsets.symmetric(horizontal: 4), color: scheme.outlineVariant),
             b(Icons.title_rounded, 'Heading', () => onType('h2'), on: type == 'h2'),
             b(Icons.format_list_bulleted_rounded, 'Bullet', () => onType('bulleted'), on: type == 'bulleted'),
             b(Icons.check_box_outlined, 'Checklist', () => onType('checklist'), on: type == 'checklist'),
@@ -783,6 +1031,21 @@ class _RecordingPill extends StatelessWidget {
     final r = state._recorder;
     final recording = r?.isRecording ?? state._live.isRecording;
     final name = r != null ? 'This phone' : (state._live.recorderName ?? 'Your phone');
+    return Semantics(
+      button: true,
+      label: 'Open the recording',
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.lightImpact();
+          FocusScope.of(context).unfocus();
+          state._open(_HubView.cards);
+        },
+        child: _pill(theme, scheme, recording, name),
+      ),
+    );
+  }
+
+  Widget _pill(ThemeData theme, ColorScheme scheme, bool recording, String name) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -926,4 +1189,22 @@ class _RotatePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RotatePainter old) => old.t != t;
+}
+
+/// One line as it was, for undo.
+class _Snap {
+  const _Snap(this.id, this.type, this.text, this.position, this.checked, this.origin, this.atMs, this.important);
+
+  factory _Snap.of(_TwBlock b) => _Snap(b.id, b.type, b.value, b.position, b.checked, b.origin, b.atMs, b.important);
+
+  final String id;
+  final String type;
+  final String text;
+  final String position;
+  final bool checked;
+  final String origin;
+  final int? atMs;
+  final bool important;
+
+  _Snap withText(String t) => _Snap(id, type, t, position, checked, origin, atMs, important);
 }

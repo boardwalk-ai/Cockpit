@@ -9,10 +9,6 @@ class _PhoneSession extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final live = state._live;
-    final solo = state.widget.role == SessionRole.solo;
     switch (state._view) {
       case _HubView.typewriter:
         return _PhoneTypewriter(state: state);
@@ -24,6 +20,7 @@ class _PhoneSession extends StatelessWidget {
               ? PhoneMagicPencil(
                   key: const ValueKey('pencil'),
                   ink: state._ink,
+                  sync: state._inkSync,
                   notes: state._notes,
                   onClose: () => state._open(_HubView.cards),
                   top: _PencilTop(state: state),
@@ -31,358 +28,11 @@ class _PhoneSession extends StatelessWidget {
               : _RotatePrompt(key: const ValueKey('turn'), onBack: () => state._open(_HubView.cards)),
         );
       case _HubView.cards:
-        break;
-    }
-    return Scaffold(
-      backgroundColor: scheme.surface,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(CockpitSpacing.md, CockpitSpacing.xs, CockpitSpacing.md, CockpitSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  IconButton(
-                    tooltip: 'Back',
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    onPressed: state._leave,
-                  ),
-                  Expanded(
-                    child: Text(
-                      live.title ?? (live.isDemo ? 'Biology 101 · Cellular respiration' : 'Live session'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-                    ),
-                  ),
-                  TextButton(onPressed: state._finish, child: const Text('Finish')),
-                ],
-              ),
-              ...[
-                if (solo)
-                  _SoloRecorderPanel(state: state)
-                else
-                  _MiniRecordingBar(state: state),
-                const SizedBox(height: CockpitSpacing.md),
-                Padding(
-                  padding: const EdgeInsets.only(left: CockpitSpacing.xs, bottom: CockpitSpacing.xs),
-                  child: Text('Live transcript',
-                      style: theme.textTheme.labelMedium?.copyWith(color: scheme.onSurfaceVariant)),
-                ),
-                Expanded(child: _TranscriptFeed(lines: live.lines, compact: solo)),
-                const SizedBox(height: CockpitSpacing.md),
-                _ToolRow(state: state),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Solo: this phone records — status, time, waveform, pause / stop.
-class _SoloRecorderPanel extends StatelessWidget {
-  const _SoloRecorderPanel({required this.state});
-  final _LiveSessionHubPageState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final r = state._recorder;
-    final demo = state._live.isDemo;
-    if (!state.widget.record) {
-      return _Pill(icon: Icons.mic_off_rounded, text: 'Not recording this session', color: scheme.onSurfaceVariant);
-    }
-    if (r != null && r.status == RecorderStatus.failed) {
-      return _RecorderProblem(message: r.error ?? 'Recording stopped.', onRetry: r.start);
-    }
-    final recording = demo || (r?.isRecording ?? false);
-    final paused = r?.isPaused ?? false;
-    final stopped = r?.status == RecorderStatus.stopped;
-    final label = switch (r?.status) {
-      RecorderStatus.paused => 'Paused',
-      RecorderStatus.stopping => 'Saving the recording…',
-      RecorderStatus.stopped => 'Recording saved',
-      RecorderStatus.idle || RecorderStatus.starting => 'Starting the microphone…',
-      _ => 'Recording on this phone',
-    };
-    return Column(
-      children: [
-        _Pill(
-          icon: Icons.circle,
-          text: label,
-          color: recording ? scheme.primary : scheme.onSurfaceVariant,
-          blink: recording,
-        ),
-        const SizedBox(height: CockpitSpacing.sm),
-        Text(
-          _clock(state._elapsedMs),
-          style: theme.textTheme.displaySmall?.copyWith(
-            fontWeight: FontWeight.w600,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-        const SizedBox(height: CockpitSpacing.xs),
-        _Waveform(height: 40, level: () => demo ? null : r?.level, active: recording),
-        if (r != null && r.behindSeconds > 0)
-          Text('Uploading · ${r.behindSeconds}s behind',
-              style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-        const SizedBox(height: CockpitSpacing.sm),
-        if (!stopped)
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton.filledTonal(
-                tooltip: paused ? 'Resume' : 'Pause',
-                onPressed: r == null ? null : (paused ? r.resume : r.pause),
-                icon: Icon(paused ? Icons.play_arrow_rounded : Icons.pause_rounded),
-              ),
-              const SizedBox(width: CockpitSpacing.md),
-              IconButton.filled(
-                tooltip: 'Stop recording',
-                style: IconButton.styleFrom(
-                  backgroundColor: scheme.primary.withValues(alpha: 0.18),
-                  foregroundColor: scheme.primary,
-                ),
-                onPressed: r == null || !r.isActive ? null : () => state._confirmLeave(),
-                icon: const Icon(Icons.stop_rounded),
-              ),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-/// One line: who records and for how long (receiver, or over the pencil).
-class _MiniRecordingBar extends StatelessWidget {
-  const _MiniRecordingBar({required this.state});
-  final _LiveSessionHubPageState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final r = state._recorder;
-    final live = state._live;
-    final mine = r != null;
-    final recording = mine ? r.isRecording : live.isRecording;
-    final paused = mine ? r.isPaused : live.recordingState == 'paused';
-    final who = live.recorderName ?? 'Your phone';
-    final String text;
-    if (mine) {
-      text = paused ? 'Paused' : (recording ? 'Recording on this phone' : 'Not recording');
-    } else if (recording) {
-      text = '$who is recording';
-    } else if (paused) {
-      text = 'Recording paused on $who';
-    } else if (live.recordingState == 'stopped' || live.recordingState == 'assembled') {
-      text = 'Recording finished';
-    } else {
-      text = 'Waiting for ${live.recorderName ?? 'your phone'} to start recording';
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.md, vertical: CockpitSpacing.sm),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(CockpitRadii.lg),
-      ),
-      child: Row(
-        children: [
-          _BlinkDot(color: recording ? scheme.primary : scheme.onSurfaceVariant, blink: recording),
-          const SizedBox(width: CockpitSpacing.sm),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.titleSmall),
-                if (recording || paused)
-                  Text(_clock(state._elapsedMs),
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      )),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 64,
-            child: _Waveform(height: 22, level: () => r?.level, active: recording, bars: 12),
-          ),
-          if (mine && r.isActive)
-            IconButton(
-              tooltip: paused ? 'Resume' : 'Pause',
-              visualDensity: VisualDensity.compact,
-              onPressed: paused ? r.resume : r.pause,
-              icon: Icon(paused ? Icons.play_arrow_rounded : Icons.pause_rounded, size: 20),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// The transcript as it arrives, newest at the bottom.
-class _TranscriptFeed extends StatefulWidget {
-  const _TranscriptFeed({required this.lines, this.compact = false});
-  final List<TranscriptLine> lines;
-
-  /// Solo: a shorter feed under the recorder.
-  final bool compact;
-
-  @override
-  State<_TranscriptFeed> createState() => _TranscriptFeedState();
-}
-
-class _TranscriptFeedState extends State<_TranscriptFeed> {
-  final _scroll = ScrollController();
-  int _seen = 0;
-
-  @override
-  void didUpdateWidget(covariant _TranscriptFeed old) {
-    super.didUpdateWidget(old);
-    if (widget.lines.length != _seen) {
-      // Follow the newest line unless the reader scrolled up.
-      final atEnd = !_scroll.hasClients || _scroll.position.extentAfter < 80;
-      _seen = widget.lines.length;
-      if (atEnd) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (_scroll.hasClients) {
-            _scroll.animateTo(_scroll.position.maxScrollExtent,
-                duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-          }
-        });
-      }
+        return _LiveRoom(state: state);
     }
   }
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final lines = widget.lines;
-    if (lines.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(CockpitSpacing.lg),
-          child: Text(
-            'The transcript appears here a few seconds after the lecture starts.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
-          ),
-        ),
-      );
-    }
-    return ListView.separated(
-      controller: _scroll,
-      padding: EdgeInsets.zero,
-      itemCount: lines.length,
-      separatorBuilder: (_, _) => const SizedBox(height: CockpitSpacing.sm),
-      itemBuilder: (context, i) {
-        final l = lines[i];
-        final newest = i == lines.length - 1;
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.md, vertical: CockpitSpacing.sm),
-          decoration: BoxDecoration(
-            color: newest ? scheme.surfaceContainerHigh : scheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(CockpitRadii.md),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(_clock(l.startMs),
-                  style: theme.textTheme.labelSmall?.copyWith(color: scheme.onSurfaceVariant)),
-              const SizedBox(height: 2),
-              Text(l.text,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: newest ? scheme.onSurface : scheme.onSurfaceVariant,
-                    height: 1.4,
-                  )),
-            ],
-          ),
-        );
-      },
-    );
-  }
 }
 
-/// Mark · Pencil · Board · Note.
-class _ToolRow extends StatelessWidget {
-  const _ToolRow({required this.state});
-  final _LiveSessionHubPageState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final gold = CockpitColors.brand.tertiary;
-    return Row(
-      children: [
-        _Tool(
-          icon: Icons.star_rounded,
-          label: 'Mark',
-          background: gold,
-          foreground: const Color(0xFF3A2A05),
-          onTap: state._mark,
-        ),
-        const SizedBox(width: CockpitSpacing.sm),
-        _Tool(icon: Icons.gesture_rounded, label: 'Pencil', onTap: () => state._open(_HubView.pencil)),
-        const SizedBox(width: CockpitSpacing.sm),
-        _Tool(icon: Icons.photo_camera_outlined, label: 'Board', onTap: state._board),
-        const SizedBox(width: CockpitSpacing.sm),
-        _Tool(icon: Icons.keyboard_rounded, label: 'Type', onTap: () => state._open(_HubView.typewriter)),
-      ],
-    );
-  }
-}
-
-class _Tool extends StatelessWidget {
-  const _Tool({required this.icon, required this.label, required this.onTap, this.background, this.foreground});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color? background;
-  final Color? foreground;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final fg = foreground ?? scheme.onSurface;
-    return Expanded(
-      child: Material(
-        color: background ?? scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(CockpitRadii.lg),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(CockpitRadii.lg),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: CockpitSpacing.sm),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(icon, size: 22, color: fg),
-                const SizedBox(height: 2),
-                Text(label, style: theme.textTheme.labelMedium?.copyWith(color: fg, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ===========================================================================
-// Recorder: this phone only records, for the receiver
-// ===========================================================================
 class _RecorderScreen extends StatelessWidget {
   const _RecorderScreen({required this.state});
   final _LiveSessionHubPageState state;
@@ -647,33 +297,6 @@ class _RecordingStatus extends StatelessWidget {
 // ===========================================================================
 // Small pieces
 // ===========================================================================
-class _Pill extends StatelessWidget {
-  const _Pill({required this.icon, required this.text, required this.color, this.blink = false});
-  final IconData icon;
-  final String text;
-  final Color color;
-  final bool blink;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: CockpitSpacing.md, vertical: CockpitSpacing.xs),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(CockpitRadii.pill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon == Icons.circle) _BlinkDot(color: color, blink: blink) else Icon(icon, size: 16, color: color),
-          const SizedBox(width: CockpitSpacing.xs),
-          Text(text, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: color)),
-        ],
-      ),
-    );
-  }
-}
-
 class _BlinkDot extends StatefulWidget {
   const _BlinkDot({required this.color, required this.blink});
   final Color color;
@@ -723,18 +346,18 @@ class _BlinkDotState extends State<_BlinkDot> with SingleTickerProviderStateMixi
 /// Bars that follow the mic level; [level] null (another device's mic, or
 /// the demo) draws a lively stand-in while [active].
 class _Waveform extends StatefulWidget {
-  const _Waveform({required this.height, required this.level, required this.active, this.bars = 28});
+  const _Waveform({required this.height, required this.level, required this.active});
   final double height;
   final double? Function() level;
   final bool active;
-  final int bars;
+  static const bars = 28;
 
   @override
   State<_Waveform> createState() => _WaveformState();
 }
 
 class _WaveformState extends State<_Waveform> {
-  late List<double> _v = List.filled(widget.bars, 0.08);
+  late List<double> _v = List.filled(_Waveform.bars, 0.08);
   Timer? _t;
   final _rand = math.Random();
 

@@ -9,6 +9,9 @@ import 'package:ghostwriter/src/mobile/mobile_sign_in.dart';
 import 'fake_server.dart';
 
 class FakeAuth implements GwAuth {
+  @override
+  String? get photoUrl => null;
+
   FakeAuth({this.enabled = true, this.isSignedIn = false});
 
   @override

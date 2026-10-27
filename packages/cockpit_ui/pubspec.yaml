@@ -50,3 +50,8 @@ flutter:
     - family: Literata
       fonts:
         - asset: assets/fonts/Literata-Variable.ttf
+    # Caveat — handwriting (OctoNotes' Magic Pencil text), variable wght,
+    # family `packages/cockpit_ui/Caveat` (OFL).
+    - family: Caveat
+      fonts:
+        - asset: assets/fonts/Caveat-Variable.ttf
